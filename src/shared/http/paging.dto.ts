@@ -1,6 +1,7 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
-import { IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
+import { Transform, Type } from 'class-transformer';
+import { IsInt, IsObject, IsOptional, IsString, Max, Min } from 'class-validator';
+import { ColumnFilters, parseColumnFilters } from './column-filters';
 
 export const DEFAULT_PAGE_LIMIT = 20;
 export const MAX_PAGE_LIMIT = 100;
@@ -18,6 +19,15 @@ export class PagingQueryDto {
   @IsOptional()
   @IsString()
   cursor?: string;
+
+  @ApiPropertyOptional({
+    description: 'JSON object of column contains filters, e.g. {"firstName":"ahmet"}',
+    type: 'string',
+  })
+  @IsOptional()
+  @Transform(({ value }) => parseColumnFilters(value))
+  @IsObject()
+  filters?: ColumnFilters;
 }
 
 export interface CursorPayload {

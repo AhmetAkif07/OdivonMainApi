@@ -28,3 +28,9 @@ export function touchBaseFields(userId: string, now = new Date().toISOString()) 
 export function isDeleted(doc: { deletedAt?: string | null } | undefined): boolean {
   return Boolean(doc?.deletedAt);
 }
+
+export function omitUndefined<T extends object>(value: T): Partial<T> {
+  return Object.fromEntries(
+    Object.entries(value).filter(([, item]) => item !== undefined),
+  ) as Partial<T>;
+}

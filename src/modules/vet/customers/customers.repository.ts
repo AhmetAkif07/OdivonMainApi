@@ -9,8 +9,11 @@ import { TENANT_COLLECTION, tenantCollectionPath } from '../../../shared/firebas
 import {
   createBaseFields,
   isDeleted,
+  omitUndefined,
   touchBaseFields,
 } from '../../../shared/firestore/base-document';
+import { PaginatedResult } from '../../../shared/http/paginated.result';
+import { resolveLimit } from '../../../shared/http/paging.dto';
 import { paginateQuery } from '../../../shared/firestore/paginate';
 import { TenantContext } from '../../../shared/tenancy/tenant.context';
 import { CreateCustomerDto } from './dto/create-customer.dto';
@@ -74,7 +77,30 @@ export class CustomersRepository {
     return customer;
   }
 
+  async findByIds(ids: string[]): Promise<Map<string, Customer>> {
+    const unique = [...new Set(ids.filter(Boolean))];
+    const found = new Map<string, Customer>();
+    if (unique.length === 0) {
+      return found;
+    }
+    const snapshots = await this.firebase.db.getAll(...unique.map((id) => this.collection().doc(id)));
+    for (const snapshot of snapshots) {
+      if (!snapshot.exists) {
+        continue;
+      }
+      const customer = snapshot.data() as Customer;
+      if (isDeleted(customer)) {
+        continue;
+      }
+      found.set(customer.id, customer);
+    }
+    return found;
+  }
+
   async list(query: ListCustomersQueryDto) {
+    if (query.q) {
+      return this.search(query);
+    }
     let firestoreQuery: Query = this.collection().where('deletedAt', '==', null);
     if (typeof query.isArchive === 'boolean') {
       firestoreQuery = firestoreQuery.where('isArchive', '==', query.isArchive);
@@ -82,14 +108,32 @@ export class CustomersRepository {
     return paginateQuery<Customer>(firestoreQuery, query.limit, query.cursor);
   }
 
+  async collect(query: ListCustomersQueryDto): Promise<Customer[]> {
+    const snapshot = await this.collection().get();
+    const term = query.q ? normalizeSearch(query.q) : '';
+    return snapshot.docs
+      .map((doc) => doc.data() as Customer)
+      .filter((customer) => !isDeleted(customer))
+      .filter((customer) => (typeof query.isArchive === 'boolean' ? customer.isArchive === query.isArchive : true))
+      .filter((customer) => customerMatches(customer, term))
+      .sort((left, right) => right.createdAt.localeCompare(left.createdAt) || right.id.localeCompare(left.id));
+  }
+
+  private async search(query: ListCustomersQueryDto): Promise<PaginatedResult<Customer>> {
+    const items = await this.collect(query);
+    const limit = resolveLimit(query.limit);
+    return new PaginatedResult(items.slice(0, limit), limit, null);
+  }
+
   async update(id: string, dto: UpdateCustomerDto): Promise<Customer> {
     const current = await this.getByIdOrThrow(id);
     const updated: Customer = {
       ...current,
-      ...dto,
+      ...omitUndefined(dto),
       email: dto.email ?? current.email,
       address: dto.address ?? current.address,
       note: dto.note ?? current.note,
+      isArchive: dto.isArchive ?? current.isArchive ?? false,
       ...touchBaseFields(this.tenantContext.getUserId()),
     };
     await this.collection().doc(id).set(updated);
@@ -115,4 +159,17 @@ export class CustomersRepository {
       entityId: id,
     });
   }
+}
+
+function normalizeSearch(value: string): string {
+  return value.toLocaleLowerCase('tr').replace(/[^\p{L}\p{N}]+/gu, '');
+}
+
+function customerMatches(customer: Customer, term: string): boolean {
+  if (!term) {
+    return true;
+  }
+  return normalizeSearch(
+    `${customer.firstName} ${customer.lastName} ${customer.phone} ${customer.email ?? ''}`,
+  ).includes(term);
 }

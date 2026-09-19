@@ -23,31 +23,39 @@ describe('ModuleGuard', () => {
   });
 
   it('allows access when the required module is present', () => {
-    tenantContext.enter({
-      tenantId: 't1',
-      userId: 'u1',
-      role: 'owner',
-      modules: ['farm'],
-      email: 'a@b.com',
-    });
-    expect(guard.canActivate(contextStub())).toBe(true);
+    tenantContext.run(
+      {
+        tenantId: 't1',
+        userId: 'u1',
+        role: 'owner',
+        modules: ['farm'],
+        email: 'a@b.com',
+      },
+      () => {
+        expect(guard.canActivate(contextStub())).toBe(true);
+      },
+    );
   });
 
   it('returns FORBIDDEN_MODULE when farm is not enabled', () => {
-    tenantContext.enter({
-      tenantId: 't1',
-      userId: 'u1',
-      role: 'owner',
-      modules: ['vet'],
-      email: 'a@b.com',
-    });
-    try {
-      guard.canActivate(contextStub());
-      throw new Error('expected FORBIDDEN_MODULE');
-    } catch (error) {
-      expect(error).toBeInstanceOf(AppException);
-      expect((error as AppException).code).toBe(ErrorCode.FORBIDDEN_MODULE);
-    }
+    tenantContext.run(
+      {
+        tenantId: 't1',
+        userId: 'u1',
+        role: 'owner',
+        modules: ['vet'],
+        email: 'a@b.com',
+      },
+      () => {
+        try {
+          guard.canActivate(contextStub());
+          throw new Error('expected FORBIDDEN_MODULE');
+        } catch (error) {
+          expect(error).toBeInstanceOf(AppException);
+          expect((error as AppException).code).toBe(ErrorCode.FORBIDDEN_MODULE);
+        }
+      },
+    );
   });
 });
 

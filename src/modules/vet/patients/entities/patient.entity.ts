@@ -15,3 +15,9 @@ export interface Patient extends BaseDocument {
   notes: string | null;
   active: boolean;
 }
+
+export interface PatientListItem extends Patient {
+  customerName: string;
+  customerPhone: string;
+  customerEmail: string | null;
+}

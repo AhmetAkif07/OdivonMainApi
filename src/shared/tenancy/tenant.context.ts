@@ -1,5 +1,5 @@
 import { AsyncLocalStorage } from 'async_hooks';
-import { Injectable } from '@nestjs/common';
+import { ExecutionContext, Injectable } from '@nestjs/common';
 import { ProductModule, UserRole } from '../authorization/constants';
 import { AppException } from '../errors/app.exception';
 import { ErrorCode } from '../errors/error-codes';
@@ -12,20 +12,41 @@ export interface TenantStore {
   email: string;
 }
 
+export interface RequestWithTenant {
+  currentUser?: TenantStore;
+}
+
+interface TenantAlsBag {
+  current?: TenantStore;
+}
+
+const tenantAls = new AsyncLocalStorage<TenantAlsBag>();
+
 @Injectable()
 export class TenantContext {
-  private readonly storage = new AsyncLocalStorage<TenantStore>();
-
   enter(store: TenantStore): void {
-    this.storage.enterWith(store);
+    const bag = tenantAls.getStore();
+    if (bag) {
+      bag.current = store;
+      return;
+    }
+    tenantAls.enterWith({ current: store });
   }
 
   run<T>(store: TenantStore, fn: () => T): T {
-    return this.storage.run(store, fn);
+    return tenantAls.run({ current: store }, fn);
+  }
+
+  runBag(fn: () => void): void {
+    if (tenantAls.getStore()) {
+      fn();
+      return;
+    }
+    tenantAls.run({}, fn);
   }
 
   getStore(): TenantStore {
-    const store = this.storage.getStore();
+    const store = this.tryGetStore();
     if (!store) {
       throw new AppException(
         ErrorCode.TENANT_CONTEXT_MISSING,
@@ -36,7 +57,7 @@ export class TenantContext {
   }
 
   tryGetStore(): TenantStore | undefined {
-    return this.storage.getStore();
+    return tenantAls.getStore()?.current;
   }
 
   getTenantId(): string {
@@ -46,4 +67,17 @@ export class TenantContext {
   getUserId(): string {
     return this.getStore().userId;
   }
+}
+
+export function resolveRequestTenant(
+  context: ExecutionContext,
+  tenantContext: TenantContext,
+): TenantStore {
+  if (typeof context.switchToHttp === 'function') {
+    const request = context.switchToHttp().getRequest<RequestWithTenant>();
+    if (request?.currentUser) {
+      return request.currentUser;
+    }
+  }
+  return tenantContext.getStore();
 }

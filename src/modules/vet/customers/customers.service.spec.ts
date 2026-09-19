@@ -29,10 +29,11 @@ describe('CustomersService', () => {
     create: jest.fn(),
     getByIdOrThrow: jest.fn(),
     list: jest.fn(),
+    collect: jest.fn(),
     update: jest.fn(),
     softDelete: jest.fn(),
   };
-  const patients = { toPatient: jest.fn() };
+  const patients = { toPatient: jest.fn(), findByCustomerIds: jest.fn() };
   const firebase = { db: { collection: jest.fn(), batch: jest.fn() } };
   const tenantContext = { getTenantId: jest.fn().mockReturnValue('tenant-a'), getUserId: jest.fn().mockReturnValue('u1') };
   const audit = { record: jest.fn() };
@@ -78,6 +79,23 @@ describe('CustomersService', () => {
     repo.softDelete.mockResolvedValue(undefined);
     await service.softDelete('c1');
     expect(repo.softDelete).toHaveBeenCalledWith('c1');
+  });
+
+  it('applies column filters after patient enrichment', async () => {
+    repo.collect.mockResolvedValue([
+      customer(),
+      customer({ id: 'c2', firstName: 'Mehmet', lastName: 'Yılmaz' }),
+    ]);
+    patients.findByCustomerIds.mockResolvedValue(
+      new Map([
+        ['c1', [{ id: 'p1', name: 'Pamuk', animalType: 'kedi' }]],
+        ['c2', [{ id: 'p2', name: 'Karabaş', animalType: 'köpek' }]],
+      ]),
+    );
+    const page = await service.list({ filters: { patients: 'pamuk' }, limit: 20 });
+    expect(repo.list).not.toHaveBeenCalled();
+    expect(page.items).toHaveLength(1);
+    expect(page.items[0].id).toBe('c1');
   });
 
   it('propagates not found', async () => {

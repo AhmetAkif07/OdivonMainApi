@@ -5,7 +5,7 @@ import { AppException } from '../errors/app.exception';
 import { ErrorCode } from '../errors/error-codes';
 import { FirebaseService } from '../firebase/firebase.service';
 import { ROOT_COLLECTION } from '../firebase/firestore-path';
-import { TenantContext, TenantStore } from './tenant.context';
+import { TenantContext, TenantStore, RequestWithTenant } from './tenant.context';
 import { getDecodedToken } from '../auth/firebase-auth.guard';
 
 interface UserProfileDoc {
@@ -24,7 +24,7 @@ export class TenantGuard implements CanActivate {
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const request = context.switchToHttp().getRequest<Request>();
+    const request = context.switchToHttp().getRequest<Request & RequestWithTenant>();
     const decoded = getDecodedToken(request);
     const snapshot = await this.firebase.db.collection(ROOT_COLLECTION.users).doc(decoded.uid).get();
     if (!snapshot.exists) {
@@ -45,7 +45,7 @@ export class TenantGuard implements CanActivate {
     };
 
     this.tenantContext.enter(store);
-    (request as Request & { currentUser: TenantStore }).currentUser = store;
+    request.currentUser = store;
     return true;
   }
 }

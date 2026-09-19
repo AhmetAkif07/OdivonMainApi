@@ -94,17 +94,21 @@ export class ExaminationsRepository {
     if (!from && !to) {
       return page;
     }
-    const items = page.items.filter((item) => {
-      const date = new Date(item.date);
-      if (from && date < from) {
-        return false;
-      }
-      if (to && date > to) {
-        return false;
-      }
-      return true;
-    });
+    const items = page.items.filter((item) => inDateWindow(item.date, from, to));
     return new PaginatedResult(items, page.limit, page.nextCursor);
+  }
+
+  async collect(query: ListExaminationsQueryDto): Promise<Examination[]> {
+    const snapshot = await this.collection().get();
+    const from = query.from ? new Date(query.from) : undefined;
+    const to = query.to ? new Date(query.to) : undefined;
+    return snapshot.docs
+      .map((doc) => doc.data() as Examination)
+      .filter((item) => !isDeleted(item))
+      .filter((item) => (query.patientId ? item.patientId === query.patientId : true))
+      .filter((item) => (query.customerId ? item.customerId === query.customerId : true))
+      .filter((item) => inDateWindow(item.date, from, to))
+      .sort((left, right) => right.createdAt.localeCompare(left.createdAt) || right.id.localeCompare(left.id));
   }
 
   async update(id: string, dto: UpdateExaminationDto): Promise<Examination> {
@@ -149,4 +153,18 @@ export class ExaminationsRepository {
       entityId: id,
     });
   }
+}
+
+function inDateWindow(value: string, from?: Date, to?: Date): boolean {
+  if (!from && !to) {
+    return true;
+  }
+  const date = new Date(value);
+  if (from && date < from) {
+    return false;
+  }
+  if (to && date > to) {
+    return false;
+  }
+  return true;
 }

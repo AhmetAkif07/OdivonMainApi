@@ -2,7 +2,7 @@ import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { AppException } from '../errors/app.exception';
 import { ErrorCode } from '../errors/error-codes';
-import { TenantContext } from '../tenancy/tenant.context';
+import { resolveRequestTenant, TenantContext } from '../tenancy/tenant.context';
 import { UserRole } from './constants';
 import { ROLES_KEY } from './roles.decorator';
 
@@ -22,7 +22,7 @@ export class RoleGuard implements CanActivate {
       return true;
     }
 
-    const current = this.tenantContext.getStore().role;
+    const current = resolveRequestTenant(context, this.tenantContext).role;
     if (!roles.includes(current)) {
       throw new AppException(ErrorCode.FORBIDDEN_ROLE, 'Insufficient role for this operation');
     }

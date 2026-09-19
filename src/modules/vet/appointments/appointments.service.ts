@@ -1,13 +1,16 @@
 import { Injectable } from '@nestjs/common';
 import { AppException } from '../../../shared/errors/app.exception';
 import { ErrorCode } from '../../../shared/errors/error-codes';
+import { hasColumnFilters, matchesColumnFilters } from '../../../shared/http/column-filters';
+import { paginateInMemory } from '../../../shared/http/paginate-memory';
+import { PaginatedResult } from '../../../shared/http/paginated.result';
 import { CustomersRepository } from '../customers/customers.repository';
 import { PatientsRepository } from '../patients/patients.repository';
+import { Appointment, AppointmentListItem, AppointmentStatus } from './entities/appointment.entity';
 import { AppointmentsRepository } from './appointments.repository';
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
 import { ListAppointmentsQueryDto } from './dto/list-appointments.query.dto';
 import { UpdateAppointmentDto } from './dto/update-appointment.dto';
-import { AppointmentStatus } from './entities/appointment.entity';
 
 @Injectable()
 export class AppointmentsService {
@@ -26,8 +29,15 @@ export class AppointmentsService {
     return this.appointments.getByIdOrThrow(id);
   }
 
-  list(query: ListAppointmentsQueryDto) {
-    return this.appointments.list(query);
+  async list(query: ListAppointmentsQueryDto): Promise<PaginatedResult<AppointmentListItem>> {
+    if (!hasColumnFilters(query.filters)) {
+      const page = await this.appointments.list(query);
+      return new PaginatedResult(await this.withNames(page.items), page.limit, page.nextCursor);
+    }
+    const filtered = (await this.withNames(await this.appointments.collect(query))).filter((item) =>
+      matchesColumnFilters(item, query.filters),
+    );
+    return paginateInMemory(filtered, query.limit, query.cursor);
   }
 
   async update(id: string, dto: UpdateAppointmentDto) {
@@ -68,5 +78,25 @@ export class AppointmentsService {
         'patient does not belong to the given customer',
       );
     }
+  }
+
+  private async withNames(items: Appointment[]): Promise<AppointmentListItem[]> {
+    const [customers, patients] = await Promise.all([
+      this.customers.findByIds(items.map((item) => item.customerId)),
+      this.patients.findByIds(items.map((item) => item.patientId)),
+    ]);
+    return items.map((item) => {
+      const customer = customers.get(item.customerId);
+      const patient = patients.get(item.patientId);
+      return {
+        ...item,
+        customerName: customer ? `${customer.firstName} ${customer.lastName}`.trim() : '',
+        patientName: patient
+          ? patient.animalType
+            ? `${patient.name} (${patient.animalType})`
+            : patient.name
+          : '',
+      };
+    });
   }
 }

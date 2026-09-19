@@ -14,3 +14,8 @@ export interface Appointment extends BaseDocument {
   status: AppointmentStatus;
   reservationSlotIds: string[];
 }
+
+export interface AppointmentListItem extends Appointment {
+  customerName: string;
+  patientName: string;
+}

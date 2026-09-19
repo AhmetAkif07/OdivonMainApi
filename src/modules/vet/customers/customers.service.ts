@@ -9,9 +9,12 @@ import { PatientsRepository } from '../patients/patients.repository';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { ListCustomersQueryDto } from './dto/list-customers.query.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
-import { Customer } from './entities/customer.entity';
+import { Customer, CustomerListItem } from './entities/customer.entity';
 import { CustomersRepository } from './customers.repository';
 import { Patient } from '../patients/entities/patient.entity';
+import { hasColumnFilters, matchesColumnFilters } from '../../../shared/http/column-filters';
+import { paginateInMemory } from '../../../shared/http/paginate-memory';
+import { PaginatedResult } from '../../../shared/http/paginated.result';
 
 @Injectable()
 export class CustomersService {
@@ -77,8 +80,31 @@ export class CustomersService {
     return this.customers.getByIdOrThrow(id);
   }
 
-  list(query: ListCustomersQueryDto) {
-    return this.customers.list(query);
+  async list(query: ListCustomersQueryDto): Promise<PaginatedResult<CustomerListItem>> {
+    if (!hasColumnFilters(query.filters)) {
+      const page = await this.customers.list(query);
+      return new PaginatedResult(
+        await this.withPatients(page.items),
+        page.limit,
+        page.nextCursor,
+      );
+    }
+    const filtered = (await this.withPatients(await this.customers.collect(query))).filter((item) =>
+      matchesColumnFilters(item, query.filters, customerColumnValue),
+    );
+    return paginateInMemory(filtered, query.limit, query.cursor);
+  }
+
+  private async withPatients(customers: Customer[]): Promise<CustomerListItem[]> {
+    const patientsByCustomer = await this.patients.findByCustomerIds(customers.map((item) => item.id));
+    return customers.map((customer) => ({
+      ...customer,
+      patients: (patientsByCustomer.get(customer.id) ?? []).map((patient) => ({
+        id: patient.id,
+        name: patient.name,
+        animalType: patient.animalType,
+      })),
+    }));
   }
 
   update(id: string, dto: UpdateCustomerDto) {
@@ -88,4 +114,13 @@ export class CustomersService {
   softDelete(id: string) {
     return this.customers.softDelete(id);
   }
+}
+
+function customerColumnValue(item: CustomerListItem, key: string): unknown {
+  if (key === 'patients') {
+    return (item.patients ?? [])
+      .map((patient) => `${patient.name} ${patient.animalType}`)
+      .join(' ');
+  }
+  return (item as unknown as Record<string, unknown>)[key];
 }

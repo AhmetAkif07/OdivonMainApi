@@ -44,7 +44,9 @@ import { GymModule } from './modules/gym/gym.module';
     },
     { provide: APP_FILTER, useClass: GlobalExceptionFilter },
     { provide: APP_INTERCEPTOR, useClass: ResponseInterceptor },
-    { provide: APP_GUARD, useClass: ThrottlerGuard },
+    ...(process.env.NODE_ENV === 'production'
+      ? [{ provide: APP_GUARD, useClass: ThrottlerGuard }]
+      : []),
   ],
 })
 export class AppModule {}

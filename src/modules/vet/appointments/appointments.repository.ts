@@ -11,7 +11,7 @@ import {
   isDeleted,
   touchBaseFields,
 } from '../../../shared/firestore/base-document';
-import { PaginatedResult } from '../../../shared/http/paginated.result';
+import { paginateInMemory } from '../../../shared/http/paginate-memory';
 import { paginateQuery } from '../../../shared/firestore/paginate';
 import { TenantContext } from '../../../shared/tenancy/tenant.context';
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
@@ -111,6 +111,9 @@ export class AppointmentsRepository {
   }
 
   async list(query: ListAppointmentsQueryDto) {
+    if (query.from || query.to) {
+      return paginateInMemory(await this.collect(query), query.limit, query.cursor);
+    }
     let firestoreQuery: Query = this.appointments().where('deletedAt', '==', null);
     if (query.status) {
       firestoreQuery = firestoreQuery.where('status', '==', query.status);
@@ -124,23 +127,22 @@ export class AppointmentsRepository {
     if (query.customerId) {
       firestoreQuery = firestoreQuery.where('customerId', '==', query.customerId);
     }
-    const page = await paginateQuery<Appointment>(firestoreQuery, query.limit, query.cursor);
+    return paginateQuery<Appointment>(firestoreQuery, query.limit, query.cursor);
+  }
+
+  async collect(query: ListAppointmentsQueryDto): Promise<Appointment[]> {
+    const snapshot = await this.appointments().get();
     const from = query.from ? new Date(query.from) : undefined;
     const to = query.to ? new Date(query.to) : undefined;
-    if (!from && !to) {
-      return page;
-    }
-    const items = page.items.filter((item) => {
-      const begin = new Date(item.beginAt);
-      if (from && begin < from) {
-        return false;
-      }
-      if (to && begin > to) {
-        return false;
-      }
-      return true;
-    });
-    return new PaginatedResult(items, page.limit, page.nextCursor);
+    return snapshot.docs
+      .map((doc) => doc.data() as Appointment)
+      .filter((item) => !isDeleted(item))
+      .filter((item) => (query.status ? item.status === query.status : true))
+      .filter((item) => (query.doctorId ? item.doctorId === query.doctorId : true))
+      .filter((item) => (query.patientId ? item.patientId === query.patientId : true))
+      .filter((item) => (query.customerId ? item.customerId === query.customerId : true))
+      .filter((item) => inBeginRange(item.beginAt, from, to))
+      .sort((left, right) => right.createdAt.localeCompare(left.createdAt) || right.id.localeCompare(left.id));
   }
 
   async update(id: string, dto: UpdateAppointmentDto): Promise<Appointment> {
@@ -250,4 +252,18 @@ export class AppointmentsRepository {
       entityId: id,
     });
   }
+}
+
+function inBeginRange(value: string, from?: Date, to?: Date): boolean {
+  if (!from && !to) {
+    return true;
+  }
+  const begin = new Date(value);
+  if (from && begin < from) {
+    return false;
+  }
+  if (to && begin > to) {
+    return false;
+  }
+  return true;
 }

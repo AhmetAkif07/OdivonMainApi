@@ -9,10 +9,13 @@ import { TENANT_COLLECTION, tenantCollectionPath } from '../../../shared/firebas
 import {
   createBaseFields,
   isDeleted,
+  omitUndefined,
   touchBaseFields,
 } from '../../../shared/firestore/base-document';
+import { paginateInMemory } from '../../../shared/http/paginate-memory';
 import { paginateQuery } from '../../../shared/firestore/paginate';
 import { TenantContext } from '../../../shared/tenancy/tenant.context';
+import { Appointment } from '../appointments/entities/appointment.entity';
 import { CreatePatientDto } from './dto/create-patient.dto';
 import { ListPatientsQueryDto } from './dto/list-patients.query.dto';
 import { UpdatePatientDto } from './dto/update-patient.dto';
@@ -92,7 +95,33 @@ export class PatientsRepository {
     return patient;
   }
 
+  async findByIds(ids: string[]): Promise<Map<string, Patient>> {
+    const unique = [...new Set(ids.filter(Boolean))];
+    const found = new Map<string, Patient>();
+    if (unique.length === 0) {
+      return found;
+    }
+    for (let index = 0; index < unique.length; index += 100) {
+      const chunk = unique.slice(index, index + 100);
+      const snapshots = await this.firebase.db.getAll(...chunk.map((id) => this.collection().doc(id)));
+      for (const snapshot of snapshots) {
+        if (!snapshot.exists) {
+          continue;
+        }
+        const patient = snapshot.data() as Patient;
+        if (isDeleted(patient)) {
+          continue;
+        }
+        found.set(patient.id, patient);
+      }
+    }
+    return found;
+  }
+
   async list(query: ListPatientsQueryDto) {
+    if (query.createdFrom || query.createdTo || query.appointmentFrom || query.appointmentTo) {
+      return paginateInMemory(await this.collect(query), query.limit, query.cursor);
+    }
     let firestoreQuery: Query = this.collection().where('deletedAt', '==', null);
     if (query.customerId) {
       firestoreQuery = firestoreQuery.where('customerId', '==', query.customerId);
@@ -100,11 +129,73 @@ export class PatientsRepository {
     return paginateQuery<Patient>(firestoreQuery, query.limit, query.cursor);
   }
 
+  async collect(query: ListPatientsQueryDto): Promise<Patient[]> {
+    const snapshot = await this.collection().get();
+    let items = snapshot.docs
+      .map((doc) => doc.data() as Patient)
+      .filter((patient) => !isDeleted(patient))
+      .filter((patient) => (query.customerId ? patient.customerId === query.customerId : true))
+      .filter((patient) => inDateRange(patient.createdAt, query.createdFrom, query.createdTo));
+
+    if (query.appointmentFrom || query.appointmentTo) {
+      const patientIds = await this.patientIdsWithAppointments(query.appointmentFrom, query.appointmentTo);
+      items = items.filter((patient) => patientIds.has(patient.id));
+    }
+
+    return items.sort(
+      (left, right) => right.createdAt.localeCompare(left.createdAt) || right.id.localeCompare(left.id),
+    );
+  }
+
+  async findByCustomerIds(customerIds: string[]): Promise<Map<string, Patient[]>> {
+    const unique = [...new Set(customerIds.filter(Boolean))];
+    const grouped = new Map<string, Patient[]>();
+    for (const id of unique) {
+      grouped.set(id, []);
+    }
+    if (unique.length === 0) {
+      return grouped;
+    }
+    for (let index = 0; index < unique.length; index += 10) {
+      const chunk = unique.slice(index, index + 10);
+      const snapshot = await this.collection().where('customerId', 'in', chunk).get();
+      for (const doc of snapshot.docs) {
+        const patient = doc.data() as Patient;
+        if (isDeleted(patient)) {
+          continue;
+        }
+        grouped.get(patient.customerId)?.push(patient);
+      }
+    }
+    for (const patients of grouped.values()) {
+      patients.sort((left, right) => left.name.localeCompare(right.name, 'tr'));
+    }
+    return grouped;
+  }
+
+  private async patientIdsWithAppointments(from?: string, to?: string): Promise<Set<string>> {
+    const snapshot = await this.firebase.db
+      .collection(tenantCollectionPath(this.tenantContext.getTenantId(), TENANT_COLLECTION.appointments))
+      .get();
+    const ids = new Set<string>();
+    for (const doc of snapshot.docs) {
+      const appointment = doc.data() as Appointment;
+      if (isDeleted(appointment) || appointment.status === 'cancelled' || !appointment.patientId) {
+        continue;
+      }
+      if (!inDateRange(appointment.beginAt, from, to)) {
+        continue;
+      }
+      ids.add(appointment.patientId);
+    }
+    return ids;
+  }
+
   async update(id: string, dto: UpdatePatientDto): Promise<Patient> {
     const current = await this.getByIdOrThrow(id);
     const updated: Patient = {
       ...current,
-      ...dto,
+      ...omitUndefined(dto),
       ...touchBaseFields(this.tenantContext.getUserId()),
     };
     await this.collection().doc(id).set(updated);
@@ -130,4 +221,14 @@ export class PatientsRepository {
       entityId: id,
     });
   }
+}
+
+function inDateRange(value: string, from?: string, to?: string): boolean {
+  if (from && value < from) {
+    return false;
+  }
+  if (to && value > to) {
+    return false;
+  }
+  return true;
 }

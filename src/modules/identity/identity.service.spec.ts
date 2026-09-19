@@ -63,6 +63,24 @@ describe('IdentityService.register', () => {
     });
   });
 
+  it('explains missing Firebase Authentication configuration', async () => {
+    firebase.auth.createUser.mockRejectedValue({
+      code: 'auth/configuration-not-found',
+      message: 'There is no configuration corresponding to the provided identifier.',
+    });
+
+    await expect(
+      service.register({
+        email: 'clinic@example.com',
+        password: 'password1',
+        tenantName: 'Clinic',
+      }),
+    ).rejects.toMatchObject({
+      code: ErrorCode.VALIDATION_ERROR,
+      message: expect.stringContaining('Firebase Authentication is not enabled'),
+    });
+  });
+
   it('rolls back auth user if tenant creation fails', async () => {
     firebase.auth.createUser.mockResolvedValue({ uid: 'uid-1' });
     tenants.create.mockRejectedValue(new Error('firestore down'));

@@ -20,3 +20,8 @@ export interface Examination extends BaseDocument {
   treatment: string | null;
   status: ExaminationStatus;
 }
+
+export interface ExaminationListItem extends Examination {
+  customerName: string;
+  patientName: string;
+}

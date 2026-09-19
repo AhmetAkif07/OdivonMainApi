@@ -1,10 +1,13 @@
 import { RequestMethod, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { config as loadDotenv } from 'dotenv';
 import helmet from 'helmet';
 import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module';
 import { loadConfiguration } from './config/configuration';
+
+loadDotenv();
 
 async function bootstrap(): Promise<void> {
   const config = loadConfiguration();

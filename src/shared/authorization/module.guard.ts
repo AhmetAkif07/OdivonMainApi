@@ -2,7 +2,7 @@ import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { AppException } from '../errors/app.exception';
 import { ErrorCode } from '../errors/error-codes';
-import { TenantContext } from '../tenancy/tenant.context';
+import { resolveRequestTenant, TenantContext } from '../tenancy/tenant.context';
 import { ProductModule } from './constants';
 import { REQUIRED_MODULE_KEY } from './module.decorator';
 
@@ -22,7 +22,7 @@ export class ModuleGuard implements CanActivate {
       return true;
     }
 
-    const modules = this.tenantContext.getStore().modules;
+    const modules = resolveRequestTenant(context, this.tenantContext).modules;
     if (!modules.includes(required)) {
       throw new AppException(
         ErrorCode.FORBIDDEN_MODULE,

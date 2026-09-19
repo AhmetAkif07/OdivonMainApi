@@ -70,11 +70,27 @@ export class IdentityService {
       if (error instanceof AppException) {
         throw error;
       }
-      if (this.isEmailAlreadyExists(error)) {
+      const firebase = describeFirebaseError(error);
+      this.logger.error(`Register failed code=${firebase.code} message=${firebase.message}`);
+      if (firebase.code === 'auth/email-already-exists') {
         throw new AppException(ErrorCode.VALIDATION_ERROR, 'Email is already registered');
       }
-      this.logger.error('Register failed', error as Error);
-      throw new AppException(ErrorCode.VALIDATION_ERROR, 'Registration failed');
+      if (firebase.code === 'auth/invalid-email') {
+        throw new AppException(ErrorCode.VALIDATION_ERROR, 'Email is invalid');
+      }
+      if (firebase.code === 'auth/invalid-password' || firebase.code === 'auth/weak-password') {
+        throw new AppException(ErrorCode.VALIDATION_ERROR, 'Password does not meet requirements');
+      }
+      if (isAuthConfigurationMissing(firebase)) {
+        throw new AppException(
+          ErrorCode.VALIDATION_ERROR,
+          'Firebase Authentication is not enabled. Open Authentication in the Firebase console, click Get started, then enable Email/Password.',
+        );
+      }
+      throw new AppException(
+        ErrorCode.VALIDATION_ERROR,
+        firebase.message ? `Registration failed: ${firebase.message}` : 'Registration failed',
+      );
     }
   }
 
@@ -101,15 +117,6 @@ export class IdentityService {
 
   async listUsers(): Promise<UserProfile[]> {
     return this.users.listByCurrentTenant();
-  }
-
-  private isEmailAlreadyExists(error: unknown): boolean {
-    return (
-      typeof error === 'object' &&
-      error !== null &&
-      'code' in error &&
-      (error as { code: string }).code === 'auth/email-already-exists'
-    );
   }
 
   private async rollbackRegister(state: {
@@ -139,4 +146,26 @@ export class IdentityService {
       }
     }
   }
+}
+
+function describeFirebaseError(error: unknown): { code: string; message: string } {
+  if (typeof error === 'object' && error !== null) {
+    const record = error as {
+      code?: unknown;
+      message?: unknown;
+      errorInfo?: { code?: unknown; message?: unknown };
+    };
+    const code = String(record.errorInfo?.code ?? record.code ?? '');
+    const message = String(record.errorInfo?.message ?? record.message ?? '');
+    return { code, message };
+  }
+  return { code: '', message: String(error) };
+}
+
+function isAuthConfigurationMissing(firebase: { code: string; message: string }): boolean {
+  return (
+    firebase.code === 'auth/configuration-not-found' ||
+    firebase.message.includes('CONFIGURATION_NOT_FOUND') ||
+    firebase.message.includes('no configuration corresponding to the provided identifier')
+  );
 }

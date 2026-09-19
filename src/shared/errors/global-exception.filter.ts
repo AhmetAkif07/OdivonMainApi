@@ -60,6 +60,18 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     }
 
     this.logger.error(exception);
+    if (isQuotaExceeded(exception)) {
+      response.status(HttpStatus.SERVICE_UNAVAILABLE).json({
+        success: false,
+        error: {
+          code: 'INTERNAL_ERROR',
+          message:
+            'Firestore kotası doldu. Firebase Console kullanımını kontrol edin veya kotanın yenilenmesini bekleyin.',
+        },
+        meta: { requestId },
+      });
+      return;
+    }
     response.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
       success: false,
       error: {
@@ -69,4 +81,13 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       meta: { requestId },
     });
   }
+}
+
+function isQuotaExceeded(exception: unknown): boolean {
+  if (!exception || typeof exception !== 'object') {
+    return false;
+  }
+  const error = exception as { code?: number | string; details?: string; message?: string };
+  const text = `${error.details ?? ''} ${error.message ?? ''}`;
+  return error.code === 8 || /quota exceeded/i.test(text);
 }

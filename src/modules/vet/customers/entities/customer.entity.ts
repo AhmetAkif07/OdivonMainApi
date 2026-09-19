@@ -10,3 +10,13 @@ export interface Customer extends BaseDocument {
   discountRate: number;
   isArchive: boolean;
 }
+
+export interface CustomerPatientSummary {
+  id: string;
+  name: string;
+  animalType: string;
+}
+
+export interface CustomerListItem extends Customer {
+  patients: CustomerPatientSummary[];
+}
