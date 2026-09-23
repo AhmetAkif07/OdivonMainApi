@@ -5,6 +5,16 @@ export const TENANT_COLLECTION = {
   examinations: 'examinations',
   auditLogs: 'auditLogs',
   appointmentReservations: 'appointmentReservations',
+  productCategories: 'productCategories',
+  units: 'units',
+  taxes: 'taxes',
+  stores: 'stores',
+  suppliers: 'suppliers',
+  paymentMethods: 'paymentMethods',
+  appointmentTypes: 'appointmentTypes',
+  customerGroups: 'customerGroups',
+  cashRegisters: 'cashRegisters',
+  products: 'products',
 } as const;
 
 export const ROOT_COLLECTION = {
