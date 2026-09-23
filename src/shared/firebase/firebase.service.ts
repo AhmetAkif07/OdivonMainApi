@@ -9,7 +9,7 @@ export class FirebaseService implements OnModuleInit {
   private readonly logger = new Logger(FirebaseService.name);
   private app!: App;
   private authClient!: Auth;
-  private firestoreClient!: Firestore;
+  private firestoreClient?: Firestore;
 
   onModuleInit(): void {
     const config = loadConfiguration();
@@ -42,7 +42,6 @@ export class FirebaseService implements OnModuleInit {
     }
 
     this.authClient = getAuth(this.app);
-    this.firestoreClient = getFirestore(this.app);
   }
 
   get auth(): Auth {
@@ -50,6 +49,7 @@ export class FirebaseService implements OnModuleInit {
   }
 
   get db(): Firestore {
-    return this.firestoreClient;
+    // Workers permits the random bytes used by Firestore only inside a request.
+    return (this.firestoreClient ??= getFirestore(this.app));
   }
 }

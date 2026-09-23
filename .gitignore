@@ -11,3 +11,6 @@ ui-debug.log
 Thumbs.db
 *.secret.json
 serviceAccount*.json
+.wrangler/
+.dev.vars
+.dev.vars.*

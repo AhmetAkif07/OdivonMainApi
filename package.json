@@ -4,6 +4,10 @@
   "private": true,
   "description": "Odivon modular monolith API — NestJS + Firebase Auth + Firestore",
   "scripts": {
+    "dev:worker": "wrangler dev --port 8799",
+    "check:worker": "wrangler deploy --dry-run",
+    "test:worker": "wrangler deploy --dry-run --outdir .wrangler/smoke && node scripts/smoke-worker.mjs",
+    "deploy:worker": "wrangler deploy",
     "start": "nest start",
     "start:dev": "nest start --watch",
     "build": "nest build",
@@ -13,6 +17,7 @@
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\""
   },
   "dependencies": {
+    "@google-cloud/firestore": "7.11.6",
     "@nestjs/common": "^11.1.6",
     "@nestjs/config": "^4.0.2",
     "@nestjs/core": "^11.1.6",
@@ -23,6 +28,7 @@
     "class-validator": "^0.14.2",
     "dotenv": "^18.0.1",
     "firebase-admin": "^13.5.0",
+    "google-gax": "4.6.1",
     "helmet": "^8.1.0",
     "nestjs-pino": "^4.4.0",
     "pino-http": "^10.5.0",
@@ -39,10 +45,12 @@
     "@types/node": "^22.18.1",
     "eslint": "^9.35.0",
     "jest": "^29.7.0",
+    "miniflare": "5.20260921.0-alpha",
     "pino-pretty": "^13.1.1",
     "prettier": "^3.6.2",
     "ts-jest": "^29.4.1",
     "typescript": "^5.9.2",
-    "typescript-eslint": "^8.43.0"
+    "typescript-eslint": "^8.43.0",
+    "wrangler": "^4.136.1"
   }
 }
