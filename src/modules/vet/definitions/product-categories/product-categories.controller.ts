@@ -3,7 +3,8 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { FirebaseAuthGuard } from '../../../../shared/auth/firebase-auth.guard';
 import { RequireModule } from '../../../../shared/authorization/module.decorator';
 import { ModuleGuard } from '../../../../shared/authorization/module.guard';
-import { RoleGuard } from '../../../../shared/authorization/role.guard';
+import { PermissionGuard } from '../../../../shared/authorization/permission.guard';
+import { RequirePermission } from '../../../../shared/authorization/require-permission.decorator';
 import { PagingQueryDto } from '../../../../shared/http/paging.dto';
 import { TenantGuard } from '../../../../shared/tenancy/tenant.guard';
 import { ProductCategoriesService } from './product-categories.service';
@@ -12,7 +13,7 @@ import { CreateProductCategoryDto, UpdateProductCategoryDto } from './product-ca
 @ApiTags('vet-product-categories')
 @ApiBearerAuth()
 @RequireModule('vet')
-@UseGuards(FirebaseAuthGuard, TenantGuard, ModuleGuard, RoleGuard)
+@UseGuards(FirebaseAuthGuard, TenantGuard, ModuleGuard, PermissionGuard)
 @Controller('vet/product-categories')
 export class ProductCategoriesController {
   constructor(private readonly service: ProductCategoriesService) {}
@@ -24,6 +25,8 @@ export class ProductCategoriesController {
   }
 
   @Post()
+
+  @RequirePermission('productCategories', 'create')
   @ApiOperation({ summary: 'Create a product category' })
   create(@Body() dto: CreateProductCategoryDto) {
     return this.service.create(dto);
@@ -36,12 +39,16 @@ export class ProductCategoriesController {
   }
 
   @Patch(':id')
+
+  @RequirePermission('productCategories', 'update')
   @ApiOperation({ summary: 'Update a product category' })
   update(@Param('id') id: string, @Body() dto: UpdateProductCategoryDto) {
     return this.service.update(id, dto);
   }
 
   @Delete(':id')
+
+  @RequirePermission('productCategories', 'delete')
   @ApiOperation({ summary: 'Soft-delete a product category' })
   async remove(@Param('id') id: string) {
     await this.service.softDelete(id);

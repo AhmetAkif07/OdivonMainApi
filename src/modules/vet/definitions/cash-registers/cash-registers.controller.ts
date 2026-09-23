@@ -3,7 +3,8 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { FirebaseAuthGuard } from '../../../../shared/auth/firebase-auth.guard';
 import { RequireModule } from '../../../../shared/authorization/module.decorator';
 import { ModuleGuard } from '../../../../shared/authorization/module.guard';
-import { RoleGuard } from '../../../../shared/authorization/role.guard';
+import { PermissionGuard } from '../../../../shared/authorization/permission.guard';
+import { RequirePermission } from '../../../../shared/authorization/require-permission.decorator';
 import { PagingQueryDto } from '../../../../shared/http/paging.dto';
 import { TenantGuard } from '../../../../shared/tenancy/tenant.guard';
 import { CreateCashRegisterDto, UpdateCashRegisterDto } from './cash-register.dto';
@@ -12,7 +13,7 @@ import { CashRegistersService } from './cash-registers.service';
 @ApiTags('vet-cash-registers')
 @ApiBearerAuth()
 @RequireModule('vet')
-@UseGuards(FirebaseAuthGuard, TenantGuard, ModuleGuard, RoleGuard)
+@UseGuards(FirebaseAuthGuard, TenantGuard, ModuleGuard, PermissionGuard)
 @Controller('vet/cash-registers')
 export class CashRegistersController {
   constructor(private readonly service: CashRegistersService) {}
@@ -24,6 +25,8 @@ export class CashRegistersController {
   }
 
   @Post()
+
+  @RequirePermission('cashRegisters', 'create')
   @ApiOperation({ summary: 'Create a cash register' })
   create(@Body() dto: CreateCashRegisterDto) {
     return this.service.create(dto);
@@ -36,12 +39,16 @@ export class CashRegistersController {
   }
 
   @Patch(':id')
+
+  @RequirePermission('cashRegisters', 'update')
   @ApiOperation({ summary: 'Update a cash register' })
   update(@Param('id') id: string, @Body() dto: UpdateCashRegisterDto) {
     return this.service.update(id, dto);
   }
 
   @Delete(':id')
+
+  @RequirePermission('cashRegisters', 'delete')
   @ApiOperation({ summary: 'Soft-delete a cash register' })
   async remove(@Param('id') id: string) {
     await this.service.softDelete(id);

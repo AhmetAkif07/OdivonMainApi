@@ -1,6 +1,7 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { CustomersModule } from '../customers/customers.module';
 import { PatientsModule } from '../patients/patients.module';
+import { StockModule } from '../stock/stock.module';
 import { AppointmentTypesController } from './appointment-types/appointment-types.controller';
 import { AppointmentTypesRepository } from './appointment-types/appointment-types.repository';
 import { AppointmentTypesService } from './appointment-types/appointment-types.service';
@@ -54,7 +55,7 @@ const repositories = [
 ];
 
 @Module({
-  imports: [CustomersModule, PatientsModule],
+  imports: [CustomersModule, PatientsModule, forwardRef(() => StockModule)],
   controllers: [
     ProductCategoriesController,
     UnitsController,

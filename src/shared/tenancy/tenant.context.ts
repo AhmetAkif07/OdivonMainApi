@@ -1,6 +1,7 @@
 import { AsyncLocalStorage } from 'async_hooks';
 import { ExecutionContext, Injectable } from '@nestjs/common';
 import { ProductModule, UserRole } from '../authorization/constants';
+import { PermissionMap } from '../authorization/permissions';
 import { AppException } from '../errors/app.exception';
 import { ErrorCode } from '../errors/error-codes';
 
@@ -10,6 +11,7 @@ export interface TenantStore {
   role: UserRole;
   modules: ProductModule[];
   email: string;
+  permissions?: PermissionMap;
 }
 
 export interface RequestWithTenant {

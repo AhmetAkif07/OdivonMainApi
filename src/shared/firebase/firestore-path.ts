@@ -20,6 +20,13 @@ export const TENANT_COLLECTION = {
   sales: 'sales',
   collections: 'collections',
   cashMovements: 'cashMovements',
+  stockMovements: 'stockMovements',
+  demands: 'demands',
+  roles: 'roles',
+  agenda: 'agenda',
+  labDocuments: 'labDocuments',
+  files: 'files',
+  clinicParameters: 'clinicParameters',
 } as const;
 
 export const ROOT_COLLECTION = {

@@ -10,6 +10,7 @@ import { PaymentMethodsRepository } from '../../definitions/payment-methods/paym
 import { ProductsRepository } from '../../definitions/products/products.repository';
 import { SuppliersRepository } from '../../definitions/suppliers/suppliers.repository';
 import { TaxesRepository } from '../../definitions/taxes/taxes.repository';
+import { StockLedgerService } from '../../stock/stock-ledger.service';
 import { CreateSaleDto, ListSalesQueryDto, SaleLineDto, UpdateSaleDto } from './sale.dto';
 import { Sale, SaleLine, SaleListItem } from './sale.entity';
 import { SalesRepository } from './sales.repository';
@@ -24,12 +25,15 @@ export class SalesService {
     private readonly taxes: TaxesRepository,
     private readonly paymentMethods: PaymentMethodsRepository,
     private readonly cashRegisters: CashRegistersRepository,
+    private readonly ledger: StockLedgerService,
   ) {}
 
   async create(dto: CreateSaleDto): Promise<Sale> {
     this.assertParty(dto.type, dto.customerId, dto.supplierId);
     const lines = await this.resolveLines(dto.lines);
-    return this.sales.create(dto, lines);
+    const sale = await this.sales.create(dto, lines);
+    await this.syncStock(sale);
+    return sale;
   }
 
   getById(id: string): Promise<Sale> {
@@ -50,11 +54,31 @@ export class SalesService {
     const supplierId = dto.supplierId === undefined ? current.supplierId : dto.supplierId;
     this.assertParty(type, customerId, supplierId);
     const lines = dto.lines ? await this.resolveLines(dto.lines) : undefined;
-    return this.sales.update(id, dto, lines);
+    const sale = await this.sales.update(id, dto, lines);
+    await this.syncStock(sale);
+    return sale;
   }
 
-  softDelete(id: string): Promise<void> {
-    return this.sales.softDelete(id);
+  async softDelete(id: string): Promise<void> {
+    const current = await this.sales.getByIdOrThrow(id);
+    await this.sales.softDelete(id);
+    await this.ledger.clear({ type: current.type === 'purchase' ? 'purchase' : 'sale', id });
+  }
+
+  private async syncStock(sale: Sale): Promise<void> {
+    const purchase = sale.type === 'purchase';
+    await this.ledger.apply(
+      { type: purchase ? 'purchase' : 'sale', id: sale.id },
+      purchase ? 'in' : 'out',
+      purchase ? 'purchase' : 'sale',
+      sale.lines.map((line) => ({
+        productId: line.productId,
+        quantity: line.quantity,
+        unitPrice: line.unitPrice,
+        date: sale.date,
+        remark: sale.invoiceNo,
+      })),
+    );
   }
 
   private assertParty(type: 'sale' | 'purchase', customerId?: string | null, supplierId?: string | null): void {

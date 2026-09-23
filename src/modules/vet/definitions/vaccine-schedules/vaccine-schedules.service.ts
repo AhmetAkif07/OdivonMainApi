@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable, forwardRef } from '@nestjs/common';
 import { AppException } from '../../../../shared/errors/app.exception';
 import { ErrorCode } from '../../../../shared/errors/error-codes';
 import { matchesColumnFilters } from '../../../../shared/http/column-filters';
@@ -6,6 +6,7 @@ import { paginateInMemory } from '../../../../shared/http/paginate-memory';
 import { PaginatedResult } from '../../../../shared/http/paginated.result';
 import { CustomersRepository } from '../../customers/customers.repository';
 import { PatientsRepository } from '../../patients/patients.repository';
+import { StockLedgerService } from '../../stock/stock-ledger.service';
 import { VaccinesRepository } from '../vaccines/vaccines.repository';
 import {
   CreateVaccineScheduleDto,
@@ -22,11 +23,14 @@ export class VaccineSchedulesService {
     private readonly vaccines: VaccinesRepository,
     private readonly patients: PatientsRepository,
     private readonly customers: CustomersRepository,
+    @Inject(forwardRef(() => StockLedgerService)) private readonly ledger: StockLedgerService,
   ) {}
 
   async create(dto: CreateVaccineScheduleDto) {
     const link = await this.resolveLink(dto.patientId, dto.vaccineId);
-    return this.schedules.create({ ...dto, ...link });
+    const item = await this.schedules.create({ ...dto, ...link });
+    await this.syncStock(item);
+    return item;
   }
 
   getById(id: string) {
@@ -43,11 +47,35 @@ export class VaccineSchedulesService {
   async update(id: string, dto: UpdateVaccineScheduleDto) {
     const current = await this.schedules.getByIdOrThrow(id);
     const link = await this.resolveLink(dto.patientId ?? current.patientId, dto.vaccineId ?? current.vaccineId);
-    return this.schedules.update(id, dto, link);
+    const item = await this.schedules.update(id, dto, link);
+    await this.syncStock(item);
+    return item;
   }
 
-  softDelete(id: string) {
-    return this.schedules.softDelete(id);
+  async softDelete(id: string) {
+    await this.schedules.softDelete(id);
+    await this.ledger.clear({ type: 'vaccine', id });
+  }
+
+  private async syncStock(item: VaccineSchedule): Promise<void> {
+    const source = { type: 'vaccine' as const, id: item.id };
+    if (!item.done) {
+      await this.ledger.clear(source);
+      return;
+    }
+    const vaccine = await this.vaccines.getByIdOrThrow(item.vaccineId);
+    await this.ledger.apply(
+      source,
+      'out',
+      'vaccine',
+      (vaccine.medicines ?? []).map((medicine) => ({
+        productId: medicine.productId,
+        quantity: medicine.quantity,
+        unitPrice: medicine.salesAmount,
+        date: item.doneAt ?? item.dueAt,
+        remark: vaccine.name,
+      })),
+    );
   }
 
   private async resolveLink(patientId: string, vaccineId: string) {

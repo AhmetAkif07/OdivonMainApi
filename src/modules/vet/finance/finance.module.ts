@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { CustomersModule } from '../customers/customers.module';
 import { DefinitionsModule } from '../definitions/definitions.module';
+import { StockModule } from '../stock/stock.module';
 import { CashMovementsController } from './cash-movements/cash-movements.controller';
 import { CashMovementsRepository } from './cash-movements/cash-movements.repository';
 import { CashMovementsService } from './cash-movements/cash-movements.service';
@@ -12,7 +13,7 @@ import { SalesRepository } from './sales/sales.repository';
 import { SalesService } from './sales/sales.service';
 
 @Module({
-  imports: [CustomersModule, DefinitionsModule],
+  imports: [CustomersModule, DefinitionsModule, StockModule],
   controllers: [SalesController, CollectionsController, CashMovementsController],
   providers: [
     SalesRepository,

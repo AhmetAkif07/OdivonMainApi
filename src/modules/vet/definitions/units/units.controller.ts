@@ -3,7 +3,8 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { FirebaseAuthGuard } from '../../../../shared/auth/firebase-auth.guard';
 import { RequireModule } from '../../../../shared/authorization/module.decorator';
 import { ModuleGuard } from '../../../../shared/authorization/module.guard';
-import { RoleGuard } from '../../../../shared/authorization/role.guard';
+import { PermissionGuard } from '../../../../shared/authorization/permission.guard';
+import { RequirePermission } from '../../../../shared/authorization/require-permission.decorator';
 import { PagingQueryDto } from '../../../../shared/http/paging.dto';
 import { TenantGuard } from '../../../../shared/tenancy/tenant.guard';
 import { CreateUnitDto, UpdateUnitDto } from './unit.dto';
@@ -12,7 +13,7 @@ import { UnitsService } from './units.service';
 @ApiTags('vet-units')
 @ApiBearerAuth()
 @RequireModule('vet')
-@UseGuards(FirebaseAuthGuard, TenantGuard, ModuleGuard, RoleGuard)
+@UseGuards(FirebaseAuthGuard, TenantGuard, ModuleGuard, PermissionGuard)
 @Controller('vet/units')
 export class UnitsController {
   constructor(private readonly service: UnitsService) {}
@@ -24,6 +25,8 @@ export class UnitsController {
   }
 
   @Post()
+
+  @RequirePermission('units', 'create')
   @ApiOperation({ summary: 'Create a unit' })
   create(@Body() dto: CreateUnitDto) {
     return this.service.create(dto);
@@ -36,12 +39,16 @@ export class UnitsController {
   }
 
   @Patch(':id')
+
+  @RequirePermission('units', 'update')
   @ApiOperation({ summary: 'Update a unit' })
   update(@Param('id') id: string, @Body() dto: UpdateUnitDto) {
     return this.service.update(id, dto);
   }
 
   @Delete(':id')
+
+  @RequirePermission('units', 'delete')
   @ApiOperation({ summary: 'Soft-delete a unit' })
   async remove(@Param('id') id: string) {
     await this.service.softDelete(id);

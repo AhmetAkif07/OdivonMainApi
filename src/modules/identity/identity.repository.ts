@@ -34,6 +34,10 @@ export class IdentityRepository {
     return snapshot.docs.map((doc) => doc.data() as UserProfile);
   }
 
+  async updateProfile(uid: string, patch: Partial<UserProfile>): Promise<void> {
+    await this.collection().doc(uid).update(patch);
+  }
+
   async hardDelete(uid: string): Promise<void> {
     await this.collection().doc(uid).delete();
   }

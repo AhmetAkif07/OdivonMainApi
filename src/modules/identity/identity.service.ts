@@ -5,8 +5,16 @@ import { FirebaseService } from '../../shared/firebase/firebase.service';
 import { TenantService } from '../tenant/tenant.service';
 import { IdentityRepository } from './identity.repository';
 import { RegisterDto } from './dto/register.dto';
+import { CreateUserDto, UpdateUserDto } from './dto/user.dto';
 import { UserProfile } from './entities/user-profile.entity';
 import { TenantContext } from '../../shared/tenancy/tenant.context';
+import {
+  fullPermissionMap,
+  PERMISSION_ACTIONS,
+  PERMISSION_GROUP_LABELS,
+  PERMISSION_RESOURCES,
+} from '../../shared/authorization/permissions';
+import { RolesService } from './roles/roles.service';
 
 @Injectable()
 export class IdentityService {
@@ -17,6 +25,7 @@ export class IdentityService {
     private readonly tenants: TenantService,
     private readonly users: IdentityRepository,
     private readonly tenantContext: TenantContext,
+    private readonly roles: RolesService,
   ) {}
 
   async register(dto: RegisterDto) {
@@ -70,27 +79,7 @@ export class IdentityService {
       if (error instanceof AppException) {
         throw error;
       }
-      const firebase = describeFirebaseError(error);
-      this.logger.error(`Register failed code=${firebase.code} message=${firebase.message}`);
-      if (firebase.code === 'auth/email-already-exists') {
-        throw new AppException(ErrorCode.VALIDATION_ERROR, 'Email is already registered');
-      }
-      if (firebase.code === 'auth/invalid-email') {
-        throw new AppException(ErrorCode.VALIDATION_ERROR, 'Email is invalid');
-      }
-      if (firebase.code === 'auth/invalid-password' || firebase.code === 'auth/weak-password') {
-        throw new AppException(ErrorCode.VALIDATION_ERROR, 'Password does not meet requirements');
-      }
-      if (isAuthConfigurationMissing(firebase)) {
-        throw new AppException(
-          ErrorCode.VALIDATION_ERROR,
-          'Firebase Authentication is not enabled. Open Authentication in the Firebase console, click Get started, then enable Email/Password.',
-        );
-      }
-      throw new AppException(
-        ErrorCode.VALIDATION_ERROR,
-        firebase.message ? `Registration failed: ${firebase.message}` : 'Registration failed',
-      );
+      throw mapFirebaseUserError(error, this.logger, 'Registration failed');
     }
   }
 
@@ -104,9 +93,12 @@ export class IdentityService {
     return {
       uid: profile.uid,
       email: profile.email,
+      displayName: profile.displayName ?? null,
       tenantId: profile.tenantId,
       role: profile.role,
       modules: profile.modules,
+      roleIds: profile.roleIds ?? [],
+      permissions: profile.role === 'owner' ? fullPermissionMap() : (store.permissions ?? {}),
       tenant: {
         id: tenant.id,
         name: tenant.name,
@@ -116,7 +108,137 @@ export class IdentityService {
   }
 
   async listUsers(): Promise<UserProfile[]> {
-    return this.users.listByCurrentTenant();
+    const users = await this.users.listByCurrentTenant();
+    return users
+      .map((user) => ({ ...user, displayName: user.displayName ?? null, roleIds: user.roleIds ?? [] }))
+      .sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+  }
+
+  async lookupUsers() {
+    const users = await this.users.listByCurrentTenant();
+    return users
+      .filter((user) => user.status === 'active')
+      .map((user) => ({ uid: user.uid, displayName: user.displayName || user.email, email: user.email }))
+      .sort((left, right) => left.displayName.localeCompare(right.displayName, 'tr'));
+  }
+
+  permissionCatalog() {
+    return {
+      actions: PERMISSION_ACTIONS,
+      groups: Object.entries(PERMISSION_GROUP_LABELS).map(([key, label]) => ({ key, label })),
+      resources: PERMISSION_RESOURCES,
+    };
+  }
+
+  async createUser(dto: CreateUserDto): Promise<UserProfile> {
+    const store = this.tenantContext.getStore();
+    const roleIds = await this.roles.assertRolesExist(dto.roleIds);
+    let uid: string | undefined;
+    let profileCreated = false;
+
+    try {
+      const userRecord = await this.firebase.auth.createUser({
+        email: dto.email,
+        password: dto.password,
+        displayName: dto.displayName,
+      });
+      uid = userRecord.uid;
+
+      const now = new Date().toISOString();
+      const profile: UserProfile = {
+        uid,
+        tenantId: store.tenantId,
+        role: 'user',
+        modules: store.modules,
+        email: dto.email,
+        displayName: dto.displayName.trim(),
+        roleIds,
+        status: 'active',
+        createdAt: now,
+        updatedAt: now,
+      };
+      await this.users.createProfile(profile);
+      profileCreated = true;
+
+      await this.firebase.auth.setCustomUserClaims(uid, {
+        tenantId: store.tenantId,
+        role: 'user',
+        modules: store.modules,
+      });
+      return profile;
+    } catch (error) {
+      await this.rollbackRegister({ uid, profileCreated });
+      if (error instanceof AppException) {
+        throw error;
+      }
+      throw mapFirebaseUserError(error, this.logger);
+    }
+  }
+
+  async updateUser(uid: string, dto: UpdateUserDto): Promise<UserProfile> {
+    const store = this.tenantContext.getStore();
+    const current = await this.getManageableUser(uid);
+    if (uid === store.userId && dto.status === 'inactive') {
+      throw new AppException(ErrorCode.VALIDATION_ERROR, 'You cannot deactivate your own account');
+    }
+
+    const roleIds = dto.roleIds !== undefined ? await this.roles.assertRolesExist(dto.roleIds) : undefined;
+    const patch: Partial<UserProfile> = {
+      ...(dto.displayName !== undefined ? { displayName: dto.displayName.trim() } : {}),
+      ...(roleIds !== undefined ? { roleIds } : {}),
+      ...(dto.status !== undefined ? { status: dto.status } : {}),
+      updatedAt: new Date().toISOString(),
+    };
+
+    try {
+      const authUpdate = {
+        ...(dto.displayName !== undefined ? { displayName: dto.displayName.trim() } : {}),
+        ...(dto.password ? { password: dto.password } : {}),
+        ...(dto.status !== undefined ? { disabled: dto.status === 'inactive' } : {}),
+      };
+      if (Object.keys(authUpdate).length > 0) {
+        await this.firebase.auth.updateUser(uid, authUpdate);
+      }
+      if (dto.status === 'inactive') {
+        await this.firebase.auth.revokeRefreshTokens(uid);
+      }
+    } catch (error) {
+      throw mapFirebaseUserError(error, this.logger);
+    }
+
+    await this.users.updateProfile(uid, patch);
+    return {
+      ...current,
+      ...patch,
+      displayName: patch.displayName ?? current.displayName ?? null,
+      roleIds: patch.roleIds ?? current.roleIds ?? [],
+    };
+  }
+
+  async deactivateUser(uid: string): Promise<void> {
+    const store = this.tenantContext.getStore();
+    if (uid === store.userId) {
+      throw new AppException(ErrorCode.VALIDATION_ERROR, 'You cannot delete your own account');
+    }
+    await this.getManageableUser(uid);
+    try {
+      await this.firebase.auth.updateUser(uid, { disabled: true });
+      await this.firebase.auth.revokeRefreshTokens(uid);
+    } catch (error) {
+      throw mapFirebaseUserError(error, this.logger);
+    }
+    await this.users.updateProfile(uid, { status: 'inactive', updatedAt: new Date().toISOString() });
+  }
+
+  private async getManageableUser(uid: string): Promise<UserProfile> {
+    const profile = await this.users.findByUid(uid);
+    if (!profile || profile.tenantId !== this.tenantContext.getTenantId()) {
+      throw new AppException(ErrorCode.USER_NOT_FOUND, 'User not found');
+    }
+    if (profile.role === 'owner') {
+      throw new AppException(ErrorCode.FORBIDDEN_ROLE, 'The owner account cannot be modified');
+    }
+    return profile;
   }
 
   private async rollbackRegister(state: {
@@ -146,6 +268,33 @@ export class IdentityService {
       }
     }
   }
+}
+
+function mapFirebaseUserError(error: unknown, logger: Logger, fallback = 'User operation failed'): AppException {
+  const firebase = describeFirebaseError(error);
+  logger.error(`${fallback} code=${firebase.code} message=${firebase.message}`);
+  if (firebase.code === 'auth/email-already-exists') {
+    return new AppException(ErrorCode.VALIDATION_ERROR, 'Email is already registered');
+  }
+  if (firebase.code === 'auth/invalid-email') {
+    return new AppException(ErrorCode.VALIDATION_ERROR, 'Email is invalid');
+  }
+  if (firebase.code === 'auth/invalid-password' || firebase.code === 'auth/weak-password') {
+    return new AppException(ErrorCode.VALIDATION_ERROR, 'Password does not meet requirements');
+  }
+  if (firebase.code === 'auth/user-not-found') {
+    return new AppException(ErrorCode.USER_NOT_FOUND, 'User not found');
+  }
+  if (isAuthConfigurationMissing(firebase)) {
+    return new AppException(
+      ErrorCode.VALIDATION_ERROR,
+      'Firebase Authentication is not enabled. Open Authentication in the Firebase console, click Get started, then enable Email/Password.',
+    );
+  }
+  return new AppException(
+    ErrorCode.VALIDATION_ERROR,
+    firebase.message ? `${fallback}: ${firebase.message}` : fallback,
+  );
 }
 
 function describeFirebaseError(error: unknown): { code: string; message: string } {

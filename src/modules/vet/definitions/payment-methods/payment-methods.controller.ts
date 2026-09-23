@@ -3,7 +3,8 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { FirebaseAuthGuard } from '../../../../shared/auth/firebase-auth.guard';
 import { RequireModule } from '../../../../shared/authorization/module.decorator';
 import { ModuleGuard } from '../../../../shared/authorization/module.guard';
-import { RoleGuard } from '../../../../shared/authorization/role.guard';
+import { PermissionGuard } from '../../../../shared/authorization/permission.guard';
+import { RequirePermission } from '../../../../shared/authorization/require-permission.decorator';
 import { PagingQueryDto } from '../../../../shared/http/paging.dto';
 import { TenantGuard } from '../../../../shared/tenancy/tenant.guard';
 import { CreatePaymentMethodDto, UpdatePaymentMethodDto } from './payment-method.dto';
@@ -12,7 +13,7 @@ import { PaymentMethodsService } from './payment-methods.service';
 @ApiTags('vet-payment-methods')
 @ApiBearerAuth()
 @RequireModule('vet')
-@UseGuards(FirebaseAuthGuard, TenantGuard, ModuleGuard, RoleGuard)
+@UseGuards(FirebaseAuthGuard, TenantGuard, ModuleGuard, PermissionGuard)
 @Controller('vet/payment-methods')
 export class PaymentMethodsController {
   constructor(private readonly service: PaymentMethodsService) {}
@@ -24,6 +25,8 @@ export class PaymentMethodsController {
   }
 
   @Post()
+
+  @RequirePermission('paymentMethods', 'create')
   @ApiOperation({ summary: 'Create a payment method' })
   create(@Body() dto: CreatePaymentMethodDto) {
     return this.service.create(dto);
@@ -36,12 +39,16 @@ export class PaymentMethodsController {
   }
 
   @Patch(':id')
+
+  @RequirePermission('paymentMethods', 'update')
   @ApiOperation({ summary: 'Update a payment method' })
   update(@Param('id') id: string, @Body() dto: UpdatePaymentMethodDto) {
     return this.service.update(id, dto);
   }
 
   @Delete(':id')
+
+  @RequirePermission('paymentMethods', 'delete')
   @ApiOperation({ summary: 'Soft-delete a payment method' })
   async remove(@Param('id') id: string) {
     await this.service.softDelete(id);
