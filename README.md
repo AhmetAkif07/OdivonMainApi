@@ -32,6 +32,35 @@ Copy `.env.example` to `.env`. Production requires `FIREBASE_PROJECT_ID`, `FIREB
 
 Do not commit secrets.
 
+## Cloudflare Workers
+
+Worker: `odivon-main-api`. Custom domain: `mainapi.odivon.com`.
+This deployment uses Workers and static assets, without Containers or paid bindings.
+
+```bash
+npm ci
+npm run test:worker
+npm run deploy:worker
+```
+
+Set `FIREBASE_CLIENT_EMAIL` and `FIREBASE_PRIVATE_KEY` with `npx wrangler secret put NAME`.
+Without both secrets the API returns HTTP 503. Never deploy emulator settings or test keys.
+For local development, put real credentials in the ignored `.dev.vars` file and run
+`npm run dev:worker` (port 8799). Optional `CORS_ORIGIN` can be set in Wrangler vars.
+
+Swagger UI is served as static assets at `/docs/`, with its schema at `/docs-json`.
+`/health` checks actual Firestore connectivity. Firestore uses REST on Workers;
+the protobuf schemas are prepared at isolate startup because Workers disallows
+dynamic code generation during requests. Nest also starts outside requests;
+Firestore initialization is deferred until the first database operation.
+
+`test:worker` runs the bundled API in the Workers runtime with mocked outbound
+Firestore responses, covering success/error decoding, authentication rejection,
+input validation and OpenAPI. It does not validate real Firebase credentials,
+authenticated CRUD, or production CPU usage. Test those after adding real secrets.
+The Free plan's CPU limit still applies; fitting the bundle size does not guarantee
+that every authenticated request will fit that limit. The throttle is per isolate.
+
 Active Firebase project: `odivon-main-api-a2095`. Firestore `(default)` is in **eur3** (Europe multi-region). Client SDK access is denied by `firestore.rules`; the API uses Admin SDK.
 
 ## Local Firebase emulators

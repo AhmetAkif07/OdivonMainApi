@@ -1,0 +1,29 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "odivon-main-api",
+  "main": "worker/index.mjs",
+  "account_id": "3c85686b125d141ad80870db15cabded",
+  "compatibility_date": "2026-09-21",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "minify": true,
+  "define": { "process.env.NODE_ENV": "\"production\"" },
+  "alias": {
+    "pino": "./node_modules/pino/pino.js",
+    "node-fetch": "./worker/node-fetch.mjs",
+    "@nestjs/websockets/socket-module": "./worker/unsupported.cjs",
+    "@nestjs/microservices/microservices-module": "./worker/unsupported.cjs",
+    "@nestjs/microservices": "./worker/unsupported.cjs",
+    "class-transformer/storage": "class-transformer/cjs/storage.js"
+  },
+  "build": { "command": "npm run build && node scripts/worker-assets.mjs", "watch_dir": ["src", "worker", "scripts"] },
+  "assets": { "directory": ".wrangler/assets" },
+  "routes": [{ "pattern": "mainapi.odivon.com", "custom_domain": true }],
+  "vars": {
+    "NODE_ENV": "production",
+    "PORT": "3000",
+    "FIRESTORE_PREFER_REST": "true",
+    "FIREBASE_PROJECT_ID": "odivon-main-api-a2095"
+  },
+  "observability": { "enabled": true }
+}
