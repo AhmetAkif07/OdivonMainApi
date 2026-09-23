@@ -1,4 +1,6 @@
 import { Module } from '@nestjs/common';
+import { CustomersModule } from '../customers/customers.module';
+import { PatientsModule } from '../patients/patients.module';
 import { AppointmentTypesController } from './appointment-types/appointment-types.controller';
 import { AppointmentTypesRepository } from './appointment-types/appointment-types.repository';
 import { AppointmentTypesService } from './appointment-types/appointment-types.service';
@@ -29,6 +31,12 @@ import { TaxesService } from './taxes/taxes.service';
 import { UnitsController } from './units/units.controller';
 import { UnitsRepository } from './units/units.repository';
 import { UnitsService } from './units/units.service';
+import { VaccineSchedulesController } from './vaccine-schedules/vaccine-schedules.controller';
+import { VaccineSchedulesRepository } from './vaccine-schedules/vaccine-schedules.repository';
+import { VaccineSchedulesService } from './vaccine-schedules/vaccine-schedules.service';
+import { VaccinesController } from './vaccines/vaccines.controller';
+import { VaccinesRepository } from './vaccines/vaccines.repository';
+import { VaccinesService } from './vaccines/vaccines.service';
 
 const repositories = [
   ProductCategoriesRepository,
@@ -41,9 +49,12 @@ const repositories = [
   CustomerGroupsRepository,
   CashRegistersRepository,
   ProductsRepository,
+  VaccinesRepository,
+  VaccineSchedulesRepository,
 ];
 
 @Module({
+  imports: [CustomersModule, PatientsModule],
   controllers: [
     ProductCategoriesController,
     UnitsController,
@@ -55,6 +66,8 @@ const repositories = [
     CustomerGroupsController,
     CashRegistersController,
     ProductsController,
+    VaccinesController,
+    VaccineSchedulesController,
   ],
   providers: [
     ...repositories,
@@ -68,6 +81,8 @@ const repositories = [
     CustomerGroupsService,
     CashRegistersService,
     ProductsService,
+    VaccinesService,
+    VaccineSchedulesService,
   ],
   exports: repositories,
 })

@@ -15,6 +15,11 @@ export const TENANT_COLLECTION = {
   customerGroups: 'customerGroups',
   cashRegisters: 'cashRegisters',
   products: 'products',
+  vaccines: 'vaccines',
+  vaccineSchedules: 'vaccineSchedules',
+  sales: 'sales',
+  collections: 'collections',
+  cashMovements: 'cashMovements',
 } as const;
 
 export const ROOT_COLLECTION = {

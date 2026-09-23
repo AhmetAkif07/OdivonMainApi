@@ -183,6 +183,39 @@ const PRODUCTS = [
   service({ id: 'seed-srv-rontgen', name: 'Röntgen (tek poz)', code: 'HZM-007', sellingPrice: 600 }),
 ];
 
+const VACCINES = [
+  {
+    id: 'seed-vac-karma',
+    name: 'Köpek karma aşı',
+    animalType: 'Köpek',
+    timeDone: 56,
+    renewal: 'yearly',
+    required: true,
+    totalSaleAmount: 450,
+    medicines: [{ productId: 'seed-prd-karma', quantity: 1, salesAmount: 450, taxId: 'seed-tax-10', remark: null }],
+  },
+  {
+    id: 'seed-vac-kuduz',
+    name: 'Kuduz',
+    animalType: null,
+    timeDone: 90,
+    renewal: 'yearly',
+    required: true,
+    totalSaleAmount: 350,
+    medicines: [{ productId: 'seed-prd-kuduz', quantity: 1, salesAmount: 350, taxId: 'seed-tax-10', remark: null }],
+  },
+  {
+    id: 'seed-vac-kedi',
+    name: 'Kedi karma aşı',
+    animalType: 'Kedi',
+    timeDone: 63,
+    renewal: 'yearly',
+    required: true,
+    totalSaleAmount: 420,
+    medicines: [{ productId: 'seed-prd-kedi-karma', quantity: 1, salesAmount: 420, taxId: 'seed-tax-10', remark: null }],
+  },
+];
+
 const COLLECTIONS = [
   ['taxes', TAXES],
   ['units', UNITS],
@@ -194,6 +227,7 @@ const COLLECTIONS = [
   ['customerGroups', CUSTOMER_GROUPS],
   ['appointmentTypes', APPOINTMENT_TYPES],
   ['products', PRODUCTS],
+  ['vaccines', VACCINES],
 ];
 
 function loadEnv(filePath) {
@@ -273,5 +307,44 @@ for (const [collection, items] of COLLECTIONS) {
 }
 
 await batch.commit();
+
+const patientsSnap = await db.collection(`tenants/${tenantId}/patients`).limit(6).get();
+const patients = patientsSnap.docs.map((doc) => doc.data()).filter((patient) => !patient.deletedAt && patient.id);
+const scheduleBatch = db.batch();
+const scheduleCol = db.collection(`tenants/${tenantId}/vaccineSchedules`);
+const protocols = [
+  ['seed-vac-karma', 'Köpek karma aşı', 'Köpek'],
+  ['seed-vac-kuduz', 'Kuduz', null],
+  ['seed-vac-kedi', 'Kedi karma aşı', 'Kedi'],
+];
+let schedules = 0;
+patients.slice(0, 4).forEach((patient, index) => {
+  const [vaccineId, vaccineName, animalType] = protocols[index % protocols.length];
+  const id = `seed-vsch-${patient.id}-${vaccineId}`;
+  const due = new Date(Date.now() + (index - 1) * 14 * 24 * 60 * 60 * 1000).toISOString();
+  const timestamp = new Date(baseTime - (offset + index) * 1000).toISOString();
+  scheduleBatch.set(scheduleCol.doc(id), {
+    id,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+    createdBy: userId,
+    updatedBy: userId,
+    deletedAt: null,
+    patientId: patient.id,
+    customerId: patient.customerId,
+    vaccineId,
+    vaccineName,
+    animalType,
+    dueAt: due,
+    doneAt: index === 0 ? timestamp : null,
+    done: index === 0,
+    note: null,
+  });
+  schedules += 1;
+});
+if (schedules > 0) {
+  await scheduleBatch.commit();
+}
+counts.vaccineSchedules = schedules;
 
 console.log(JSON.stringify({ tenantId, ownerEmail: owner.email ?? null, ...counts }, null, 2));
