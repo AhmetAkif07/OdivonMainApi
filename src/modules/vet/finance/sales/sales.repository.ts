@@ -37,6 +37,7 @@ export class SalesRepository {
       cashRegisterId: dto.cashRegisterId || null,
       discount: dto.discount ?? 0,
       remark: dto.remark || null,
+      appointmentId: dto.appointmentId || null,
       lines,
       ...priced,
     };
@@ -60,6 +61,26 @@ export class SalesRepository {
       throw new AppException(ErrorCode.SALE_NOT_FOUND, 'Satış kaydı bulunamadı');
     }
     return sale;
+  }
+
+  async findByIds(ids: Array<string | null | undefined>): Promise<Map<string, Sale>> {
+    const unique = [...new Set(ids.filter((id): id is string => Boolean(id)))];
+    const found = new Map<string, Sale>();
+    if (unique.length === 0) {
+      return found;
+    }
+    const snapshots = await this.firebase.db.getAll(...unique.map((id) => this.collection().doc(id)));
+    for (const snapshot of snapshots) {
+      if (!snapshot.exists) {
+        continue;
+      }
+      const sale = snapshot.data() as Sale;
+      if (isDeleted(sale)) {
+        continue;
+      }
+      found.set(sale.id, sale);
+    }
+    return found;
   }
 
   async collect(): Promise<Sale[]> {
@@ -86,6 +107,7 @@ export class SalesRepository {
         cashRegisterId: dto.cashRegisterId,
         discount: dto.discount,
         remark: dto.remark,
+        appointmentId: dto.appointmentId,
       }),
       lines: nextLines,
       ...priceDocument(nextLines, discount),

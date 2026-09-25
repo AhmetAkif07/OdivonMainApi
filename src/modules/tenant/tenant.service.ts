@@ -7,8 +7,19 @@ import { TenantDocument } from './entities/tenant.entity';
 export class TenantService {
   constructor(private readonly tenants: TenantRepository) {}
 
-  create(input: { name: string; ownerUid: string; modules: ProductModule[] }): Promise<TenantDocument> {
+  create(input: {
+    name: string;
+    ownerUid: string;
+    modules: ProductModule[];
+    onboardingCompleted?: boolean;
+    membershipStatus?: TenantDocument['membershipStatus'];
+    trialEndsAt?: string | null;
+  }): Promise<TenantDocument> {
     return this.tenants.create(input);
+  }
+
+  update(id: string, patch: Partial<TenantDocument>): Promise<void> {
+    return this.tenants.update(id, patch);
   }
 
   getById(id: string): Promise<TenantDocument> {

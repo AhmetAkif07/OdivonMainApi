@@ -1,5 +1,4 @@
 import { Injectable } from '@nestjs/common';
-import { Query } from 'firebase-admin/firestore';
 import { AuditService } from '../../../shared/audit/audit.service';
 import { AuditAction } from '../../../shared/audit/audit.types';
 import { AppException } from '../../../shared/errors/app.exception';
@@ -11,8 +10,7 @@ import {
   isDeleted,
   touchBaseFields,
 } from '../../../shared/firestore/base-document';
-import { PaginatedResult } from '../../../shared/http/paginated.result';
-import { paginateQuery } from '../../../shared/firestore/paginate';
+import { paginateInMemory } from '../../../shared/http/paginate-memory';
 import { TenantContext } from '../../../shared/tenancy/tenant.context';
 import { CreateExaminationDto } from './dto/create-examination.dto';
 import { ListExaminationsQueryDto } from './dto/list-examinations.query.dto';
@@ -81,21 +79,7 @@ export class ExaminationsRepository {
   }
 
   async list(query: ListExaminationsQueryDto) {
-    let firestoreQuery: Query = this.collection().where('deletedAt', '==', null);
-    if (query.patientId) {
-      firestoreQuery = firestoreQuery.where('patientId', '==', query.patientId);
-    }
-    if (query.customerId) {
-      firestoreQuery = firestoreQuery.where('customerId', '==', query.customerId);
-    }
-    const page = await paginateQuery<Examination>(firestoreQuery, query.limit, query.cursor);
-    const from = query.from ? new Date(query.from) : undefined;
-    const to = query.to ? new Date(query.to) : undefined;
-    if (!from && !to) {
-      return page;
-    }
-    const items = page.items.filter((item) => inDateWindow(item.date, from, to));
-    return new PaginatedResult(items, page.limit, page.nextCursor);
+    return paginateInMemory(await this.collect(query), query.limit, query.cursor);
   }
 
   async collect(query: ListExaminationsQueryDto): Promise<Examination[]> {
@@ -108,7 +92,7 @@ export class ExaminationsRepository {
       .filter((item) => (query.patientId ? item.patientId === query.patientId : true))
       .filter((item) => (query.customerId ? item.customerId === query.customerId : true))
       .filter((item) => inDateWindow(item.date, from, to))
-      .sort((left, right) => right.createdAt.localeCompare(left.createdAt) || right.id.localeCompare(left.id));
+      .sort(compareExaminationsByDateDesc);
   }
 
   async update(id: string, dto: UpdateExaminationDto): Promise<Examination> {
@@ -153,6 +137,10 @@ export class ExaminationsRepository {
       entityId: id,
     });
   }
+}
+
+export function compareExaminationsByDateDesc(left: Examination, right: Examination): number {
+  return right.date.localeCompare(left.date) || right.id.localeCompare(left.id);
 }
 
 function inDateWindow(value: string, from?: Date, to?: Date): boolean {

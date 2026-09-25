@@ -34,6 +34,21 @@ export class CreateUserDto {
   roleIds!: string[];
 }
 
+export class UpdateMeDto {
+  @ApiPropertyOptional({ example: 'Ayşe Yılmaz' })
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(120)
+  displayName?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  phone?: string;
+}
+
 export class UpdateUserDto {
   @ApiPropertyOptional({ example: 'Ayşe Yılmaz' })
   @IsOptional()

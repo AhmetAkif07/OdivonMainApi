@@ -12,9 +12,12 @@ import {
   fullPermissionMap,
   PERMISSION_ACTIONS,
   PERMISSION_GROUP_LABELS,
-  PERMISSION_RESOURCES,
+  resourcesForModules,
 } from '../../shared/authorization/permissions';
+import { ProductModule } from '../../shared/authorization/constants';
 import { RolesService } from './roles/roles.service';
+
+const GYM_TRIAL_DAYS = 14;
 
 @Injectable()
 export class IdentityService {
@@ -40,31 +43,51 @@ export class IdentityService {
       });
       uid = userRecord.uid;
 
+      const productModule: ProductModule = dto.module ?? 'vet';
+      const modules: ProductModule[] = [productModule];
+      const now = new Date();
+      const nowIso = now.toISOString();
+      const isGym = productModule === 'gym';
+      const trialEndsAt = isGym
+        ? new Date(now.getTime() + GYM_TRIAL_DAYS * 24 * 60 * 60 * 1000).toISOString()
+        : null;
+
       const createdTenant = await this.tenants.create({
         name: dto.tenantName,
         ownerUid: uid,
-        modules: ['vet'],
+        modules,
+        onboardingCompleted: !isGym,
+        membershipStatus: isGym ? 'trial' : 'active',
+        trialEndsAt,
       });
       tenantId = createdTenant.id;
 
-      const now = new Date().toISOString();
       const profile: UserProfile = {
         uid,
         tenantId: createdTenant.id,
         role: 'owner',
-        modules: ['vet'],
+        modules,
         email: dto.email,
+        displayName: dto.displayName?.trim() || null,
+        phone: dto.phone?.trim() || null,
         status: 'active',
-        createdAt: now,
-        updatedAt: now,
+        membershipStatus: isGym ? 'trial' : 'active',
+        trialStartedAt: isGym ? nowIso : null,
+        trialEndsAt,
+        createdAt: nowIso,
+        updatedAt: nowIso,
       };
       await this.users.createProfile(profile);
       profileCreated = true;
 
+      if (dto.displayName?.trim()) {
+        await this.firebase.auth.updateUser(uid, { displayName: dto.displayName.trim() });
+      }
+
       await this.firebase.auth.setCustomUserClaims(uid, {
         tenantId: createdTenant.id,
         role: 'owner',
-        modules: ['vet'],
+        modules,
       });
 
       return {
@@ -72,7 +95,7 @@ export class IdentityService {
         email: dto.email,
         tenantId: createdTenant.id,
         role: 'owner' as const,
-        modules: ['vet'] as const,
+        modules,
       };
     } catch (error) {
       await this.rollbackRegister({ uid, tenantId, profileCreated });
@@ -94,17 +117,42 @@ export class IdentityService {
       uid: profile.uid,
       email: profile.email,
       displayName: profile.displayName ?? null,
+      phone: profile.phone ?? null,
       tenantId: profile.tenantId,
       role: profile.role,
       modules: profile.modules,
       roleIds: profile.roleIds ?? [],
-      permissions: profile.role === 'owner' ? fullPermissionMap() : (store.permissions ?? {}),
+      membershipStatus: tenant.membershipStatus ?? profile.membershipStatus ?? 'active',
+      trialEndsAt: tenant.trialEndsAt ?? profile.trialEndsAt ?? null,
+      onboardingCompleted: tenant.onboardingCompleted ?? true,
+      permissions: profile.role === 'owner' ? fullPermissionMap(profile.modules ?? []) : (store.permissions ?? {}),
       tenant: {
         id: tenant.id,
         name: tenant.name,
         status: tenant.status,
+        onboardingCompleted: tenant.onboardingCompleted ?? true,
+        membershipStatus: tenant.membershipStatus ?? 'active',
+        trialEndsAt: tenant.trialEndsAt ?? null,
       },
     };
+  }
+
+  async updateMe(dto: { displayName?: string; phone?: string }): Promise<UserProfile> {
+    const store = this.tenantContext.getStore();
+    const current = await this.users.findByUid(store.userId);
+    if (!current) {
+      throw new AppException(ErrorCode.USER_NOT_FOUND, 'User profile was not found');
+    }
+    const patch: Partial<UserProfile> = {
+      ...(dto.displayName !== undefined ? { displayName: dto.displayName.trim() } : {}),
+      ...(dto.phone !== undefined ? { phone: dto.phone.trim() } : {}),
+      updatedAt: new Date().toISOString(),
+    };
+    if (dto.displayName !== undefined) {
+      await this.firebase.auth.updateUser(store.userId, { displayName: dto.displayName.trim() });
+    }
+    await this.users.updateProfile(store.userId, patch);
+    return { ...current, ...patch };
   }
 
   async listUsers(): Promise<UserProfile[]> {
@@ -123,10 +171,15 @@ export class IdentityService {
   }
 
   permissionCatalog() {
+    const modules = this.tenantContext.getStore().modules ?? [];
+    const resources = resourcesForModules(modules);
+    const groupKeys = new Set(resources.map((resource) => resource.group));
     return {
       actions: PERMISSION_ACTIONS,
-      groups: Object.entries(PERMISSION_GROUP_LABELS).map(([key, label]) => ({ key, label })),
-      resources: PERMISSION_RESOURCES,
+      groups: Object.entries(PERMISSION_GROUP_LABELS)
+        .filter(([key]) => groupKeys.has(key as keyof typeof PERMISSION_GROUP_LABELS))
+        .map(([key, label]) => ({ key, label })),
+      resources,
     };
   }
 

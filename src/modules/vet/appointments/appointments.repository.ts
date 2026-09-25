@@ -1,5 +1,4 @@
 import { Injectable } from '@nestjs/common';
-import { Query } from 'firebase-admin/firestore';
 import { AuditService } from '../../../shared/audit/audit.service';
 import { AuditAction } from '../../../shared/audit/audit.types';
 import { AppException } from '../../../shared/errors/app.exception';
@@ -12,12 +11,11 @@ import {
   touchBaseFields,
 } from '../../../shared/firestore/base-document';
 import { paginateInMemory } from '../../../shared/http/paginate-memory';
-import { paginateQuery } from '../../../shared/firestore/paginate';
 import { TenantContext } from '../../../shared/tenancy/tenant.context';
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
 import { ListAppointmentsQueryDto } from './dto/list-appointments.query.dto';
 import { UpdateAppointmentDto } from './dto/update-appointment.dto';
-import { Appointment, AppointmentStatus } from './entities/appointment.entity';
+import { Appointment, AppointmentLine, AppointmentStatus } from './entities/appointment.entity';
 import { isAlreadyExistsError, reservationSlotIds } from './reservation-slots';
 
 @Injectable()
@@ -59,6 +57,8 @@ export class AppointmentsRepository {
       note: dto.note ?? null,
       status: 'scheduled',
       reservationSlotIds: slotIds,
+      plannedLines: (dto.plannedLines ?? []) as AppointmentLine[],
+      saleId: null,
     };
 
     try {
@@ -99,7 +99,7 @@ export class AppointmentsRepository {
     if (isDeleted(appointment)) {
       return null;
     }
-    return appointment;
+    return normalizeAppointment(appointment);
   }
 
   async getByIdOrThrow(id: string): Promise<Appointment> {
@@ -111,23 +111,7 @@ export class AppointmentsRepository {
   }
 
   async list(query: ListAppointmentsQueryDto) {
-    if (query.from || query.to) {
-      return paginateInMemory(await this.collect(query), query.limit, query.cursor);
-    }
-    let firestoreQuery: Query = this.appointments().where('deletedAt', '==', null);
-    if (query.status) {
-      firestoreQuery = firestoreQuery.where('status', '==', query.status);
-    }
-    if (query.doctorId) {
-      firestoreQuery = firestoreQuery.where('doctorId', '==', query.doctorId);
-    }
-    if (query.patientId) {
-      firestoreQuery = firestoreQuery.where('patientId', '==', query.patientId);
-    }
-    if (query.customerId) {
-      firestoreQuery = firestoreQuery.where('customerId', '==', query.customerId);
-    }
-    return paginateQuery<Appointment>(firestoreQuery, query.limit, query.cursor);
+    return paginateInMemory(await this.collect(query), query.limit, query.cursor);
   }
 
   async collect(query: ListAppointmentsQueryDto): Promise<Appointment[]> {
@@ -135,14 +119,14 @@ export class AppointmentsRepository {
     const from = query.from ? new Date(query.from) : undefined;
     const to = query.to ? new Date(query.to) : undefined;
     return snapshot.docs
-      .map((doc) => doc.data() as Appointment)
+      .map((doc) => normalizeAppointment(doc.data() as Appointment))
       .filter((item) => !isDeleted(item))
       .filter((item) => (query.status ? item.status === query.status : true))
       .filter((item) => (query.doctorId ? item.doctorId === query.doctorId : true))
       .filter((item) => (query.patientId ? item.patientId === query.patientId : true))
       .filter((item) => (query.customerId ? item.customerId === query.customerId : true))
       .filter((item) => inBeginRange(item.beginAt, from, to))
-      .sort((left, right) => right.createdAt.localeCompare(left.createdAt) || right.id.localeCompare(left.id));
+      .sort(compareAppointmentsByBeginDesc);
   }
 
   async update(id: string, dto: UpdateAppointmentDto): Promise<Appointment> {
@@ -164,6 +148,7 @@ export class AppointmentsRepository {
       doctorId: nextDoctorId,
       type: dto.type ?? current.type,
       note: dto.note ?? current.note,
+      plannedLines: (dto.plannedLines ?? current.plannedLines) as AppointmentLine[],
       reservationSlotIds: nextSlots,
       ...touchBaseFields(this.tenantContext.getUserId()),
     };
@@ -192,6 +177,23 @@ export class AppointmentsRepository {
       throw error;
     }
 
+    await this.audit.record({
+      action: AuditAction.APPOINTMENT_UPDATED,
+      entity: 'appointment',
+      entityId: id,
+    });
+    return updated;
+  }
+
+  async complete(id: string, saleId: string | null): Promise<Appointment> {
+    const current = await this.getByIdOrThrow(id);
+    const updated: Appointment = {
+      ...current,
+      status: 'completed',
+      saleId,
+      ...touchBaseFields(this.tenantContext.getUserId()),
+    };
+    await this.appointments().doc(id).set(updated);
     await this.audit.record({
       action: AuditAction.APPOINTMENT_UPDATED,
       entity: 'appointment',
@@ -252,6 +254,18 @@ export class AppointmentsRepository {
       entityId: id,
     });
   }
+}
+
+export function compareAppointmentsByBeginDesc(left: Appointment, right: Appointment): number {
+  return right.beginAt.localeCompare(left.beginAt) || right.id.localeCompare(left.id);
+}
+
+export function normalizeAppointment(item: Appointment): Appointment {
+  return {
+    ...item,
+    plannedLines: item.plannedLines ?? [],
+    saleId: item.saleId ?? null,
+  };
 }
 
 function inBeginRange(value: string, from?: Date, to?: Date): boolean {

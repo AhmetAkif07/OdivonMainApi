@@ -8,6 +8,7 @@ import { RequirePermission } from '../../../shared/authorization/require-permiss
 import { TenantGuard } from '../../../shared/tenancy/tenant.guard';
 import { AppointmentsService } from './appointments.service';
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
+import { CompleteAppointmentDto } from './dto/complete-appointment.dto';
 import { ListAppointmentsQueryDto } from './dto/list-appointments.query.dto';
 import { UpdateAppointmentDto } from './dto/update-appointment.dto';
 import { UpdateAppointmentStatusDto } from './dto/update-appointment-status.dto';
@@ -50,6 +51,14 @@ export class AppointmentsController {
   @ApiOperation({ summary: 'Update appointment status' })
   updateStatus(@Param('id') id: string, @Body() dto: UpdateAppointmentStatusDto) {
     return this.appointments.updateStatus(id, dto.status);
+  }
+
+  @Post(':id/complete')
+
+  @RequirePermission('appointments', 'update')
+  @ApiOperation({ summary: 'Complete an appointment and optionally create a sale' })
+  complete(@Param('id') id: string, @Body() dto: CompleteAppointmentDto) {
+    return this.appointments.complete(id, dto);
   }
 
   @Patch(':id')

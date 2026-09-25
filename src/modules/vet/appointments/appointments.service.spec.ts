@@ -102,16 +102,25 @@ describe('AppointmentsService relationship validation', () => {
     getByIdOrThrow: jest.fn(),
     update: jest.fn(),
     updateStatus: jest.fn(),
+    complete: jest.fn(),
     softDelete: jest.fn(),
     list: jest.fn(),
   };
   const customers = { findById: jest.fn() };
   const patients = { findById: jest.fn() };
+  const products = { findById: jest.fn() };
+  const sales = { create: jest.fn(), findByIds: jest.fn() };
   let service: AppointmentsService;
 
   beforeEach(() => {
     jest.resetAllMocks();
-    service = new AppointmentsService(appointments as never, customers as never, patients as never);
+    service = new AppointmentsService(
+      appointments as never,
+      customers as never,
+      patients as never,
+      products as never,
+      sales as never,
+    );
   });
 
   it('creates when customer and patient match in the current tenant', async () => {
@@ -149,6 +158,72 @@ describe('AppointmentsService relationship validation', () => {
     appointments.updateStatus.mockResolvedValue({ id: 'a1', status: 'completed' });
     await expect(service.updateStatus('a1', 'completed')).resolves.toMatchObject({
       status: 'completed',
+    });
+  });
+
+  it('completes without a sale when there are no lines', async () => {
+    appointments.getByIdOrThrow.mockResolvedValue({
+      id: 'a1',
+      status: 'scheduled',
+      saleId: null,
+      customerId: 'c1',
+      note: null,
+    });
+    appointments.complete.mockResolvedValue({ id: 'a1', status: 'completed', saleId: null });
+    await expect(service.complete('a1', {})).resolves.toMatchObject({ status: 'completed', saleId: null });
+    expect(sales.create).not.toHaveBeenCalled();
+    expect(appointments.complete).toHaveBeenCalledWith('a1', null);
+  });
+
+  it('creates a sale with product prices when completing with lines', async () => {
+    appointments.getByIdOrThrow.mockResolvedValue({
+      id: 'a1',
+      status: 'scheduled',
+      saleId: null,
+      customerId: 'c1',
+      note: 'kontrol',
+    });
+    products.findById.mockResolvedValue({
+      id: 'p1',
+      sellingPrice: 150,
+      taxId: 't1',
+      vatIncluded: true,
+    });
+    sales.create.mockResolvedValue({ id: 's1' });
+    appointments.complete.mockResolvedValue({ id: 'a1', status: 'completed', saleId: 's1' });
+    await expect(
+      service.complete('a1', { lines: [{ productId: 'p1', quantity: 2 }] }),
+    ).resolves.toMatchObject({ saleId: 's1' });
+    expect(sales.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'sale',
+        customerId: 'c1',
+        appointmentId: 'a1',
+        lines: [
+          expect.objectContaining({
+            productId: 'p1',
+            quantity: 2,
+            unitPrice: 150,
+            taxId: 't1',
+            vatIncluded: true,
+          }),
+        ],
+      }),
+    );
+    expect(appointments.complete).toHaveBeenCalledWith('a1', 's1');
+  });
+
+  it('rejects completing an appointment that is not scheduled', async () => {
+    appointments.getByIdOrThrow.mockResolvedValue({ id: 'a1', status: 'completed', saleId: null });
+    await expect(service.complete('a1', { lines: [] })).rejects.toMatchObject({
+      code: ErrorCode.INVALID_STATUS,
+    });
+  });
+
+  it('rejects a second complete when a sale already exists', async () => {
+    appointments.getByIdOrThrow.mockResolvedValue({ id: 'a1', status: 'scheduled', saleId: 's1' });
+    await expect(service.complete('a1', { lines: [] })).rejects.toMatchObject({
+      code: ErrorCode.INVALID_STATUS,
     });
   });
 });

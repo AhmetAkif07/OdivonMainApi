@@ -83,7 +83,8 @@ export class VaccineSchedulesRepository {
       .filter((item) => (query.patientId ? item.patientId === query.patientId : true))
       .filter((item) => (query.vaccineId ? item.vaccineId === query.vaccineId : true))
       .filter((item) => (query.done === undefined ? true : item.done === query.done))
-      .sort((left, right) => left.dueAt.localeCompare(right.dueAt) || left.id.localeCompare(right.id));
+      .filter((item) => inDueRange(item.dueAt, query.from, query.to))
+      .sort((left, right) => compareVaccineSchedulesForList(left, right));
   }
 
   async update(id: string, dto: UpdateVaccineScheduleDto, names?: Partial<VaccineScheduleWrite>): Promise<VaccineSchedule> {
@@ -118,4 +119,40 @@ export class VaccineSchedulesRepository {
       entityId: id,
     });
   }
+}
+
+const CLINIC_TIME_ZONE = 'Europe/Istanbul';
+
+export function clinicDateKey(value: string | Date, timeZone = CLINIC_TIME_ZONE): string {
+  return new Date(value).toLocaleDateString('en-CA', { timeZone });
+}
+
+function inDueRange(value: string, from?: string, to?: string): boolean {
+  if (!from && !to) {
+    return true;
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return false;
+  }
+  if (from && date < new Date(from)) {
+    return false;
+  }
+  if (to && date > new Date(to)) {
+    return false;
+  }
+  return true;
+}
+
+export function compareVaccineSchedulesForList(
+  left: VaccineSchedule,
+  right: VaccineSchedule,
+  todayKey = clinicDateKey(new Date()),
+): number {
+  const leftToday = clinicDateKey(left.dueAt) === todayKey ? 0 : 1;
+  const rightToday = clinicDateKey(right.dueAt) === todayKey ? 0 : 1;
+  if (leftToday !== rightToday) {
+    return leftToday - rightToday;
+  }
+  return right.dueAt.localeCompare(left.dueAt) || right.id.localeCompare(left.id);
 }

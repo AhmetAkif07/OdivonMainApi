@@ -1,5 +1,6 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsEmail, IsString, MinLength } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsEmail, IsIn, IsOptional, IsString, MinLength } from 'class-validator';
+import { PRODUCT_MODULES, ProductModule } from '../../../shared/authorization/constants';
 
 export class RegisterDto {
   @ApiProperty({ example: 'clinic@example.com' })
@@ -15,4 +16,19 @@ export class RegisterDto {
   @IsString()
   @MinLength(2)
   tenantName!: string;
+
+  @ApiPropertyOptional({ enum: PRODUCT_MODULES, default: 'vet' })
+  @IsOptional()
+  @IsIn(PRODUCT_MODULES)
+  module?: ProductModule;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  displayName?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  phone?: string;
 }

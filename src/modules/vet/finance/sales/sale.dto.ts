@@ -98,6 +98,11 @@ export class CreateSaleDto {
   @IsString()
   remark?: string | null;
 
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  appointmentId?: string | null;
+
   @ApiProperty({ type: [SaleLineDto] })
   @IsArray()
   @ArrayMinSize(1)

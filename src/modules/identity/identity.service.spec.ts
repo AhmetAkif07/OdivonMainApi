@@ -8,6 +8,7 @@ describe('IdentityService.register', () => {
       createUser: jest.fn(),
       setCustomUserClaims: jest.fn(),
       deleteUser: jest.fn(),
+      updateUser: jest.fn(),
     },
   };
   const tenants = {
@@ -64,6 +65,36 @@ describe('IdentityService.register', () => {
       tenantId: 'tenant-1',
       role: 'owner',
       modules: ['vet'],
+    });
+  });
+
+  it('registers a gym tenant with trial membership', async () => {
+    firebase.auth.createUser.mockResolvedValue({ uid: 'uid-2' });
+    tenants.create.mockResolvedValue({ id: 'tenant-2' });
+    users.createProfile.mockResolvedValue({});
+    firebase.auth.setCustomUserClaims.mockResolvedValue(undefined);
+    firebase.auth.updateUser.mockResolvedValue({});
+
+    const result = await service.register({
+      email: 'gym@example.com',
+      password: 'password1',
+      tenantName: 'Gym',
+      module: 'gym',
+      displayName: 'Owner',
+    });
+
+    expect(result.modules).toEqual(['gym']);
+    expect(tenants.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        modules: ['gym'],
+        onboardingCompleted: false,
+        membershipStatus: 'trial',
+      }),
+    );
+    expect(firebase.auth.setCustomUserClaims).toHaveBeenCalledWith('uid-2', {
+      tenantId: 'tenant-2',
+      role: 'owner',
+      modules: ['gym'],
     });
   });
 
@@ -141,6 +172,40 @@ describe('IdentityService.me', () => {
     });
     const result = await service.me();
     expect(result.permissions.customers).toEqual(['view', 'create', 'update', 'delete']);
+    expect(result.permissions.members).toBeUndefined();
+  });
+
+  it('filters gym permissions for gym tenants', async () => {
+    const service = new IdentityService(
+      { auth: {} } as never,
+      {
+        getById: jest.fn().mockResolvedValue({
+          id: 'g1',
+          name: 'Gym',
+          status: 'active',
+          membershipStatus: 'trial',
+          trialEndsAt: '2026-10-01T00:00:00.000Z',
+          onboardingCompleted: false,
+        }),
+      } as never,
+      {
+        findByUid: jest.fn().mockResolvedValue({
+          uid: 'u3',
+          email: 'g@b.com',
+          tenantId: 'g1',
+          role: 'owner',
+          modules: ['gym'],
+        }),
+      } as never,
+      { getStore: jest.fn().mockReturnValue({ userId: 'u3', tenantId: 'g1' }) } as never,
+      {} as never,
+    );
+
+    const result = await service.me();
+    expect(result.permissions.members).toEqual(['view', 'create', 'update', 'delete']);
+    expect(result.permissions.customers).toBeUndefined();
+    expect(result.onboardingCompleted).toBe(false);
+    expect(result.membershipStatus).toBe('trial');
   });
 
   it('returns role-derived permissions for non-owner users', async () => {

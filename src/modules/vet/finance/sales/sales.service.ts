@@ -40,6 +40,10 @@ export class SalesService {
     return this.sales.getByIdOrThrow(id);
   }
 
+  findByIds(ids: Array<string | null | undefined>) {
+    return this.sales.findByIds(ids);
+  }
+
   async list(query: ListSalesQueryDto): Promise<PaginatedResult<SaleListItem>> {
     const items = (await this.withNames(await this.sales.collect()))
       .filter((item) => !query.type || item.type === query.type)

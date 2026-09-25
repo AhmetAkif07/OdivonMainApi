@@ -1,5 +1,7 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsISO8601, IsOptional, IsString } from 'class-validator';
+import { Type } from 'class-transformer';
+import { IsArray, IsISO8601, IsOptional, IsString, ValidateNested } from 'class-validator';
+import { AppointmentLineDto } from './appointment-line.dto';
 
 export class UpdateAppointmentDto {
   @ApiPropertyOptional()
@@ -36,4 +38,11 @@ export class UpdateAppointmentDto {
   @IsOptional()
   @IsString()
   note?: string;
+
+  @ApiPropertyOptional({ type: [AppointmentLineDto] })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => AppointmentLineDto)
+  plannedLines?: AppointmentLineDto[];
 }

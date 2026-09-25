@@ -23,6 +23,7 @@ export interface Sale extends BaseDocument {
   cashRegisterId: string | null;
   discount: number;
   remark: string | null;
+  appointmentId: string | null;
   lines: SaleLine[];
   net: number;
   vat: number;

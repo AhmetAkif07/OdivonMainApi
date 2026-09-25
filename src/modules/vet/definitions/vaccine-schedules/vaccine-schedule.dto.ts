@@ -67,4 +67,14 @@ export class ListVaccineSchedulesQueryDto extends PagingQueryDto {
   })
   @IsBoolean()
   done?: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsISO8601()
+  from?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsISO8601()
+  to?: string;
 }

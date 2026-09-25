@@ -19,6 +19,9 @@ export class TenantRepository {
     name: string;
     ownerUid: string;
     modules: ProductModule[];
+    onboardingCompleted?: boolean;
+    membershipStatus?: TenantDocument['membershipStatus'];
+    trialEndsAt?: string | null;
   }): Promise<TenantDocument> {
     const ref = this.collection().doc();
     const tenant: TenantDocument = {
@@ -27,6 +30,9 @@ export class TenantRepository {
       ownerUid: input.ownerUid,
       modules: input.modules,
       status: 'active',
+      onboardingCompleted: input.onboardingCompleted ?? true,
+      membershipStatus: input.membershipStatus ?? 'active',
+      trialEndsAt: input.trialEndsAt ?? null,
     };
     await ref.set(tenant);
     return tenant;
@@ -46,6 +52,13 @@ export class TenantRepository {
       throw new AppException(ErrorCode.TENANT_NOT_FOUND, 'Tenant not found');
     }
     return tenant;
+  }
+
+  async update(id: string, patch: Partial<TenantDocument>): Promise<void> {
+    await this.collection().doc(id).update({
+      ...patch,
+      updatedAt: new Date().toISOString(),
+    });
   }
 
   async hardDelete(id: string): Promise<void> {

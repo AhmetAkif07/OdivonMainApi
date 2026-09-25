@@ -5,7 +5,7 @@ import { PermissionGuard } from '../../shared/authorization/permission.guard';
 import { RequirePermission } from '../../shared/authorization/require-permission.decorator';
 import { TenantGuard } from '../../shared/tenancy/tenant.guard';
 import { RegisterDto } from './dto/register.dto';
-import { CreateUserDto, UpdateUserDto } from './dto/user.dto';
+import { CreateUserDto, UpdateMeDto, UpdateUserDto } from './dto/user.dto';
 import { IdentityService } from './identity.service';
 
 @ApiTags('identity')
@@ -25,6 +25,14 @@ export class IdentityController {
   @ApiOperation({ summary: 'Current user from Firestore profile plus tenant summary and permissions' })
   me() {
     return this.identity.me();
+  }
+
+  @Patch('me')
+  @UseGuards(FirebaseAuthGuard, TenantGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Update current user display name or phone' })
+  updateMe(@Body() dto: UpdateMeDto) {
+    return this.identity.updateMe(dto);
   }
 
   @Get('permission-catalog')

@@ -27,6 +27,13 @@ export const TENANT_COLLECTION = {
   labDocuments: 'labDocuments',
   files: 'files',
   clinicParameters: 'clinicParameters',
+  gymInfo: 'gymInfo',
+  gymBranches: 'gymBranches',
+  gymStaff: 'gymStaff',
+  gymPackages: 'gymPackages',
+  gymMembers: 'gymMembers',
+  gymDisciplines: 'gymDisciplines',
+  gymWorkoutTemplates: 'gymWorkoutTemplates',
 } as const;
 
 export const ROOT_COLLECTION = {

@@ -2,6 +2,8 @@ import { ProductModule, UserRole } from '../../../shared/authorization/constants
 
 export type UserStatus = 'active' | 'inactive';
 
+export type MembershipStatus = 'trial' | 'active' | 'expired' | 'cancelled';
+
 export interface UserProfile {
   uid: string;
   tenantId: string;
@@ -11,6 +13,10 @@ export interface UserProfile {
   displayName?: string | null;
   roleIds?: string[];
   status: UserStatus;
+  phone?: string | null;
+  membershipStatus?: MembershipStatus;
+  trialStartedAt?: string | null;
+  trialEndsAt?: string | null;
   createdAt: string;
   updatedAt: string;
 }

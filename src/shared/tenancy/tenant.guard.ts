@@ -59,7 +59,7 @@ export class TenantGuard implements CanActivate {
       email: profile.email ?? decoded.email ?? '',
       permissions:
         profile.role === 'owner'
-          ? fullPermissionMap()
+          ? fullPermissionMap(profile.modules ?? [])
           : await this.loadPermissions(profile.tenantId, profile.roleIds ?? []),
     };
 

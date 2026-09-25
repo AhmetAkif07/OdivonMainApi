@@ -23,5 +23,6 @@ import { SalesService } from './sales/sales.service';
     CashMovementsRepository,
     CashMovementsService,
   ],
+  exports: [SalesService, SalesRepository],
 })
 export class FinanceModule {}
