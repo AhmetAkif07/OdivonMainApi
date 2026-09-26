@@ -131,14 +131,25 @@ describe('GymMobileService', () => {
         exerciseName: 'Bench Press',
         performedAt: '2026-09-01T10:00:00.000Z',
         createdAt: '2026-09-01T10:00:00.000Z',
-        sets: [{ setIndex: 4, kg: 65, reps: 8, completed: true }],
+        sets: [
+          { setIndex: 1, kg: 50, reps: 10, completed: true },
+          { setIndex: 4, kg: 65, reps: 8, completed: true },
+        ],
+      },
+      {
+        id: 'log0',
+        userId: 'u1',
+        exerciseName: 'Bench Press',
+        performedAt: '2026-08-20T10:00:00.000Z',
+        createdAt: '2026-08-20T10:00:00.000Z',
+        sets: [{ setIndex: 1, kg: 70, reps: 6, completed: true }],
       },
     ]);
     const workout = await service.getWorkout('p1');
     expect(workout.exercises[0].previous).toEqual({
-      kg: 65,
-      reps: 8,
-      at: '2026-09-01T10:00:00.000Z',
+      kg: 70,
+      reps: 6,
+      at: '2026-08-20T10:00:00.000Z',
     });
   });
 

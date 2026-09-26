@@ -1201,28 +1201,36 @@ function countVisitsSince(logs: Doc[], userId: string, since: string | null): nu
 
 function previousSet(logs: Doc[], exerciseName: string, before?: string) {
   const cutoff = before ? new Date(before).getTime() : Number.POSITIVE_INFINITY;
-  const match = logs
+  const mine = logs
     .filter((item) => String(item['exerciseName'] ?? '') === exerciseName)
     .filter((item) => {
       const time = new Date(String(item['performedAt'] ?? item.createdAt)).getTime();
       return !Number.isNaN(time) && time < cutoff;
-    })
-    .sort((left, right) =>
-      String(right['performedAt'] ?? right.createdAt).localeCompare(String(left['performedAt'] ?? left.createdAt)),
-    )[0];
-  if (!match) {
+    });
+  let maxKg: number | null = null;
+  let reps: number | null = null;
+  let at: string | null = null;
+  for (const item of mine) {
+    const sets = Array.isArray(item['sets']) ? (item['sets'] as Record<string, unknown>[]) : [];
+    for (const set of sets) {
+      if (set['completed'] === false) {
+        continue;
+      }
+      const kg = numberOrNull(set['kg']);
+      if (kg == null) {
+        continue;
+      }
+      if (maxKg == null || kg > maxKg) {
+        maxKg = kg;
+        reps = numberOrNull(set['reps']);
+        at = String(item['performedAt'] ?? item.createdAt);
+      }
+    }
+  }
+  if (maxKg == null) {
     return null;
   }
-  const sets = Array.isArray(match['sets']) ? (match['sets'] as Record<string, unknown>[]) : [];
-  const last = [...sets].reverse().find((set) => set['completed'] !== false) ?? sets.at(-1);
-  if (!last) {
-    return null;
-  }
-  return {
-    kg: numberOrNull(last['kg']),
-    reps: numberOrNull(last['reps']),
-    at: String(match['performedAt'] ?? match.createdAt),
-  };
+  return { kg: maxKg, reps, at };
 }
 
 function toWorkoutSummary(item: Doc) {
