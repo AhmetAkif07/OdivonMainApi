@@ -45,6 +45,23 @@ export const PERMISSION_RESOURCES = [
   { key: 'branches', label: 'Şubeler', group: 'gym', modules: ['gym'] },
   { key: 'staff', label: 'Personel', group: 'gym', modules: ['gym'] },
   { key: 'gymInfo', label: 'Salon bilgileri', group: 'gym', modules: ['gym'] },
+  { key: 'classes', label: 'Grup dersleri', group: 'gym', modules: ['gym'] },
+  { key: 'gymAppointments', label: 'PT randevuları', group: 'gym', modules: ['gym'] },
+  { key: 'workouts', label: 'Antrenmanlar', group: 'gym', modules: ['gym'] },
+  { key: 'measurements', label: 'Vücut ölçümleri', group: 'gym', modules: ['gym'] },
+  { key: 'water', label: 'Su takibi', group: 'gym', modules: ['gym'] },
+  { key: 'wallet', label: 'Cüzdan', group: 'gym', modules: ['gym'] },
+  { key: 'shop', label: 'Mağaza / POS', group: 'gym', modules: ['gym'] },
+  { key: 'accounting', label: 'Muhasebe', group: 'gym', modules: ['gym'] },
+  { key: 'accessControl', label: 'Turnike', group: 'gym', modules: ['gym'] },
+  { key: 'campaigns', label: 'Kampanyalar', group: 'gym', modules: ['gym'] },
+  { key: 'guestMembers', label: 'Misafir üyeler', group: 'gym', modules: ['gym'] },
+  { key: 'disciplines', label: 'Branş ve ekipman', group: 'gym', modules: ['gym'] },
+  { key: 'gymSuppliers', label: 'Tedarikçiler', group: 'gym', modules: ['gym'] },
+  { key: 'memberDocuments', label: 'Üye evrakları', group: 'gym', modules: ['gym'] },
+  { key: 'sms', label: 'SMS', group: 'gym', modules: ['gym'] },
+  { key: 'eInvoice', label: 'E-fatura', group: 'gym', modules: ['gym'] },
+  { key: 'saas', label: 'SaaS abonelik', group: 'gym', modules: ['gym'] },
 ] as const satisfies readonly PermissionResourceDefinition[];
 
 export type PermissionResource = (typeof PERMISSION_RESOURCES)[number]['key'];

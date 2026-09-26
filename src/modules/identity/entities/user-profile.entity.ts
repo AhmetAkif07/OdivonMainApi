@@ -4,10 +4,13 @@ export type UserStatus = 'active' | 'inactive';
 
 export type MembershipStatus = 'trial' | 'active' | 'expired' | 'cancelled';
 
+export type AccountType = 'gym_member' | 'staff';
+
 export interface UserProfile {
   uid: string;
   tenantId: string;
   role: UserRole;
+  accountType?: AccountType;
   modules: ProductModule[];
   email: string;
   displayName?: string | null;

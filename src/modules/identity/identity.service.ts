@@ -120,6 +120,7 @@ export class IdentityService {
       phone: profile.phone ?? null,
       tenantId: profile.tenantId,
       role: profile.role,
+      accountType: profile.accountType ?? null,
       modules: profile.modules,
       roleIds: profile.roleIds ?? [],
       membershipStatus: tenant.membershipStatus ?? profile.membershipStatus ?? 'active',

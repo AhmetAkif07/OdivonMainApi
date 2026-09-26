@@ -40,6 +40,7 @@ export class MembersRepository {
         uid,
         tenantId: store.tenantId,
         role: 'user',
+        accountType: 'gym_member',
         modules: store.modules,
         email: dto.email.trim().toLowerCase(),
         displayName: dto.displayName.trim(),
@@ -52,6 +53,7 @@ export class MembersRepository {
       await this.firebase.auth.setCustomUserClaims(uid, {
         tenantId: store.tenantId,
         role: 'user',
+        accountType: 'gym_member',
         modules: store.modules,
       });
       const member = this.toMember(uid, dto, now);
