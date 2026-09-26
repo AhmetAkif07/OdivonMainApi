@@ -37,4 +37,6 @@ export interface GymMember extends BaseDocument {
   cardDepositPaid: boolean;
   isArchived: boolean;
   archivedAt: string | null;
+  autoRenew?: boolean;
+  waterTargetMl?: number;
 }

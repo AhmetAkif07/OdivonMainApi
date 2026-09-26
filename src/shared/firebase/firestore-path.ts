@@ -63,6 +63,13 @@ export const TENANT_COLLECTION = {
   gymQrTokens: 'gymQrTokens',
   gymWorkoutLogs: 'gymWorkoutLogs',
   gymMemberNotifications: 'gymMemberNotifications',
+  gymBodyPhotos: 'gymBodyPhotos',
+  gymClassWaitlist: 'gymClassWaitlist',
+  gymNutritionPlans: 'gymNutritionPlans',
+  gymMealLogs: 'gymMealLogs',
+  gymMemberAchievements: 'gymMemberAchievements',
+  gymThreads: 'gymThreads',
+  gymMessages: 'gymMessages',
 } as const;
 
 export const ROOT_COLLECTION = {

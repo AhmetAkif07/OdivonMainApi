@@ -1,5 +1,6 @@
 import { GymMobileService, daysRemaining } from './mobile.service';
 import { ErrorCode } from '../../../shared/errors/error-codes';
+import { computeBmi, computeStreak } from './mobile.stats';
 
 describe('GymMobileService', () => {
   const store = {
@@ -10,12 +11,15 @@ describe('GymMobileService', () => {
     getOrThrow: jest.fn(),
     update: jest.fn(),
     collection: jest.fn(),
+    save: jest.fn(),
+    softDelete: jest.fn(),
   };
   const members = {
     getByIdOrThrow: jest.fn(),
     save: jest.fn(),
   };
   const packages = { list: jest.fn() };
+  const staff = { getByIdOrThrow: jest.fn() };
   let service: GymMobileService;
 
   const member = {
@@ -65,7 +69,9 @@ describe('GymMobileService', () => {
       createdAt: new Date().toISOString(),
       ...fields,
     }));
-    service = new GymMobileService(store as never, members as never, packages as never);
+    store.save.mockImplementation(async (_name: string, item: object) => item);
+    staff.getByIdOrThrow.mockRejectedValue(new Error('missing'));
+    service = new GymMobileService(store as never, members as never, packages as never, staff as never);
   });
 
   it('builds a self-scoped home payload', async () => {
@@ -146,5 +152,33 @@ describe('GymMobileService', () => {
   it('computes remaining membership days', () => {
     expect(daysRemaining(null)).toBeNull();
     expect(daysRemaining(new Date(Date.now() + 2.2 * 86400000).toISOString())).toBeGreaterThanOrEqual(2);
+  });
+
+  it('computes bmi from weight and height', () => {
+    expect(computeBmi(80, 180)).toBe(24.7);
+    expect(computeBmi(null, 180)).toBeNull();
+    expect(computeBmi(80, 0)).toBeNull();
+  });
+
+  it('computes consecutive day streak in utc', () => {
+    const now = new Date(Date.UTC(2026, 8, 27, 12, 0, 0));
+    expect(
+      computeStreak(['2026-09-27T08:00:00.000Z', '2026-09-26T08:00:00.000Z', '2026-09-25T08:00:00.000Z'], now),
+    ).toBe(3);
+    expect(computeStreak(['2026-09-20T08:00:00.000Z'], now)).toBe(0);
+  });
+
+  it('rejects waitlist when already queued', async () => {
+    store.getOrThrow.mockResolvedValue({ id: 'c1', name: 'Yoga' });
+    store.list.mockResolvedValue([{ id: 'w1', userId: 'u1', classScheduleId: 'c1' }]);
+    await expect(service.joinWaitlist('c1')).rejects.toMatchObject({ code: ErrorCode.GYM_WAITLIST_EXISTS });
+  });
+
+  it('does not delete another member progress photo', async () => {
+    store.getOrThrow.mockResolvedValue({ id: 'ph1', userId: 'other', storagePath: 'x' });
+    await expect(service.deleteProgressPhoto('ph1')).rejects.toMatchObject({
+      code: ErrorCode.GYM_PHOTO_NOT_FOUND,
+    });
+    expect(store.softDelete).not.toHaveBeenCalled();
   });
 });

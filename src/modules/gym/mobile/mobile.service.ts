@@ -8,12 +8,22 @@ import { GymMember } from '../members/member.entity';
 import { MembersRepository } from '../members/members.repository';
 import { GymPackage } from '../packages/package.entity';
 import { PackagesRepository } from '../packages/packages.repository';
+import { StaffRepository } from '../staff/staff.repository';
 import { GymStore } from '../shared/gym-store';
 import {
   CancelMobileAppointmentDto,
+  CreateMealLogDto,
+  CreateMeasurementDto,
+  CreateMobileAppointmentDto,
+  CreateProgressPhotoDto,
+  CreateWaterLogDto,
   CreateWorkoutLogDto,
   PatchMobileMeDto,
+  PaymentIntentDto,
+  RenewMembershipDto,
+  SendMessageDto,
 } from './mobile.dto';
+import { ACHIEVEMENT_DEFS, computeBmi, computeStreak } from './mobile.stats';
 
 const QR_TTL_MS = 45_000;
 type Doc = BaseDocument & Record<string, unknown>;
@@ -24,6 +34,7 @@ export class GymMobileService {
     private readonly store: GymStore,
     private readonly members: MembersRepository,
     private readonly packages: PackagesRepository,
+    private readonly staff: StaffRepository,
   ) {}
 
   async home() {
@@ -73,6 +84,9 @@ export class GymMobileService {
         }
       : null;
 
+    const visitsThisMonth = countVisitsThisMonth(logs, userId);
+    const monthlyProgress = await this.monthlyProgressFor(userId, visitsThisMonth, measurements);
+
     return {
       member: {
         uid: member.uid,
@@ -84,7 +98,8 @@ export class GymMobileService {
       todayWorkout,
       nextAppointment,
       lastMeasurement,
-      visitsThisMonth: countVisitsThisMonth(logs, userId),
+      visitsThisMonth,
+      monthlyProgress,
       announcements: announcements.slice(0, 5),
     };
   }
@@ -107,6 +122,8 @@ export class GymMobileService {
       emergencyContactPhone: member.emergencyContactPhone,
       emergencyContactRelation: member.emergencyContactRelation,
       memberNumber: member.memberNumber,
+      walletBalance: member.walletBalance ?? 0,
+      autoRenew: Boolean((member as GymMember & { autoRenew?: boolean }).autoRenew),
       membership: this.membershipSummary(member),
     };
   }
@@ -126,6 +143,7 @@ export class GymMobileService {
           ? dto.emergencyContactRelation
           : member.emergencyContactRelation,
       language: dto.language !== undefined ? dto.language : member.language,
+      autoRenew: dto.autoRenew !== undefined ? dto.autoRenew : (member as GymMember & { autoRenew?: boolean }).autoRenew,
     });
     return this.me();
   }
@@ -285,6 +303,7 @@ export class GymMobileService {
     const logs = (await this.store.list<Doc>(TENANT_COLLECTION.gymWorkoutLogs)).filter(
       (item) => item['userId'] === userId && item.id !== created.id,
     );
+    await this.unlockAchievements();
     return {
       ...toWorkoutLog(created),
       previous: previousSet(logs, dto.exerciseName.trim(), performedAt),
@@ -324,6 +343,39 @@ export class GymMobileService {
       },
     );
     return toAppointment(updated);
+  }
+
+  async createAppointment(dto: CreateMobileAppointmentDto) {
+    const member = await this.currentMember();
+    const start = new Date(dto.appointmentTime).getTime();
+    if (Number.isNaN(start)) {
+      throw new AppException(ErrorCode.VALIDATION_ERROR, 'Invalid appointment time');
+    }
+    const duration = dto.duration ?? 60;
+    const end = start + duration * 60_000;
+    const existing = await this.store.list<Doc>(TENANT_COLLECTION.gymPtAppointments);
+    const trainerId = member.trainerId;
+    const conflict = existing.some((item) => {
+      if (item['trainerId'] !== trainerId) return false;
+      if (item['status'] === 'cancelled') return false;
+      const otherStart = new Date(String(item['appointmentTime'])).getTime();
+      const otherEnd = otherStart + Number(item['duration'] ?? 60) * 60_000;
+      return start < otherEnd && end > otherStart;
+    });
+    if (conflict) {
+      throw new AppException(ErrorCode.GYM_PT_CONFLICT, 'Trainer is not available at this time');
+    }
+    const created = await this.store.create<Doc>(TENANT_COLLECTION.gymPtAppointments, {
+      userId: member.uid,
+      trainerId,
+      trainerName: member.trainerName,
+      appointmentTime: new Date(start).toISOString(),
+      duration,
+      type: dto.type ?? 'PT',
+      status: 'booked',
+      notes: dto.notes ?? '',
+    });
+    return toAppointment(created);
   }
 
   async listNotifications() {
@@ -376,6 +428,539 @@ export class GymMobileService {
         validFrom: (item['validFrom'] as string | undefined) ?? null,
         validUntil: (item['validUntil'] as string | undefined) ?? null,
       }));
+  }
+
+  async listMeasurements() {
+    const userId = this.store.userId();
+    return (await this.store.list<Doc>(TENANT_COLLECTION.gymMeasurements))
+      .filter((item) => item['userId'] === userId)
+      .map(toMeasurement)
+      .sort((left, right) => right.date.localeCompare(left.date));
+  }
+
+  async createMeasurement(dto: CreateMeasurementDto) {
+    const created = await this.store.create<Doc>(TENANT_COLLECTION.gymMeasurements, {
+      userId: this.store.userId(),
+      date: dto.date || new Date().toISOString(),
+      weight: dto.weight ?? null,
+      height: dto.height ?? null,
+      chest: dto.chest ?? null,
+      waist: dto.waist ?? null,
+      hips: dto.hips ?? null,
+      bicep: dto.bicep ?? null,
+      thigh: dto.thigh ?? null,
+      calf: dto.calf ?? null,
+      bodyFatPercentage: dto.bodyFatPercentage ?? null,
+      muscleMassKg: dto.muscleMassKg ?? null,
+      notes: dto.notes ?? null,
+      bmi: computeBmi(dto.weight ?? null, dto.height ?? null),
+    });
+    return toMeasurement(created);
+  }
+
+  async listProgressPhotos() {
+    const userId = this.store.userId();
+    return (await this.store.list<Doc>(TENANT_COLLECTION.gymBodyPhotos))
+      .filter((item) => item['userId'] === userId)
+      .map(toPhoto)
+      .sort((left, right) => right.takenAt.localeCompare(left.takenAt));
+  }
+
+  async createProgressPhoto(dto: CreateProgressPhotoDto) {
+    const created = await this.store.create<Doc>(TENANT_COLLECTION.gymBodyPhotos, {
+      userId: this.store.userId(),
+      pose: dto.pose,
+      storagePath: dto.storagePath,
+      contentType: dto.contentType ?? 'image/jpeg',
+      takenAt: dto.takenAt || new Date().toISOString(),
+    });
+    return toPhoto(created);
+  }
+
+  async deleteProgressPhoto(id: string) {
+    const item = await this.store.getOrThrow<Doc>(
+      TENANT_COLLECTION.gymBodyPhotos,
+      id,
+      ErrorCode.GYM_PHOTO_NOT_FOUND,
+      'Photo not found',
+    );
+    if (item['userId'] !== this.store.userId()) {
+      throw new AppException(ErrorCode.GYM_PHOTO_NOT_FOUND, 'Photo not found');
+    }
+    return this.store.softDelete(TENANT_COLLECTION.gymBodyPhotos, id, ErrorCode.GYM_PHOTO_NOT_FOUND, 'Photo not found');
+  }
+
+  async trainer() {
+    const member = await this.currentMember();
+    if (!member.trainerId) {
+      return null;
+    }
+    try {
+      const staff = await this.staff.getByIdOrThrow(member.trainerId);
+      return {
+        id: staff.id,
+        displayName: staff.displayName,
+        title: staff.title,
+        specialties: staff.specialties ?? [],
+        photoURL: staff.avatarUrl,
+        branchName: staff.branchName,
+      };
+    } catch {
+      return {
+        id: member.trainerId,
+        displayName: member.trainerName ?? 'Antrenör',
+        title: 'Antrenör',
+        specialties: [] as string[],
+        photoURL: null as string | null,
+        branchName: member.branchName,
+      };
+    }
+  }
+
+  async listClasses() {
+    const userId = this.store.userId();
+    const [schedules, bookings, waitlist] = await Promise.all([
+      this.store.list<Doc>(TENANT_COLLECTION.gymClassSchedules),
+      this.store.list<Doc>(TENANT_COLLECTION.gymClassBookings),
+      this.store.list<Doc>(TENANT_COLLECTION.gymClassWaitlist),
+    ]);
+    const myBookingByClass = new Map(
+      bookings
+        .filter((item) => item['userId'] === userId && item['attendanceStatus'] !== 'cancelled')
+        .map((item) => [String(item['classScheduleId']), item.id]),
+    );
+    const myWait = new Set(
+      waitlist.filter((item) => item['userId'] === userId).map((item) => String(item['classScheduleId'])),
+    );
+    return schedules
+      .filter((item) => item['status'] === 'active')
+      .map((item) => ({
+        id: item.id,
+        name: String(item['name'] ?? 'Ders'),
+        instructorName: String(item['instructorName'] ?? ''),
+        dayOfWeek: Number(item['dayOfWeek'] ?? 1),
+        startTime: String(item['startTime'] ?? ''),
+        endTime: String(item['endTime'] ?? ''),
+        capacity: Number(item['capacity'] ?? 0),
+        taken: Number(item['currentBookings'] ?? 0),
+        booked: myBookingByClass.has(item.id),
+        bookingId: myBookingByClass.get(item.id) ?? null,
+        waitlisted: myWait.has(item.id),
+      }));
+  }
+
+  async listClassBookings() {
+    const userId = this.store.userId();
+    return (await this.store.list<Doc>(TENANT_COLLECTION.gymClassBookings))
+      .filter((item) => item['userId'] === userId)
+      .map((item) => ({
+        id: item.id,
+        classScheduleId: String(item['classScheduleId'] ?? ''),
+        className: String(item['className'] ?? ''),
+        status: String(item['attendanceStatus'] ?? 'booked'),
+        bookingDate: String(item['bookingDate'] ?? item.createdAt),
+      }));
+  }
+
+  async bookClass(scheduleId: string) {
+    const schedule = await this.store.getOrThrow<Doc>(
+      TENANT_COLLECTION.gymClassSchedules,
+      scheduleId,
+      ErrorCode.GYM_CLASS_NOT_FOUND,
+      'Class not found',
+    );
+    const userId = this.store.userId();
+    const bookings = await this.store.list<Doc>(TENANT_COLLECTION.gymClassBookings);
+    const already = bookings.find(
+      (item) =>
+        item['userId'] === userId &&
+        item['classScheduleId'] === scheduleId &&
+        item['attendanceStatus'] !== 'cancelled',
+    );
+    if (already) {
+      return { id: already.id, status: 'booked' };
+    }
+    const capacity = Number(schedule['capacity'] ?? 0);
+    const taken = Number(schedule['currentBookings'] ?? 0);
+    if (capacity && taken >= capacity) {
+      throw new AppException(ErrorCode.GYM_CLASS_FULL, 'Class is full');
+    }
+    const enrolled = Array.isArray(schedule['enrolledMemberIds'])
+      ? [...(schedule['enrolledMemberIds'] as string[])]
+      : [];
+    if (!enrolled.includes(userId)) {
+      enrolled.push(userId);
+    }
+    const booking = await this.store.create(TENANT_COLLECTION.gymClassBookings, {
+      userId,
+      classScheduleId: scheduleId,
+      className: schedule['name'] ?? '',
+      attendanceStatus: 'booked',
+      bookingDate: new Date().toISOString(),
+    });
+    await this.store.save(TENANT_COLLECTION.gymClassSchedules, {
+      ...schedule,
+      currentBookings: taken + 1,
+      enrolledMemberIds: enrolled,
+    } as Doc);
+    return { id: booking.id, status: 'booked' };
+  }
+
+  async joinWaitlist(scheduleId: string) {
+    await this.store.getOrThrow(
+      TENANT_COLLECTION.gymClassSchedules,
+      scheduleId,
+      ErrorCode.GYM_CLASS_NOT_FOUND,
+      'Class not found',
+    );
+    const userId = this.store.userId();
+    const existing = (await this.store.list<Doc>(TENANT_COLLECTION.gymClassWaitlist)).find(
+      (item) => item['userId'] === userId && item['classScheduleId'] === scheduleId,
+    );
+    if (existing) {
+      throw new AppException(ErrorCode.GYM_WAITLIST_EXISTS, 'Already on waitlist');
+    }
+    const created = await this.store.create(TENANT_COLLECTION.gymClassWaitlist, {
+      userId,
+      classScheduleId: scheduleId,
+    });
+    return { id: created.id, status: 'waitlisted' };
+  }
+
+  async cancelClassBooking(bookingId: string) {
+    const booking = await this.store.getOrThrow<Doc>(
+      TENANT_COLLECTION.gymClassBookings,
+      bookingId,
+      ErrorCode.GYM_BOOKING_NOT_FOUND,
+      'Booking not found',
+    );
+    if (booking['userId'] !== this.store.userId()) {
+      throw new AppException(ErrorCode.GYM_BOOKING_NOT_FOUND, 'Booking not found');
+    }
+    await this.store.update(
+      TENANT_COLLECTION.gymClassBookings,
+      bookingId,
+      ErrorCode.GYM_BOOKING_NOT_FOUND,
+      'Booking not found',
+      { attendanceStatus: 'cancelled' },
+    );
+    const scheduleId = String(booking['classScheduleId'] ?? '');
+    if (scheduleId) {
+      const schedule = await this.store.getOrThrow<Doc>(
+        TENANT_COLLECTION.gymClassSchedules,
+        scheduleId,
+        ErrorCode.GYM_CLASS_NOT_FOUND,
+        'Class not found',
+      );
+      const enrolled = (
+        Array.isArray(schedule['enrolledMemberIds']) ? schedule['enrolledMemberIds'] : []
+      ) as string[];
+      await this.store.save(TENANT_COLLECTION.gymClassSchedules, {
+        ...schedule,
+        currentBookings: Math.max(0, Number(schedule['currentBookings'] ?? 1) - 1),
+        enrolledMemberIds: enrolled.filter((id) => id !== booking['userId']),
+      } as Doc);
+      await this.promoteWaitlist(scheduleId);
+    }
+    return { id: bookingId };
+  }
+
+  async listPayments() {
+    const userId = this.store.userId();
+    const [wallet, sales, accounting] = await Promise.all([
+      this.store.list<Doc>(TENANT_COLLECTION.gymWalletTx),
+      this.store.list<Doc>(TENANT_COLLECTION.gymShopSales),
+      this.store.list<Doc>(TENANT_COLLECTION.gymAccountingEntries),
+    ]);
+    const items = [
+      ...wallet
+        .filter((item) => item['userId'] === userId)
+        .map((item) => ({
+          id: item.id,
+          source: 'wallet',
+          title: String(item['description'] ?? 'Cüzdan'),
+          amount: Number(item['amount'] ?? 0),
+          type: String(item['type'] ?? 'deposit'),
+          at: item.createdAt,
+        })),
+      ...sales
+        .filter((item) => item['userId'] === userId)
+        .map((item) => ({
+          id: item.id,
+          source: 'shop',
+          title: String(item['productName'] ?? item['description'] ?? 'Satış'),
+          amount: Number(item['totalAmount'] ?? item['amount'] ?? 0),
+          type: 'debit',
+          at: String(item['saleDate'] ?? item.createdAt),
+        })),
+      ...accounting
+        .filter((item) => item['userId'] === userId)
+        .map((item) => ({
+          id: item.id,
+          source: 'membership',
+          title: String(item['description'] ?? item['category'] ?? 'Üyelik'),
+          amount: Number(item['amount'] ?? 0),
+          type: String(item['type'] ?? 'income'),
+          at: item.createdAt,
+        })),
+    ].sort((left, right) => right.at.localeCompare(left.at));
+    const member = await this.currentMember();
+    return { walletBalance: member.walletBalance ?? 0, items };
+  }
+
+  async listPackages() {
+    const items = await this.packages.list({});
+    return items
+      .filter((item) => item.status === 'active' && !item.isHidden)
+      .map((item) => ({
+        id: item.id,
+        name: item.name,
+        price: item.price,
+        durationDays: item.durationDays,
+        features: item.features ?? [],
+        description: item.description,
+      }));
+  }
+
+  async listCampaigns() {
+    return this.listAnnouncements();
+  }
+
+  async getNutrition() {
+    const userId = this.store.userId();
+    const plans = (await this.store.list<Doc>(TENANT_COLLECTION.gymNutritionPlans))
+      .filter((item) => item['userId'] === userId)
+      .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+    const plan = plans[0] ?? null;
+    if (!plan) {
+      return { plan: null, logs: [] as ReturnType<typeof toMealLog>[], totals: { kcal: 0, protein: 0, carbs: 0, fat: 0 } };
+    }
+    const today = new Date().toISOString().slice(0, 10);
+    const logs = (await this.store.list<Doc>(TENANT_COLLECTION.gymMealLogs)).filter(
+      (item) => item['userId'] === userId && String(item['date'] ?? '').startsWith(today),
+    );
+    const meals = Array.isArray(plan['meals']) ? (plan['meals'] as Record<string, unknown>[]) : [];
+    const taken = new Set(logs.map((item) => Number(item['mealIndex'])));
+    const totals = meals.reduce(
+      (acc: { kcal: number; protein: number; carbs: number; fat: number }, meal, index) => {
+        if (!taken.has(index)) {
+          return acc;
+        }
+        acc.kcal += Number(meal['kcal'] ?? 0);
+        acc.protein += Number(meal['protein'] ?? 0);
+        acc.carbs += Number(meal['carbs'] ?? 0);
+        acc.fat += Number(meal['fat'] ?? 0);
+        return acc;
+      },
+      { kcal: 0, protein: 0, carbs: 0, fat: 0 },
+    );
+    return {
+      plan: {
+        id: plan.id,
+        title: String(plan['title'] ?? 'Beslenme programı'),
+        targets: {
+          kcal: Number(plan['kcal'] ?? 0),
+          protein: Number(plan['protein'] ?? 0),
+          carbs: Number(plan['carbs'] ?? 0),
+          fat: Number(plan['fat'] ?? 0),
+          waterMl: Number(plan['waterMl'] ?? 2500),
+        },
+        meals: meals.map((meal, index) => ({
+          index,
+          name: String(meal['name'] ?? `Öğün ${index + 1}`),
+          time: String(meal['time'] ?? ''),
+          items: Array.isArray(meal['items']) ? meal['items'] : [],
+          kcal: Number(meal['kcal'] ?? 0),
+          protein: Number(meal['protein'] ?? 0),
+          carbs: Number(meal['carbs'] ?? 0),
+          fat: Number(meal['fat'] ?? 0),
+          taken: taken.has(index),
+        })),
+      },
+      logs: logs.map(toMealLog),
+      totals,
+    };
+  }
+
+  async logMeal(dto: CreateMealLogDto) {
+    const nutrition = await this.getNutrition();
+    if (!nutrition.plan) {
+      throw new AppException(ErrorCode.GYM_NUTRITION_NOT_FOUND, 'Nutrition plan not found');
+    }
+    const created = await this.store.create<Doc>(TENANT_COLLECTION.gymMealLogs, {
+      userId: this.store.userId(),
+      planId: dto.planId ?? nutrition.plan.id,
+      mealIndex: dto.mealIndex,
+      date: (dto.date || new Date().toISOString()).slice(0, 10),
+    });
+    return toMealLog(created);
+  }
+
+  async listWater(date?: string) {
+    const userId = this.store.userId();
+    const day = (date || new Date().toISOString()).slice(0, 10);
+    const items = (await this.store.list<Doc>(TENANT_COLLECTION.gymWaterLogs)).filter((item) => {
+      if (item['userId'] !== userId) {
+        return false;
+      }
+      return String(item['date'] ?? item.createdAt).startsWith(day);
+    });
+    const totalMl = items.reduce((sum, item) => sum + Number(item['amount'] ?? item['amountMl'] ?? 0), 0);
+    const member = await this.currentMember();
+    const targetMl = Number((member as GymMember & { waterTargetMl?: number }).waterTargetMl ?? 2500);
+    return {
+      date: day,
+      totalMl,
+      targetMl,
+      items: items.map((item) => ({
+        id: item.id,
+        amountMl: Number(item['amount'] ?? item['amountMl'] ?? 0),
+        at: String(item['date'] ?? item.createdAt),
+      })),
+    };
+  }
+
+  async addWater(dto: CreateWaterLogDto) {
+    const created = await this.store.create<Doc>(TENANT_COLLECTION.gymWaterLogs, {
+      userId: this.store.userId(),
+      amount: dto.amountMl,
+      amountMl: dto.amountMl,
+      unit: 'ml',
+      date: dto.date || new Date().toISOString(),
+    });
+    return this.listWater(String(created['date'] ?? created.createdAt).slice(0, 10));
+  }
+
+  async stats() {
+    return this.buildStats();
+  }
+
+  async listAchievements() {
+    await this.unlockAchievements();
+    const userId = this.store.userId();
+    const unlocked = (await this.store.list<Doc>(TENANT_COLLECTION.gymMemberAchievements)).filter(
+      (item) => item['userId'] === userId,
+    );
+    const byId = new Map(unlocked.map((item) => [String(item['achievementId']), item]));
+    return ACHIEVEMENT_DEFS.map((def) => ({
+      id: def.id,
+      title: def.title,
+      description: def.description,
+      unlocked: byId.has(def.id),
+      unlockedAt: byId.get(def.id)?.createdAt ?? null,
+    }));
+  }
+
+  async getOrCreateThread() {
+    const member = await this.currentMember();
+    const threads = await this.store.list<Doc>(TENANT_COLLECTION.gymThreads);
+    const existing = threads.find(
+      (item) => item['memberId'] === member.uid && item['trainerId'] === (member.trainerId ?? ''),
+    );
+    if (existing) {
+      return toThread(existing);
+    }
+    const created = await this.store.create<Doc>(TENANT_COLLECTION.gymThreads, {
+      memberId: member.uid,
+      trainerId: member.trainerId,
+      trainerName: member.trainerName,
+      lastMessageAt: null,
+    });
+    return toThread(created);
+  }
+
+  async listMessages(threadId: string) {
+    const thread = await this.ownThread(threadId);
+    return (await this.store.list<Doc>(TENANT_COLLECTION.gymMessages))
+      .filter((item) => item['threadId'] === thread.id)
+      .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
+      .map(toMessage);
+  }
+
+  async sendMessage(threadId: string, dto: SendMessageDto) {
+    const thread = await this.ownThread(threadId);
+    const body = dto.body.trim();
+    if (!body) {
+      throw new AppException(ErrorCode.VALIDATION_ERROR, 'Message cannot be empty');
+    }
+    const created = await this.store.create<Doc>(TENANT_COLLECTION.gymMessages, {
+      threadId: thread.id,
+      senderId: this.store.userId(),
+      body,
+    });
+    await this.store.update(
+      TENANT_COLLECTION.gymThreads,
+      thread.id,
+      ErrorCode.GYM_THREAD_NOT_FOUND,
+      'Thread not found',
+      { lastMessageAt: created.createdAt },
+    );
+    await this.store.create(TENANT_COLLECTION.gymMemberNotifications, {
+      userId: this.store.userId(),
+      type: 'new_message',
+      title: 'Mesaj gönderildi',
+      body: body.slice(0, 120),
+      readAt: new Date().toISOString(),
+    });
+    return toMessage(created);
+  }
+
+  async renewMembership(dto: RenewMembershipDto) {
+    const member = await this.currentMember();
+    const pkg = (await this.packages.list({})).find((item) => item.id === dto.packageId);
+    if (!pkg) {
+      throw new AppException(ErrorCode.GYM_PACKAGE_NOT_FOUND, 'Package not found');
+    }
+    const amount = Number(pkg.price ?? 0);
+    const current = Number(member.walletBalance ?? 0);
+    if (current < amount) {
+      throw new AppException(ErrorCode.GYM_WALLET_INSUFFICIENT, 'Insufficient wallet balance');
+    }
+    const now = new Date();
+    let base = now;
+    if (member.membershipStatus === 'active' && member.membershipEndsAt) {
+      const currentEnd = new Date(member.membershipEndsAt);
+      if (currentEnd.getTime() > now.getTime()) {
+        base = currentEnd;
+      }
+    }
+    const ends = new Date(base.getTime());
+    ends.setDate(ends.getDate() + Number(pkg.durationDays ?? 30));
+    await this.members.save({
+      ...member,
+      walletBalance: current - amount,
+      membershipStatus: 'active',
+      packageLabel: pkg.name,
+      packagePrice: amount,
+      membershipStartsAt: now.toISOString(),
+      membershipEndsAt: ends.toISOString(),
+    });
+    await this.store.create(TENANT_COLLECTION.gymWalletTx, {
+      userId: member.uid,
+      type: 'debit',
+      amount,
+      description: `${pkg.name} yenileme`,
+      referenceType: 'package',
+      status: 'completed',
+      paymentMethod: 'wallet',
+    });
+    await this.store.create(TENANT_COLLECTION.gymAccountingEntries, {
+      type: 'income',
+      amount,
+      category: 'membership',
+      userId: member.uid,
+      description: `${pkg.name} yenileme`,
+    });
+    return this.membership();
+  }
+
+  createPaymentIntent(dto: PaymentIntentDto) {
+    return {
+      status: 'not_implemented',
+      provider: dto.provider ?? null,
+      packageId: dto.packageId,
+      message: 'Kartlı ödeme henüz bağlanmadı. Cüzdanla yenileme kullanılabilir.',
+    };
   }
 
   private currentMember() {
@@ -431,6 +1016,134 @@ export class GymMobileService {
       body: `Üyeliğinin bitmesine ${daysLeft} gün kaldı.`,
       readAt: null,
     });
+  }
+
+  private async ownThread(id: string) {
+    const thread = await this.store.getOrThrow<Doc>(
+      TENANT_COLLECTION.gymThreads,
+      id,
+      ErrorCode.GYM_THREAD_NOT_FOUND,
+      'Thread not found',
+    );
+    if (thread['memberId'] !== this.store.userId()) {
+      throw new AppException(ErrorCode.GYM_THREAD_NOT_FOUND, 'Thread not found');
+    }
+    return thread;
+  }
+
+  private async promoteWaitlist(scheduleId: string) {
+    const waiting = (await this.store.list<Doc>(TENANT_COLLECTION.gymClassWaitlist))
+      .filter((item) => item['classScheduleId'] === scheduleId)
+      .sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+    const next = waiting[0];
+    if (!next) {
+      return;
+    }
+    const userId = String(next['userId']);
+    await this.store.softDelete(
+      TENANT_COLLECTION.gymClassWaitlist,
+      next.id,
+      ErrorCode.GYM_CLASS_NOT_FOUND,
+      'Waitlist not found',
+    );
+    const schedule = await this.store.getOrThrow<Doc>(
+      TENANT_COLLECTION.gymClassSchedules,
+      scheduleId,
+      ErrorCode.GYM_CLASS_NOT_FOUND,
+      'Class not found',
+    );
+    const enrolled = Array.isArray(schedule['enrolledMemberIds'])
+      ? [...(schedule['enrolledMemberIds'] as string[])]
+      : [];
+    if (!enrolled.includes(userId)) {
+      enrolled.push(userId);
+    }
+    await this.store.create(TENANT_COLLECTION.gymClassBookings, {
+      userId,
+      classScheduleId: scheduleId,
+      className: schedule['name'] ?? '',
+      attendanceStatus: 'booked',
+      bookingDate: new Date().toISOString(),
+    });
+    await this.store.save(TENANT_COLLECTION.gymClassSchedules, {
+      ...schedule,
+      currentBookings: Number(schedule['currentBookings'] ?? 0) + 1,
+      enrolledMemberIds: enrolled,
+    } as Doc);
+    await this.store.create(TENANT_COLLECTION.gymMemberNotifications, {
+      userId,
+      type: 'class_promoted',
+      title: 'Bekleme listesinden yer açıldı',
+      body: `${String(schedule['name'] ?? 'Ders')} kaydın onaylandı.`,
+      readAt: null,
+    });
+  }
+
+  private monthlyProgressFor(userId: string, visitsThisMonth: number, measurements: Doc[]) {
+    return this.buildStats(userId, visitsThisMonth, measurements);
+  }
+
+  private async buildStats(userId = this.store.userId(), visitsThisMonth?: number, measurements?: Doc[]) {
+    const [access, measureDocs, workoutLogs] = await Promise.all([
+      this.store.list<Doc>(TENANT_COLLECTION.gymAccessLogs),
+      measurements ? Promise.resolve(measurements) : this.store.list<Doc>(TENANT_COLLECTION.gymMeasurements),
+      this.store.list<Doc>(TENANT_COLLECTION.gymWorkoutLogs),
+    ]);
+    const month = monthPrefix();
+    const myWorkouts = workoutLogs.filter(
+      (item) => item['userId'] === userId && String(item['performedAt'] ?? item.createdAt).startsWith(month),
+    );
+    const myAccess = access.filter((item) => isGrantedIn(item, userId));
+    const visitsMonth = visitsThisMonth ?? countVisitsThisMonth(access, userId);
+    const dates = [
+      ...myWorkouts.map((item) => String(item['performedAt'] ?? item.createdAt)),
+      ...myAccess.map((item) => String(item['timestamp'] ?? item.createdAt)),
+    ];
+    const mine = measureDocs.filter((item) => item['userId'] === userId);
+    const sorted = [...mine].sort((left, right) =>
+      String(right['date'] ?? right.createdAt).localeCompare(String(left['date'] ?? left.createdAt)),
+    );
+    const latest = sorted[0];
+    const previous = sorted[1];
+    const weightDelta =
+      latest && previous ? Number(latest['weight'] ?? 0) - Number(previous['weight'] ?? 0) : 0;
+    const workouts = myWorkouts.length;
+    const streak = computeStreak(dates);
+    const goalPercent = Math.min(100, Math.round((Math.max(workouts, visitsMonth) / 20) * 100));
+    return {
+      workouts,
+      visits: visitsMonth,
+      visitsTotal: myAccess.length,
+      streak,
+      weightDelta: Math.round(weightDelta * 10) / 10,
+      goalPercent,
+    };
+  }
+
+  private async unlockAchievements() {
+    const stats = await this.buildStats();
+    const userId = this.store.userId();
+    const existing = (await this.store.list<Doc>(TENANT_COLLECTION.gymMemberAchievements)).filter(
+      (item) => item['userId'] === userId,
+    );
+    const have = new Set(existing.map((item) => String(item['achievementId'])));
+    const values: Record<string, number> = {
+      workouts: stats.workouts,
+      streak: stats.streak,
+      visitsMonth: stats.visits,
+      visitsTotal: stats.visitsTotal,
+    };
+    for (const def of ACHIEVEMENT_DEFS) {
+      if (have.has(def.id)) {
+        continue;
+      }
+      if ((values[def.metric] ?? 0) >= def.threshold) {
+        await this.store.create(TENANT_COLLECTION.gymMemberAchievements, {
+          userId,
+          achievementId: def.id,
+        });
+      }
+    }
   }
 }
 
@@ -570,3 +1283,69 @@ function toCheckInItem(item: Doc) {
     notes: (item['notes'] as string | null) ?? null,
   };
 }
+
+function monthPrefix(now = new Date()): string {
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function toMeasurement(item: Doc) {
+  const weight = numberOrNull(item['weight']);
+  const height = numberOrNull(item['height']);
+  return {
+    id: item.id,
+    date: String(item['date'] ?? item.createdAt),
+    weight,
+    height,
+    chest: numberOrNull(item['chest']),
+    waist: numberOrNull(item['waist']),
+    hips: numberOrNull(item['hips']),
+    bicep: numberOrNull(item['bicep']),
+    thigh: numberOrNull(item['thigh']),
+    calf: numberOrNull(item['calf']),
+    bodyFatPercentage: numberOrNull(item['bodyFatPercentage']),
+    muscleMassKg: numberOrNull(item['muscleMassKg']),
+    bmi: numberOrNull(item['bmi']) ?? computeBmi(weight, height),
+    notes: (item['notes'] as string | null) ?? null,
+  };
+}
+
+function toPhoto(item: Doc) {
+  return {
+    id: item.id,
+    pose: String(item['pose'] ?? 'front'),
+    storagePath: String(item['storagePath'] ?? ''),
+    contentType: String(item['contentType'] ?? 'image/jpeg'),
+    takenAt: String(item['takenAt'] ?? item.createdAt),
+  };
+}
+
+function toThread(item: Doc) {
+  return {
+    id: item.id,
+    memberId: String(item['memberId'] ?? ''),
+    trainerId: (item['trainerId'] as string | null) ?? null,
+    trainerName: (item['trainerName'] as string | null) ?? null,
+    lastMessageAt: (item['lastMessageAt'] as string | null) ?? null,
+  };
+}
+
+function toMessage(item: Doc) {
+  return {
+    id: item.id,
+    threadId: String(item['threadId'] ?? ''),
+    senderId: String(item['senderId'] ?? ''),
+    body: String(item['body'] ?? ''),
+    createdAt: item.createdAt,
+  };
+}
+
+function toMealLog(item: Doc) {
+  return {
+    id: item.id,
+    planId: String(item['planId'] ?? ''),
+    mealIndex: Number(item['mealIndex'] ?? 0),
+    date: String(item['date'] ?? item.createdAt).slice(0, 10),
+  };
+}
+
+export { computeBmi, computeStreak };
