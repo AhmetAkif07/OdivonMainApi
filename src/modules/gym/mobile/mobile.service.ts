@@ -1242,6 +1242,7 @@ function toWorkoutLog(item: Doc) {
     id: item.id,
     planId: String(item['planId'] ?? ''),
     planTitle: (item['planTitle'] as string | null) ?? null,
+    exerciseId: (item['exerciseId'] as string | null) ?? null,
     exerciseName: String(item['exerciseName'] ?? ''),
     performedAt: String(item['performedAt'] ?? item.createdAt),
     sets: Array.isArray(item['sets']) ? item['sets'] : [],
