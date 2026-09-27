@@ -89,6 +89,16 @@ Do not point emulator hosts at production.
 
 These endpoints still run `FirebaseAuthGuard` → `TenantGuard` → `ModuleGuard`. Missing module → `403 FORBIDDEN_MODULE`. Authorized but unimplemented → `501 NOT_IMPLEMENTED`.
 
+## Spa
+
+`/api/v1/spa/*` serves the OdivonSPA client (replaces its direct Firestore access). Register with
+`module: 'spa'`, then call `GET /api/v1/spa/me` once: it seeds the default spa roles
+(`roles/spa-admin|spa-reception|spa-therapist`), `spaSettings` and the owner's staff card. Staff
+invited via `POST /spa/staff/invite` get `roleIds: ['spa-<role>']`, so permissions go through the
+normal `PermissionGuard`. Data lives under `tenants/{tenantId}/spa*`; dates are ISO strings.
+A signed-in Firebase user without a profile (client sign-up, Google) creates a spa tenant with
+`POST /api/v1/spa/onboarding`. `npm run test:spa-e2e` runs the spa flows against the emulators.
+
 ## Firebase
 
 - Project: [odivon-main-api-a2095](https://console.firebase.google.com/project/odivon-main-api-a2095/overview)

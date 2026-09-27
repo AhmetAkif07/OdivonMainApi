@@ -3,7 +3,7 @@ import { PRODUCT_MODULES, ProductModule } from './constants';
 export const PERMISSION_ACTIONS = ['view', 'create', 'update', 'delete'] as const;
 export type PermissionAction = (typeof PERMISSION_ACTIONS)[number];
 
-export type PermissionGroup = 'clinic' | 'finance' | 'stock' | 'definitions' | 'admin' | 'gym';
+export type PermissionGroup = 'clinic' | 'finance' | 'stock' | 'definitions' | 'admin' | 'gym' | 'spa';
 
 export interface PermissionResourceDefinition {
   key: string;
@@ -62,6 +62,21 @@ export const PERMISSION_RESOURCES = [
   { key: 'sms', label: 'SMS', group: 'gym', modules: ['gym'] },
   { key: 'eInvoice', label: 'E-fatura', group: 'gym', modules: ['gym'] },
   { key: 'saas', label: 'SaaS abonelik', group: 'gym', modules: ['gym'] },
+  { key: 'spaCustomers', label: 'Müşteriler', group: 'spa', modules: ['spa'] },
+  { key: 'spaAppointments', label: 'Randevular', group: 'spa', modules: ['spa'] },
+  { key: 'spaCatalog', label: 'Hizmet / Oda / Ürün', group: 'spa', modules: ['spa'] },
+  { key: 'spaStock', label: 'Stok hareketleri', group: 'spa', modules: ['spa'] },
+  { key: 'spaStaff', label: 'Personel', group: 'spa', modules: ['spa'] },
+  { key: 'spaLeaves', label: 'İzinler', group: 'spa', modules: ['spa'] },
+  { key: 'spaTasks', label: 'Görevler', group: 'spa', modules: ['spa'] },
+  { key: 'spaPackages', label: 'Paketler', group: 'spa', modules: ['spa'] },
+  { key: 'spaSessions', label: 'Seanslar / POS', group: 'spa', modules: ['spa'] },
+  { key: 'spaPayments', label: 'Ödemeler', group: 'spa', modules: ['spa'] },
+  { key: 'spaExpenses', label: 'Giderler', group: 'spa', modules: ['spa'] },
+  { key: 'spaCashRegister', label: 'Kasa', group: 'spa', modules: ['spa'] },
+  { key: 'spaCommissions', label: 'Prim / Komisyon', group: 'spa', modules: ['spa'] },
+  { key: 'spaSettings', label: 'İşletme ayarları', group: 'spa', modules: ['spa'] },
+  { key: 'spaAudit', label: 'İşlem geçmişi', group: 'spa', modules: ['spa'] },
 ] as const satisfies readonly PermissionResourceDefinition[];
 
 export type PermissionResource = (typeof PERMISSION_RESOURCES)[number]['key'];
@@ -75,6 +90,7 @@ export const PERMISSION_GROUP_LABELS: Record<PermissionGroup, string> = {
   definitions: 'Tanımlar',
   admin: 'Yönetim',
   gym: 'Salon',
+  spa: 'Spa',
 };
 
 export function resourcesForModules(

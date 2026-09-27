@@ -6,6 +6,7 @@
   "scripts": {
     "dev:worker": "wrangler dev --port 8799",
     "check:worker": "wrangler deploy --dry-run",
+    "test:spa-e2e": "npm run build && firebase emulators:exec --project demo-odivon --only auth,firestore \"node scripts/spa-e2e-emulator.mjs\"",
     "test:worker": "wrangler deploy --dry-run --outdir .wrangler/smoke && node scripts/smoke-worker.mjs",
     "deploy:worker": "wrangler deploy",
     "start": "nest start",

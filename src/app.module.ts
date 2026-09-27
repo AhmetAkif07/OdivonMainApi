@@ -15,6 +15,7 @@ import { TenantModule } from './modules/tenant/tenant.module';
 import { VetModule } from './modules/vet/vet.module';
 import { FarmModule } from './modules/farm/farm.module';
 import { GymModule } from './modules/gym/gym.module';
+import { SpaModule } from './modules/spa/spa.module';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { GymModule } from './modules/gym/gym.module';
     VetModule,
     FarmModule,
     GymModule,
+    SpaModule,
     ThrottlerModule.forRoot({
       throttlers: [{ ttl: 60_000, limit: 120 }],
     }),
