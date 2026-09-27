@@ -17,13 +17,16 @@ import {
   CreateMobileAppointmentDto,
   CreateProgressPhotoDto,
   CreateWaterLogDto,
+  CompleteWorkoutSessionDto,
   CreateWorkoutLogDto,
   PatchMobileMeDto,
+  StartWorkoutSessionDto,
   PaymentIntentDto,
   RenewMembershipDto,
   SendMessageDto,
 } from './mobile.dto';
 import { ACHIEVEMENT_DEFS, computeBmi, computeStreak } from './mobile.stats';
+import { settleWorkoutSession } from './workout-session.math';
 
 const QR_TTL_MS = 45_000;
 type Doc = BaseDocument & Record<string, unknown>;
@@ -308,6 +311,113 @@ export class GymMobileService {
       ...toWorkoutLog(created),
       previous: previousSet(logs, dto.exerciseName.trim(), performedAt),
     };
+  }
+
+  async startWorkoutSession(dto: StartWorkoutSessionDto) {
+    const plan = await this.ownWorkout(dto.planId);
+    const userId = this.store.userId();
+    const ref = this.store.collection(TENANT_COLLECTION.gymWorkoutSessions).doc(dto.sessionId);
+    const existing = await ref.get();
+    const current = existing.exists ? (existing.data() as Doc) : null;
+    if (current && !current.deletedAt) {
+      return toWorkoutSession(current, null);
+    }
+    const item = {
+      ...createBaseFields(dto.sessionId, userId),
+      tenantId: this.store.tenantId(),
+      userId,
+      planId: plan.id,
+      planTitle: (plan['title'] as string | null) ?? null,
+      startedAt: dto.startedAt,
+      status: 'active',
+      settled: false,
+    };
+    await ref.set(item);
+    return toWorkoutSession(item as Doc, null);
+  }
+
+  async listWorkoutSessions() {
+    const userId = this.store.userId();
+    const items = (await this.store.list<Doc>(TENANT_COLLECTION.gymWorkoutSessions))
+      .filter((item) => item['userId'] === userId)
+      .sort((left, right) =>
+        String(right['completedAt'] ?? right['startedAt'] ?? right.createdAt).localeCompare(
+          String(left['completedAt'] ?? left['startedAt'] ?? left.createdAt),
+        ),
+      );
+    return items.map((item) => toWorkoutSession(item, null));
+  }
+
+  async getWorkoutSession(id: string) {
+    const item = await this.ownSession(id);
+    return toWorkoutSession(item, null);
+  }
+
+  async completeWorkoutSession(id: string, dto: CompleteWorkoutSessionDto) {
+    const current = await this.ownSession(id);
+    if (current['status'] === 'completed' && current['settled'] === true) {
+      const stats = await this.buildStats();
+      return toWorkoutSession(current, stats.streak);
+    }
+    const userId = this.store.userId();
+    const [logs, measurements, sessions] = await Promise.all([
+      this.store.list<Doc>(TENANT_COLLECTION.gymWorkoutLogs),
+      this.store.list<Doc>(TENANT_COLLECTION.gymMeasurements),
+      this.store.list<Doc>(TENANT_COLLECTION.gymWorkoutSessions),
+    ]);
+    const priorBestKg: Record<string, number> = {};
+    for (const log of logs.filter((item) => item['userId'] === userId)) {
+      const name = String(log['exerciseName'] ?? '');
+      const at = new Date(String(log['performedAt'] ?? log.createdAt)).getTime();
+      if (Number.isNaN(at) || at >= new Date(dto.startedAt).getTime()) continue;
+      const sets = Array.isArray(log['sets']) ? (log['sets'] as Record<string, unknown>[]) : [];
+      for (const set of sets) {
+        if (set['completed'] === false) continue;
+        const kg = numberOrNull(set['kg']);
+        if (kg == null) continue;
+        if (priorBestKg[name] == null || kg > priorBestKg[name]) priorBestKg[name] = kg;
+      }
+    }
+    const mine = measurements
+      .filter((item) => item['userId'] === userId)
+      .sort((left, right) => String(right['date'] ?? right.createdAt).localeCompare(String(left['date'] ?? left.createdAt)));
+    const settled = settleWorkoutSession({
+      startedAt: dto.startedAt,
+      completedAt: dto.completedAt,
+      pausedDurationMs: dto.pausedDurationMs,
+      restDurationMs: dto.restDurationMs,
+      sets: dto.sets.map((set) => ({
+        exerciseName: set.exerciseName,
+        weight: set.weight,
+        reps: set.reps,
+        status: set.status,
+      })),
+      priorBestKg,
+      measurementKg: numberOrNull(mine[0]?.['weight']),
+    });
+    const updated = await this.store.update<Doc>(
+      TENANT_COLLECTION.gymWorkoutSessions,
+      id,
+      ErrorCode.GYM_WORKOUT_NOT_FOUND,
+      'Session not found',
+      {
+        status: 'completed',
+        settled: true,
+        startedAt: dto.startedAt,
+        completedAt: dto.completedAt,
+        pausedDurationMs: dto.pausedDurationMs,
+        restDurationMs: dto.restDurationMs,
+        sets: dto.sets,
+        volumeKg: settled.volumeKg,
+        prCount: settled.prCount,
+        activeDurationMs: settled.activeDurationMs,
+        calories: settled.calories,
+        weekVolumeDeltaPercent: weekVolumeDelta(sessions, userId, String(current['planId'] ?? ''), settled.volumeKg, dto.completedAt),
+      },
+    );
+    await this.unlockAchievements();
+    const stats = await this.buildStats();
+    return toWorkoutSession(updated, stats.streak);
   }
 
   async listAppointments() {
@@ -967,6 +1077,19 @@ export class GymMobileService {
     return this.members.getByIdOrThrow(this.store.userId());
   }
 
+  private async ownSession(id: string) {
+    const item = await this.store.getOrThrow<Doc>(
+      TENANT_COLLECTION.gymWorkoutSessions,
+      id,
+      ErrorCode.GYM_WORKOUT_NOT_FOUND,
+      'Session not found',
+    );
+    if (item['userId'] !== this.store.userId()) {
+      throw new AppException(ErrorCode.GYM_WORKOUT_NOT_FOUND, 'Session not found');
+    }
+    return item;
+  }
+
   private async ownWorkout(id: string) {
     const plan = await this.store.getOrThrow<Doc>(
       TENANT_COLLECTION.gymWorkoutPlans,
@@ -1084,19 +1207,24 @@ export class GymMobileService {
   }
 
   private async buildStats(userId = this.store.userId(), visitsThisMonth?: number, measurements?: Doc[]) {
-    const [access, measureDocs, workoutLogs] = await Promise.all([
+    const [access, measureDocs, sessions] = await Promise.all([
       this.store.list<Doc>(TENANT_COLLECTION.gymAccessLogs),
       measurements ? Promise.resolve(measurements) : this.store.list<Doc>(TENANT_COLLECTION.gymMeasurements),
-      this.store.list<Doc>(TENANT_COLLECTION.gymWorkoutLogs),
+      this.store.list<Doc>(TENANT_COLLECTION.gymWorkoutSessions),
     ]);
     const month = monthPrefix();
-    const myWorkouts = workoutLogs.filter(
-      (item) => item['userId'] === userId && String(item['performedAt'] ?? item.createdAt).startsWith(month),
+    const myWorkouts = sessions.filter(
+      (item) =>
+        item['userId'] === userId &&
+        item['status'] === 'completed' &&
+        String(item['completedAt'] ?? '').startsWith(month),
     );
     const myAccess = access.filter((item) => isGrantedIn(item, userId));
     const visitsMonth = visitsThisMonth ?? countVisitsThisMonth(access, userId);
     const dates = [
-      ...myWorkouts.map((item) => String(item['performedAt'] ?? item.createdAt)),
+      ...sessions
+        .filter((item) => item['userId'] === userId && item['status'] === 'completed')
+        .map((item) => String(item['completedAt'] ?? item.createdAt)),
       ...myAccess.map((item) => String(item['timestamp'] ?? item.createdAt)),
     ];
     const mine = measureDocs.filter((item) => item['userId'] === userId);
@@ -1243,6 +1371,39 @@ function toWorkoutSummary(item: Doc) {
     endDate: (item['endDate'] as string | null | undefined) ?? null,
     exerciseCount: Array.isArray(item['exercises']) ? item['exercises'].length : 0,
   };
+}
+
+function toWorkoutSession(item: Doc, streak: number | null) {
+  const calories = item['calories'];
+  return {
+    id: item.id,
+    planId: String(item['planId'] ?? ''),
+    title: (item['planTitle'] as string | null) ?? null,
+    status: String(item['status'] ?? 'active'),
+    startedAt: (item['startedAt'] as string | null) ?? item.createdAt,
+    completedAt: (item['completedAt'] as string | null) ?? null,
+    pausedDurationMs: numberOrNull(item['pausedDurationMs']) ?? 0,
+    restDurationMs: numberOrNull(item['restDurationMs']) ?? 0,
+    activeDurationMs: numberOrNull(item['activeDurationMs']),
+    volumeKg: numberOrNull(item['volumeKg']),
+    prCount: numberOrNull(item['prCount']),
+    calories: calories && typeof calories === 'object' ? calories : null,
+    sets: Array.isArray(item['sets']) ? item['sets'] : [],
+    streak,
+    weekVolumeDeltaPercent: numberOrNull(item['weekVolumeDeltaPercent']),
+  };
+}
+
+function weekVolumeDelta(sessions: Doc[], userId: string, planId: string, volumeKg: number, completedAt: string): number | null {
+  const end = new Date(completedAt).getTime();
+  const start = end - 7 * 86_400_000;
+  const previous = sessions
+    .filter((item) => item['userId'] === userId && item['planId'] === planId && item['status'] === 'completed')
+    .map((item) => ({ at: new Date(String(item['completedAt'] ?? '')).getTime(), volume: numberOrNull(item['volumeKg']) }))
+    .filter((item) => !Number.isNaN(item.at) && item.at >= start && item.at < end && item.volume != null)
+    .sort((left, right) => right.at - left.at)[0];
+  if (!previous || previous.volume == null || previous.volume <= 0) return null;
+  return Math.round(((volumeKg - previous.volume) / previous.volume) * 1000) / 10;
 }
 
 function toWorkoutLog(item: Doc) {

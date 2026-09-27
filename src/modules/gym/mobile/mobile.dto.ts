@@ -82,6 +82,66 @@ export class CreateWorkoutLogDto {
   performedAt?: string;
 }
 
+export class StartWorkoutSessionDto {
+  @IsString()
+  sessionId!: string;
+
+  @IsString()
+  planId!: string;
+
+  @IsString()
+  startedAt!: string;
+}
+
+export class CompleteWorkoutSessionSetDto {
+  @IsString()
+  exerciseName!: string;
+
+  @IsOptional()
+  @IsString()
+  exerciseId?: string;
+
+  @IsInt()
+  @Min(1)
+  index!: number;
+
+  @IsNumber()
+  @Min(0)
+  weight!: number;
+
+  @IsInt()
+  @Min(0)
+  reps!: number;
+
+  @IsIn(['pending', 'completed', 'skipped'])
+  status!: 'pending' | 'completed' | 'skipped';
+
+  @IsOptional()
+  @IsString()
+  completedAt?: string;
+}
+
+export class CompleteWorkoutSessionDto {
+  @IsString()
+  startedAt!: string;
+
+  @IsString()
+  completedAt!: string;
+
+  @IsInt()
+  @Min(0)
+  pausedDurationMs!: number;
+
+  @IsInt()
+  @Min(0)
+  restDurationMs!: number;
+
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CompleteWorkoutSessionSetDto)
+  sets!: CompleteWorkoutSessionSetDto[];
+}
+
 export class CancelMobileAppointmentDto {
   @IsOptional()
   @IsString()

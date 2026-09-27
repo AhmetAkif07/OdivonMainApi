@@ -62,6 +62,7 @@ export const TENANT_COLLECTION = {
   gymSaasSubscription: 'gymSaasSubscription',
   gymQrTokens: 'gymQrTokens',
   gymWorkoutLogs: 'gymWorkoutLogs',
+  gymWorkoutSessions: 'gymWorkoutSessions',
   gymMemberNotifications: 'gymMemberNotifications',
   gymBodyPhotos: 'gymBodyPhotos',
   gymClassWaitlist: 'gymClassWaitlist',

@@ -12,8 +12,10 @@ import {
   CreateMobileAppointmentDto,
   CreateProgressPhotoDto,
   CreateWaterLogDto,
+  CompleteWorkoutSessionDto,
   CreateWorkoutLogDto,
   PatchMobileMeDto,
+  StartWorkoutSessionDto,
   PaymentIntentDto,
   RenewMembershipDto,
   SendMessageDto,
@@ -89,6 +91,26 @@ export class GymMobileController {
   @Post('workout-logs')
   createWorkoutLog(@Body() dto: CreateWorkoutLogDto) {
     return this.mobile.createWorkoutLog(dto);
+  }
+
+  @Post('workout-sessions')
+  startWorkoutSession(@Body() dto: StartWorkoutSessionDto) {
+    return this.mobile.startWorkoutSession(dto);
+  }
+
+  @Get('workout-sessions')
+  workoutSessions() {
+    return this.mobile.listWorkoutSessions();
+  }
+
+  @Get('workout-sessions/:id')
+  workoutSession(@Param('id') id: string) {
+    return this.mobile.getWorkoutSession(id);
+  }
+
+  @Post('workout-sessions/:id/complete')
+  completeWorkoutSession(@Param('id') id: string, @Body() dto: CompleteWorkoutSessionDto) {
+    return this.mobile.completeWorkoutSession(id, dto);
   }
 
   @Get('appointments')
