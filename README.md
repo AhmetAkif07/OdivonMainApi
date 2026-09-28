@@ -1,6 +1,6 @@
 # Odivon Main API
 
-NestJS 11 modular monolith. Firebase Authentication + Cloud Firestore. Product modules: **vet** (core), **farm** / **gym** (skeletons).
+NestJS 11 modular monolith. Firebase Authentication + Cloud Firestore. Product modules: **vet** (core), **farm**, **gym**, **spa**.
 
 ## Architecture
 
@@ -85,9 +85,20 @@ Do not point emulator hosts at production.
 
 `GET /api/v1/identity/me` returns Auth identity + Firestore profile + tenant summary. It does not build the response from custom claims alone.
 
-## Farm / Gym
+## Farm
 
-These endpoints still run `FirebaseAuthGuard` → `TenantGuard` → `ModuleGuard`. Missing module → `403 FORBIDDEN_MODULE`. Authorized but unimplemented → `501 NOT_IMPLEMENTED`.
+`/api/v1/farm/*` serves the OdivonFARM client (replaces its direct Firestore access). A signed-in
+Firebase user without a profile creates a farm tenant (14-day trial) with `POST /api/v1/farm/onboarding`;
+`GET /api/v1/farm/me` returns the farm, the caller's farm role and the subscription. The farm's
+collections are served generically under `/farm/data/{collection}` (list, get, create, batch, update,
+soft delete, restore, permanent delete) and live in `tenants/{tenantId}/farm*`. Farm roles
+(`admin|yonetici|veteriner|saha|muhasebe|okuyucu`) sit on the member card `farmMembers/{uid}`; the owner is
+always `admin`, `okuyucu` is read-only, and only admins manage members (`/farm/members`), settings and the plan.
+E-mails are queued in `tenants/{tenantId}/farmMailQueue` (`POST /farm/mail`).
+
+## Gym
+
+These endpoints run `FirebaseAuthGuard` → `TenantGuard` → `ModuleGuard`. Missing module → `403 FORBIDDEN_MODULE`.
 
 ## Spa
 

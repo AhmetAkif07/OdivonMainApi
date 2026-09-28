@@ -4,12 +4,14 @@ import { ModuleGuard } from './module.guard';
 import { TenantContext } from '../tenancy/tenant.context';
 import { ErrorCode } from '../errors/error-codes';
 import { AppException } from '../errors/app.exception';
-import { FarmController } from '../../modules/farm/farm.controller';
+import { FarmCoreController } from '../../modules/farm/core/farm-core.controller';
+import { FarmDataController } from '../../modules/farm/data/farm-data.controller';
+import { REQUIRED_MODULE_KEY } from './module.decorator';
 
 function contextStub(): ExecutionContext {
   return {
-    getHandler: () => FarmController.prototype.health,
-    getClass: () => FarmController,
+    getHandler: () => FarmCoreController.prototype.me,
+    getClass: () => FarmCoreController,
   } as unknown as ExecutionContext;
 }
 
@@ -59,15 +61,10 @@ describe('ModuleGuard', () => {
   });
 });
 
-describe('FarmController', () => {
-  it('returns NOT_IMPLEMENTED after authorization succeeds', () => {
-    const controller = new FarmController();
-    try {
-      controller.health();
-      throw new Error('expected NOT_IMPLEMENTED');
-    } catch (error) {
-      expect(error).toBeInstanceOf(AppException);
-      expect((error as AppException).code).toBe(ErrorCode.NOT_IMPLEMENTED);
-    }
+describe('farm controllers', () => {
+  it('require the farm module', () => {
+    const reflector = new Reflector();
+    expect(reflector.get(REQUIRED_MODULE_KEY, FarmCoreController)).toBe('farm');
+    expect(reflector.get(REQUIRED_MODULE_KEY, FarmDataController)).toBe('farm');
   });
 });
