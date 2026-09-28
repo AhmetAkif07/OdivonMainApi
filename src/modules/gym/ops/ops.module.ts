@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { GymAccessModule } from '../access/access.module';
 import { GymMembersModule } from '../members/members.module';
 import { GymPackagesModule } from '../packages/packages.module';
 import { GymStore } from '../shared/gym-store';
@@ -31,7 +32,7 @@ import {
 import { GymSportService } from './sport.service';
 
 @Module({
-  imports: [GymMembersModule, GymPackagesModule],
+  imports: [GymMembersModule, GymPackagesModule, GymAccessModule],
   controllers: [
     GymClassesController,
     GymAppointmentsController,

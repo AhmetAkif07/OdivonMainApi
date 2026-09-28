@@ -55,6 +55,23 @@
         { "fieldPath": "createdAt", "order": "DESCENDING" },
         { "fieldPath": "id", "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "gymDeviceCommands",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "gateId", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "gymDeviceCommands",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "gateId", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "leaseUntil", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

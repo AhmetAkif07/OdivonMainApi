@@ -19,7 +19,7 @@ describe('GymOpsService.scan token', () => {
     jest.resetAllMocks();
     store.create.mockImplementation(async (_name: string, fields: object) => ({ id: 'log', ...fields }));
     packages.list.mockResolvedValue([]);
-    service = new GymOpsService(store as never, members as never, packages as never);
+    service = new GymOpsService(store as never, members as never, packages as never, {} as never);
   });
 
   it('denies an expired QR token', async () => {

@@ -71,7 +71,13 @@ describe('GymMobileService', () => {
     }));
     store.save.mockImplementation(async (_name: string, item: object) => item);
     staff.getByIdOrThrow.mockRejectedValue(new Error('missing'));
-    service = new GymMobileService(store as never, members as never, packages as never, staff as never);
+    service = new GymMobileService(
+      store as never,
+      members as never,
+      packages as never,
+      staff as never,
+      { syncMemberSafely: jest.fn() } as never,
+    );
   });
 
   it('builds a self-scoped home payload', async () => {

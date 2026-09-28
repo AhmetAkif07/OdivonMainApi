@@ -11,6 +11,7 @@ import {
   IsString,
 } from 'class-validator';
 import { PagingQueryDto } from '../../../shared/http/paging.dto';
+import { GATE_PROTOCOLS, GateProtocol } from '../access/access-rules';
 
 export class GymListQueryDto extends PagingQueryDto {
   @ApiPropertyOptional()
@@ -437,6 +438,14 @@ export class GymRecordDto {
   @IsOptional()
   @IsNumber()
   port?: number | null;
+
+  @IsOptional()
+  @IsIn(GATE_PROTOCOLS)
+  protocol?: GateProtocol;
+
+  @IsOptional()
+  @IsString()
+  host?: string | null;
 
   @IsOptional()
   @IsString()

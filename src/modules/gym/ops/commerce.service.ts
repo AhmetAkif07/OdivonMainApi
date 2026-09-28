@@ -3,6 +3,7 @@ import { AppException } from '../../../shared/errors/app.exception';
 import { ErrorCode } from '../../../shared/errors/error-codes';
 import { TENANT_COLLECTION } from '../../../shared/firebase/firestore-path';
 import { BaseDocument } from '../../../shared/firestore/base-document';
+import { AccessSyncService } from '../access/access-sync.service';
 import { MembersRepository } from '../members/members.repository';
 import { GymStore } from '../shared/gym-store';
 import { GymListQueryDto, GymRecordDto } from '../shared/ops.dto';
@@ -14,6 +15,7 @@ export class GymCommerceService {
   constructor(
     private readonly store: GymStore,
     private readonly members: MembersRepository,
+    private readonly accessSync: AccessSyncService,
   ) {}
 
   listDocuments(query: GymListQueryDto) {
@@ -121,6 +123,7 @@ export class GymCommerceService {
       membershipEndsAt: ends.toISOString(),
       walletBalance: method === 'wallet' ? Number((await this.members.getByIdOrThrow(userId)).walletBalance) : member.walletBalance,
     });
+    await this.accessSync.syncMemberSafely(updated);
     await this.store.create(TENANT_COLLECTION.gymAccountingEntries, {
       type: 'income',
       amount,
