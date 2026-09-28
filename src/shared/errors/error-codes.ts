@@ -90,6 +90,10 @@ export const ErrorCode = {
   SPA_INVALID: 'SPA_INVALID',
   SPA_PRECONDITION: 'SPA_PRECONDITION',
   SPA_FORBIDDEN: 'SPA_FORBIDDEN',
+  FARM_NOT_FOUND: 'FARM_NOT_FOUND',
+  FARM_INVALID: 'FARM_INVALID',
+  FARM_PRECONDITION: 'FARM_PRECONDITION',
+  FARM_FORBIDDEN: 'FARM_FORBIDDEN',
 } as const;
 
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
@@ -186,4 +190,8 @@ export const errorHttpStatus: Record<ErrorCode, number> = {
   SPA_INVALID: 400,
   SPA_PRECONDITION: 409,
   SPA_FORBIDDEN: 403,
+  FARM_NOT_FOUND: 404,
+  FARM_INVALID: 400,
+  FARM_PRECONDITION: 409,
+  FARM_FORBIDDEN: 403,
 };
