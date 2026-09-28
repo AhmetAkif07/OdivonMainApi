@@ -49,10 +49,23 @@ try {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
   });
   assert.equal(response.status, 400);
+  for (const authorization of [undefined, 'Bearer firebase-id-token', 'Agent malformed']) {
+    response = await worker.dispatchFetch('https://example.com/api/v1/gym/access/agents/work', {
+      headers: authorization ? { authorization } : {},
+    });
+    assert.equal(response.status, 401);
+    assert.equal((await response.json()).error.code, 'GYM_AGENT_UNAUTHORIZED');
+  }
+  response = await worker.dispatchFetch('https://example.com/api/v1/gym/access/agents/enroll', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
+  });
+  assert.equal(response.status, 400);
   response = await worker.dispatchFetch('https://example.com/docs-json');
   assert.equal(response.status, 200);
-  assert.ok((await response.json()).paths['/api/v1/identity/me']);
-  console.log('Workers smoke checks passed: mocked Firestore success/error, auth, validation, OpenAPI.');
+  const openApi = await response.json();
+  assert.ok(openApi.paths['/api/v1/identity/me']);
+  assert.ok(openApi.paths['/api/v1/gym/access/agents/work']);
+  console.log('Workers smoke checks passed: mocked Firestore success/error, auth, agent auth, validation, OpenAPI.');
 } finally {
   await worker.dispose();
 }

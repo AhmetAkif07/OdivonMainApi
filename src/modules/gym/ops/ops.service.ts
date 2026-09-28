@@ -1,7 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { ErrorCode } from '../../../shared/errors/error-codes';
 import { TENANT_COLLECTION } from '../../../shared/firebase/firestore-path';
+import { PaginatedResult } from '../../../shared/http/paginated.result';
 import { BaseDocument, isDeleted } from '../../../shared/firestore/base-document';
+import { AccessAgentsService } from '../access/access-agents.service';
+import { PROTOCOL_TABLE, resolveProtocol } from '../access/access-rules';
 import { GymMember } from '../members/member.entity';
 import { MembersRepository } from '../members/members.repository';
 import { isWithinCheckInWindow } from '../mobile/check-in-window';
@@ -17,22 +20,39 @@ export class GymOpsService {
     private readonly store: GymStore,
     private readonly members: MembersRepository,
     private readonly packages: PackagesRepository,
+    private readonly accessAgents: AccessAgentsService,
   ) {}
 
-  listGates(query: GymListQueryDto) {
-    return this.store.page<Doc>(TENANT_COLLECTION.gymTurnstileGates, query);
+  async listGates(query: GymListQueryDto) {
+    const page = await this.store.page<Doc>(TENANT_COLLECTION.gymTurnstileGates, query);
+    return new PaginatedResult(await this.accessAgents.decorateGates(page.items), page.limit, page.nextCursor);
   }
 
-  createGate(dto: GymRecordDto) {
-    return this.store.create(TENANT_COLLECTION.gymTurnstileGates, {
+  async createGate(dto: GymRecordDto) {
+    const protocol = resolveProtocol(dto.protocol);
+    const gate = await this.store.create<Doc>(TENANT_COLLECTION.gymTurnstileGates, {
       ...dto,
+      protocol,
+      host: dto.host ?? null,
+      port: dto.port ?? PROTOCOL_TABLE[protocol].defaultPort,
+      agentId: null,
+      lastSeenAt: null,
+      lastError: null,
       status: dto.status ?? 'offline',
       direction: dto.direction ?? 'both',
     });
+    return (await this.accessAgents.decorateGates([gate]))[0];
   }
 
-  updateGate(id: string, dto: GymRecordDto) {
-    return this.store.update(TENANT_COLLECTION.gymTurnstileGates, id, ErrorCode.GYM_GATE_NOT_FOUND, 'Gate not found', dto);
+  async updateGate(id: string, dto: GymRecordDto) {
+    const gate = await this.store.update<Doc>(
+      TENANT_COLLECTION.gymTurnstileGates,
+      id,
+      ErrorCode.GYM_GATE_NOT_FOUND,
+      'Gate not found',
+      dto.protocol ? { ...dto, protocol: resolveProtocol(dto.protocol) } : dto,
+    );
+    return (await this.accessAgents.decorateGates([gate]))[0];
   }
 
   removeGate(id: string) {

@@ -5,6 +5,7 @@ import { ErrorCode } from '../../../shared/errors/error-codes';
 import { TENANT_COLLECTION } from '../../../shared/firebase/firestore-path';
 import { BaseDocument, createBaseFields } from '../../../shared/firestore/base-document';
 import { GymMember } from '../members/member.entity';
+import { AccessSyncService } from '../access/access-sync.service';
 import { MembersRepository } from '../members/members.repository';
 import { GymPackage } from '../packages/package.entity';
 import { PackagesRepository } from '../packages/packages.repository';
@@ -38,6 +39,7 @@ export class GymMobileService {
     private readonly members: MembersRepository,
     private readonly packages: PackagesRepository,
     private readonly staff: StaffRepository,
+    private readonly accessSync: AccessSyncService,
   ) {}
 
   async home() {
@@ -1036,7 +1038,7 @@ export class GymMobileService {
     }
     const ends = new Date(base.getTime());
     ends.setDate(ends.getDate() + Number(pkg.durationDays ?? 30));
-    await this.members.save({
+    const renewed = await this.members.save({
       ...member,
       walletBalance: current - amount,
       membershipStatus: 'active',
@@ -1045,6 +1047,7 @@ export class GymMobileService {
       membershipStartsAt: now.toISOString(),
       membershipEndsAt: ends.toISOString(),
     });
+    await this.accessSync.syncMemberSafely(renewed);
     await this.store.create(TENANT_COLLECTION.gymWalletTx, {
       userId: member.uid,
       type: 'debit',

@@ -49,6 +49,7 @@ export const TENANT_COLLECTION = {
   gymTurnstileGates: 'gymTurnstileGates',
   gymAccessLogs: 'gymAccessLogs',
   gymDeviceCommands: 'gymDeviceCommands',
+  gymAccessAgents: 'gymAccessAgents',
   gymCampaigns: 'gymCampaigns',
   gymGuestMembers: 'gymGuestMembers',
   gymFacilities: 'gymFacilities',
@@ -133,6 +134,8 @@ export const TENANT_COLLECTION = {
 export const ROOT_COLLECTION = {
   users: 'users',
   tenants: 'tenants',
+  gymAgentIndex: 'gymAgentIndex',
+  gymAgentPairingCodes: 'gymAgentPairingCodes',
 } as const;
 
 export function tenantCollectionPath(tenantId: string, collection: string): string {

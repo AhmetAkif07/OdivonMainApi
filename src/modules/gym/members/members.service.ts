@@ -8,14 +8,19 @@ import {
   RenewMemberDto,
   UpdateMemberDto,
 } from './member.dto';
+import { AccessSyncService } from '../access/access-sync.service';
+import { GymMember } from './member.entity';
 import { MembersRepository } from './members.repository';
 
 @Injectable()
 export class MembersService {
-  constructor(private readonly members: MembersRepository) {}
+  constructor(
+    private readonly members: MembersRepository,
+    private readonly accessSync: AccessSyncService,
+  ) {}
 
-  create(dto: CreateMemberDto) {
-    return this.members.create(dto);
+  async create(dto: CreateMemberDto) {
+    return this.synced(await this.members.create(dto));
   }
 
   getById(id: string) {
@@ -27,12 +32,14 @@ export class MembersService {
     return paginateInMemory(items, query.limit ?? 100, query.cursor);
   }
 
-  update(id: string, dto: UpdateMemberDto) {
-    return this.members.update(id, dto);
+  async update(id: string, dto: UpdateMemberDto) {
+    return this.synced(await this.members.update(id, dto));
   }
 
   async remove(id: string) {
+    const member = await this.members.getByIdOrThrow(id);
     await this.members.softDelete(id);
+    await this.synced({ ...member, deletedAt: new Date().toISOString() });
     return { id };
   }
 
@@ -41,7 +48,7 @@ export class MembersService {
     const base = membershipEndDate(member.membershipEndsAt);
     base.setDate(base.getDate() + dto.durationDays);
     const note = `[Abonelik Yenileme]: ${dto.packageName} (${dto.durationDays} gün)`;
-    return this.members.save({
+    return this.saveSynced({
       ...member,
       membershipStatus: 'active',
       packageLabel: dto.packageName,
@@ -55,7 +62,7 @@ export class MembersService {
     const base = membershipEndDate(member.membershipEndsAt);
     base.setDate(base.getDate() + dto.freezeDays);
     const note = `[Donduruldu]: ${dto.freezeDays} gün (${dto.reason || 'Üye talebi'})`;
-    return this.members.save({
+    return this.saveSynced({
       ...member,
       membershipEndsAt: base.toISOString(),
       notes: joinNotes(member.notes, note),
@@ -65,11 +72,21 @@ export class MembersService {
   async cancel(id: string, dto: CancelMemberDto) {
     const member = await this.members.getByIdOrThrow(id);
     const note = `[İptal Edildi]: ${dto.reason || 'Yönetici tarafından iptal edildi.'}`;
-    return this.members.save({
+    return this.saveSynced({
       ...member,
       membershipStatus: 'cancelled',
       notes: joinNotes(member.notes, note),
     });
+  }
+
+  private async saveSynced(member: GymMember) {
+    return this.synced(await this.members.save(member));
+  }
+
+  /** Recomputes the member's desired state on every user-sync capable turnstile. */
+  private async synced<T extends GymMember>(member: T): Promise<T> {
+    await this.accessSync.syncMemberSafely(member);
+    return member;
   }
 }
 
