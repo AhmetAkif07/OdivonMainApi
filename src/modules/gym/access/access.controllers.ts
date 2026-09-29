@@ -1,11 +1,12 @@
 import { Body, Controller, Delete, Get, HttpCode, Injectable, Param, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiHeader, ApiTags } from '@nestjs/swagger';
-import { SkipThrottle, Throttle, ThrottlerGuard } from '@nestjs/throttler';
+import { SkipThrottle, Throttle } from '@nestjs/throttler';
 import { FirebaseAuthGuard } from '../../../shared/auth/firebase-auth.guard';
 import { RequireModule } from '../../../shared/authorization/module.decorator';
 import { ModuleGuard } from '../../../shared/authorization/module.guard';
 import { RoleGuard } from '../../../shared/authorization/role.guard';
 import { Roles } from '../../../shared/authorization/roles.decorator';
+import { ClientThrottlerGuard } from '../../../shared/http/client-throttler.guard';
 import { TenantGuard } from '../../../shared/tenancy/tenant.guard';
 import { AccessAgentsService } from './access-agents.service';
 import { AccessSyncService } from './access-sync.service';
@@ -24,14 +25,9 @@ import { AgentPrincipal, CurrentAgent } from './agent-principal';
 
 const AdminGuards = [FirebaseAuthGuard, TenantGuard, ModuleGuard, RoleGuard] as const;
 
-/** Rate-limits enrollment per client IP; Cloudflare puts the real address in cf-connecting-ip. */
+/** Rate-limits enrollment per client IP, also outside production where the global guard is off. */
 @Injectable()
-export class EnrollThrottlerGuard extends ThrottlerGuard {
-  protected override async getTracker(req: Record<string, unknown>): Promise<string> {
-    const headers = (req['headers'] ?? {}) as Record<string, string | undefined>;
-    return headers['cf-connecting-ip'] || String(req['ip'] ?? 'unknown');
-  }
-}
+export class EnrollThrottlerGuard extends ClientThrottlerGuard {}
 
 @ApiTags('gym-access-agents')
 @ApiBearerAuth()

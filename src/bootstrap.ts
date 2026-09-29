@@ -15,6 +15,8 @@ export async function bootstrap(options: { swaggerUi?: boolean } = {}): Promise<
   app.enableCors({
     origin: config.corsOrigin ?? true,
     credentials: true,
+    // Browsers cache the preflight (Chrome caps it at 2 h), so polling panels skip an OPTIONS per call.
+    maxAge: 7200,
   });
   app.setGlobalPrefix('api/v1', {
     exclude: [{ path: 'health', method: RequestMethod.GET }],

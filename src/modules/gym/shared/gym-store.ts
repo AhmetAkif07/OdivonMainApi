@@ -10,9 +10,11 @@ import {
   touchBaseFields,
 } from '../../../shared/firestore/base-document';
 import { paginateInMemory } from '../../../shared/http/paginate-memory';
-import { PagingQueryDto } from '../../../shared/http/paging.dto';
+import { decodeCursor, PagingQueryDto, resolveLimit } from '../../../shared/http/paging.dto';
 import { TenantContext } from '../../../shared/tenancy/tenant.context';
 import { gymCollection, listUndeleted } from './gym-collection';
+
+const RECENT_PAGE_SLACK = 20;
 
 @Injectable()
 export class GymStore {
@@ -61,6 +63,35 @@ export class GymStore {
     const items = await this.list<T>(name);
     const filtered = filter ? items.filter(filter) : items;
     return paginateInMemory(filtered, query.limit ?? 100, query.cursor);
+  }
+
+  /**
+   * Newest-first page that reads only about one page of documents (ordered by `createdAt`)
+   * instead of the whole collection; for large, frequently polled collections such as logs.
+   * The cursor format matches `page`.
+   */
+  async pageRecent<T extends BaseDocument>(name: string, query: PagingQueryDto) {
+    const limit = resolveLimit(query.limit ?? 100);
+    let recent = this.collection(name).orderBy('createdAt', 'desc');
+    if (query.cursor) {
+      let createdAt: string;
+      try {
+        createdAt = decodeCursor(query.cursor).createdAt;
+      } catch {
+        throw new AppException(ErrorCode.VALIDATION_ERROR, 'Invalid pagination cursor');
+      }
+      recent = recent.where('createdAt', '<=', createdAt);
+    }
+    // Headroom for soft-deleted rows and for rows sharing the cursor's timestamp.
+    const snapshot = await recent.limit(limit + 1 + RECENT_PAGE_SLACK).get();
+    const items = snapshot.docs
+      .map((doc) => doc.data() as T)
+      .filter((item) => !isDeleted(item))
+      .sort(
+        (left, right) =>
+          (right.createdAt ?? '').localeCompare(left.createdAt ?? '') || (right.id ?? '').localeCompare(left.id ?? ''),
+      );
+    return paginateInMemory(items, limit, query.cursor);
   }
 
   async update<T extends BaseDocument>(

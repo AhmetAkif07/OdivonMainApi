@@ -71,6 +71,12 @@ export class AccessRepository {
     return snapshot.docs.map((doc) => doc.data() as GymMember);
   }
 
+  /** Aggregation count: billed per 1000 index entries instead of per document. */
+  async countSyncDocs(tenantId: string, gateId: string, status: string): Promise<number> {
+    const snapshot = await this.syncDocs(tenantId).where('gateId', '==', gateId).where('status', '==', status).count().get();
+    return snapshot.data().count;
+  }
+
   async listSyncDocs(tenantId: string): Promise<AccessDoc[]> {
     const snapshot = await this.syncDocs(tenantId).where('kind', '==', SYNC_KIND).get();
     return snapshot.docs.map((doc) => withId(doc.id, doc.data()));

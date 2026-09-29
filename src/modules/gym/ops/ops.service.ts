@@ -60,10 +60,11 @@ export class GymOpsService {
   }
 
   listAccessLogs(query: GymListQueryDto) {
-    return this.store.page<Doc>(TENANT_COLLECTION.gymAccessLogs, query, (item) => {
-      if (query.userId && item['userId'] !== query.userId) return false;
-      return true;
-    });
+    if (!query.userId) {
+      // Polled every few seconds by the panel: read only the newest page, not the whole log.
+      return this.store.pageRecent<Doc>(TENANT_COLLECTION.gymAccessLogs, query);
+    }
+    return this.store.page<Doc>(TENANT_COLLECTION.gymAccessLogs, query, (item) => item['userId'] === query.userId);
   }
 
   createAccessLog(dto: GymRecordDto) {

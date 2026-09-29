@@ -120,15 +120,26 @@ export class AccessSyncService {
     return paginateInMemory(filtered, query.limit ?? 100, query.cursor);
   }
 
+  /**
+   * Counts per gate and status with aggregation queries: the panel polls this, and reading every
+   * desired-state document (one per member and gate) on each poll would cost thousands of reads.
+   */
   async summary() {
-    const docs = await this.repo.listSyncDocs(this.tenantContext.getTenantId());
+    const tenantId = this.tenantContext.getTenantId();
+    const gates = (await this.repo.listGates(tenantId)).filter((gate) => gateCapabilities(gate['protocol']).userSync);
+    const counts = await Promise.all(
+      gates.flatMap((gate) =>
+        SYNC_STATUSES.map(async (status) => ({
+          gateId: gate.id,
+          status,
+          count: await this.repo.countSyncDocs(tenantId, gate.id, status),
+        })),
+      ),
+    );
     const result: Record<string, Record<SyncStatus, number>> = {};
-    for (const doc of docs) {
-      const gateId = String(doc['gateId'] ?? '');
-      const status = doc['status'] as SyncStatus;
-      if (!gateId || !SYNC_STATUSES.includes(status)) continue;
+    for (const { gateId, status, count } of counts) {
       result[gateId] ??= { pending: 0, delivered: 0, applied: 0, error: 0 };
-      result[gateId][status]++;
+      result[gateId][status] = count;
     }
     return result;
   }

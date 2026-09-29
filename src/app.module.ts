@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core';
-import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { ThrottlerModule } from '@nestjs/throttler';
+import { ClientThrottlerGuard } from './shared/http/client-throttler.guard';
 import { ValidationPipe } from '@nestjs/common';
 import { AuditModule } from './shared/audit/audit.module';
 import { AuthorizationModule } from './shared/authorization/authorization.module';
@@ -32,7 +33,8 @@ import { SpaModule } from './modules/spa/spa.module';
     GymModule,
     SpaModule,
     ThrottlerModule.forRoot({
-      throttlers: [{ ttl: 60_000, limit: 120 }],
+      // Per client IP: a front desk behind one NAT runs several panels plus the edge agent.
+      throttlers: [{ ttl: 60_000, limit: 600 }],
     }),
   ],
   providers: [
@@ -47,7 +49,7 @@ import { SpaModule } from './modules/spa/spa.module';
     { provide: APP_FILTER, useClass: GlobalExceptionFilter },
     { provide: APP_INTERCEPTOR, useClass: ResponseInterceptor },
     ...(process.env.NODE_ENV === 'production'
-      ? [{ provide: APP_GUARD, useClass: ThrottlerGuard }]
+      ? [{ provide: APP_GUARD, useClass: ClientThrottlerGuard }]
       : []),
   ],
 })

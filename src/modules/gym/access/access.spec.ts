@@ -159,6 +159,10 @@ class FakeQuery {
   async get() {
     return this.snapshotQuery();
   }
+
+  count() {
+    return { get: async () => ({ data: () => ({ count: this.snapshotQuery().size }) }) };
+  }
 }
 
 function matches(data: Data, filter: Filter) {
