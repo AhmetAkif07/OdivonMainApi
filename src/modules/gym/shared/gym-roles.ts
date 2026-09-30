@@ -47,6 +47,7 @@ export const GYM_ROLE_PERMISSIONS: Record<GymStaffRoleKey, PermissionMap> = {
     sms: [...ALL],
     eInvoice: [...ALL],
     saas: ['view'],
+    gymAudit: ['view'],
     users: ['view'],
   },
   reception: {

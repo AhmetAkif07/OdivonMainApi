@@ -14,6 +14,7 @@ import {
   AccessSyncController,
 } from './access/access.controllers';
 import { AgentAuthGuard } from './access/agent-auth.guard';
+import { GymAuditController } from './audit/gym-audit.controller';
 import { BranchesController } from './branches/branches.controller';
 import { GymController } from './gym.controller';
 import { GymInfoController } from './info/gym-info.controller';
@@ -71,6 +72,7 @@ const STAFF_CONTROLLERS: Type[] = [
   GymSmsController,
   GymSaasController,
   GymReceivablesController,
+  GymAuditController,
   AccessAgentsAdminController,
   AccessSyncController,
 ];
@@ -215,6 +217,15 @@ describe('gym route authorization', () => {
     }
     expect(allowed(find('POST /gym/receivables/:id/cancel'), reception)).toBe(false);
     expect(allowed(find('POST /gym/receivables/:id/cancel'), admin)).toBe(true);
+  });
+
+  it('shows the audit log to owners and manager-role admins only', () => {
+    const route = find('GET /gym/audit-logs');
+    expect(allowed(route, owner)).toBe(true);
+    expect(allowed(route, admin)).toBe(true);
+    expect(allowed(route, reception)).toBe(false);
+    expect(allowed(route, trainer)).toBe(false);
+    expect(allowed(route, user({ permissions: { gymAudit: ['view'] } }))).toBe(false);
   });
 
   it('gives trainers workout and appointment access only', () => {
