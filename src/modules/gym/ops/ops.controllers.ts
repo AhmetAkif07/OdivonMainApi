@@ -4,12 +4,14 @@ import { FirebaseAuthGuard } from '../../../shared/auth/firebase-auth.guard';
 import { RequireModule } from '../../../shared/authorization/module.decorator';
 import { ModuleGuard } from '../../../shared/authorization/module.guard';
 import { PermissionGuard } from '../../../shared/authorization/permission.guard';
+import { RoleGuard } from '../../../shared/authorization/role.guard';
+import { Roles } from '../../../shared/authorization/roles.decorator';
 import { RequirePermission } from '../../../shared/authorization/require-permission.decorator';
 import { TenantGuard } from '../../../shared/tenancy/tenant.guard';
 import { GymListQueryDto, GymRecordDto } from '../shared/ops.dto';
 import { GymOpsService } from './ops.service';
 
-const Guards = [FirebaseAuthGuard, TenantGuard, ModuleGuard, PermissionGuard] as const;
+const Guards = [FirebaseAuthGuard, TenantGuard, ModuleGuard, RoleGuard, PermissionGuard] as const;
 
 @ApiTags('gym-access')
 @ApiBearerAuth()
@@ -26,18 +28,21 @@ export class GymAccessController {
   }
 
   @Post('gates')
+  @Roles('owner', 'admin')
   @RequirePermission('accessControl', 'create')
   createGate(@Body() dto: GymRecordDto) {
     return this.ops.createGate(dto);
   }
 
   @Patch('gates/:id')
+  @Roles('owner', 'admin')
   @RequirePermission('accessControl', 'update')
   updateGate(@Param('id') id: string, @Body() dto: GymRecordDto) {
     return this.ops.updateGate(id, dto);
   }
 
   @Delete('gates/:id')
+  @Roles('owner', 'admin')
   @RequirePermission('accessControl', 'delete')
   removeGate(@Param('id') id: string) {
     return this.ops.removeGate(id);
@@ -116,12 +121,14 @@ export class GymSmsController {
   constructor(private readonly ops: GymOpsService) {}
 
   @Get('config')
+  @Roles('owner', 'admin')
   @RequirePermission('sms', 'view')
   config() {
     return this.ops.getSmsConfig();
   }
 
   @Patch('config')
+  @Roles('owner', 'admin')
   @RequirePermission('sms', 'update')
   save(@Body() dto: GymRecordDto) {
     return this.ops.saveSmsConfig(dto);
@@ -149,6 +156,7 @@ export class GymSaasController {
   }
 
   @Patch()
+  @Roles('owner')
   @RequirePermission('saas', 'update')
   save(@Body() dto: GymRecordDto) {
     return this.ops.saveSaas(dto);

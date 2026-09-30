@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { FirebaseService } from '../../../shared/firebase/firebase.service';
-import { TENANT_COLLECTION } from '../../../shared/firebase/firestore-path';
+import { TENANT_COLLECTION, tenantCollectionPath } from '../../../shared/firebase/firestore-path';
 import { createBaseFields } from '../../../shared/firestore/base-document';
 import { TenantContext } from '../../../shared/tenancy/tenant.context';
 import { TenantService } from '../../tenant/tenant.service';
@@ -8,6 +8,7 @@ import { BranchesRepository } from '../branches/branches.repository';
 import { GymInfoService } from '../info/gym-info.service';
 import { PackagesRepository } from '../packages/packages.repository';
 import { gymCollection, listUndeleted } from '../shared/gym-collection';
+import { GYM_ROLE_PERMISSIONS, GYM_STAFF_ROLE_LABELS, GYM_STAFF_ROLES, gymRoleId } from '../shared/gym-roles';
 import { StaffRepository } from '../staff/staff.repository';
 import { CompleteOnboardingDto } from './onboarding.dto';
 import { GymBranch } from '../branches/branch.entity';
@@ -25,6 +26,7 @@ export class GymOnboardingService {
   ) {}
 
   async ensureDefaults(): Promise<void> {
+    await this.ensureDefaultRoles();
     const existing = await this.branches.list();
     if (existing.length > 0) {
       return;
@@ -169,6 +171,26 @@ export class GymOnboardingService {
     });
 
     return { completed: true };
+  }
+
+  /** Idempotent: creates the default gym staff roles that are missing, never overwrites edits. */
+  private async ensureDefaultRoles(): Promise<void> {
+    const { tenantId, userId } = this.tenantContext.getStore();
+    const roles = this.firebase.db.collection(tenantCollectionPath(tenantId, TENANT_COLLECTION.roles));
+    const refs = GYM_STAFF_ROLES.map((role) => roles.doc(gymRoleId(role)));
+    const snapshots = await this.firebase.db.getAll(...refs);
+    await Promise.all(
+      snapshots.map((snapshot, index) => {
+        if (snapshot.exists) return undefined;
+        const role = GYM_STAFF_ROLES[index];
+        return refs[index].set({
+          ...createBaseFields(gymRoleId(role), userId),
+          name: `Salon - ${GYM_STAFF_ROLE_LABELS[role]}`,
+          description: 'Salon modülü varsayılan rolü',
+          permissions: GYM_ROLE_PERMISSIONS[role],
+        });
+      }),
+    );
   }
 
   private async seedIfEmpty(collection: string, items: Record<string, unknown>[]) {

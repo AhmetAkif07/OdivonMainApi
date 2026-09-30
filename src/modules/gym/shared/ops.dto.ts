@@ -77,6 +77,10 @@ export class GymRecordDto {
 
   @IsOptional()
   @IsString()
+  packageId?: string;
+
+  @IsOptional()
+  @IsString()
   trainerId?: string;
 
   @IsOptional()

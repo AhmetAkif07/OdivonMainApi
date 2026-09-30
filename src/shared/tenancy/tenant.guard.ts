@@ -21,6 +21,7 @@ interface UserProfileDoc {
   email: string;
   status: string;
   roleIds?: string[];
+  accountType?: 'gym_member' | 'staff';
 }
 
 interface RoleDoc {
@@ -51,16 +52,23 @@ export class TenantGuard implements CanActivate {
       throw new AppException(ErrorCode.USER_INACTIVE, 'User account is inactive');
     }
 
+    // A gym member account is always a plain user without staff permissions, even if its profile
+    // was edited to carry another role or roleIds: members only reach their own /gym/mobile routes.
+    const isMember = profile.accountType === 'gym_member';
+    const role: UserRole = isMember ? 'user' : profile.role;
     const store: TenantStore = {
       tenantId: profile.tenantId,
       userId: decoded.uid,
-      role: profile.role,
+      role,
       modules: profile.modules ?? [],
       email: profile.email ?? decoded.email ?? '',
+      accountType: profile.accountType,
       permissions:
-        profile.role === 'owner'
+        role === 'owner'
           ? fullPermissionMap(profile.modules ?? [])
-          : await this.loadPermissions(profile.tenantId, profile.roleIds ?? []),
+          : isMember
+            ? {}
+            : await this.loadPermissions(profile.tenantId, profile.roleIds ?? []),
     };
 
     this.tenantContext.enter(store);

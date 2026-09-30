@@ -4,6 +4,8 @@ import { FirebaseAuthGuard } from '../../../shared/auth/firebase-auth.guard';
 import { RequireModule } from '../../../shared/authorization/module.decorator';
 import { ModuleGuard } from '../../../shared/authorization/module.guard';
 import { PermissionGuard } from '../../../shared/authorization/permission.guard';
+import { RoleGuard } from '../../../shared/authorization/role.guard';
+import { Roles } from '../../../shared/authorization/roles.decorator';
 import { RequirePermission } from '../../../shared/authorization/require-permission.decorator';
 import { PagingQueryDto } from '../../../shared/http/paging.dto';
 import { TenantGuard } from '../../../shared/tenancy/tenant.guard';
@@ -13,7 +15,7 @@ import { StaffService } from './staff.service';
 @ApiTags('gym-staff')
 @ApiBearerAuth()
 @RequireModule('gym')
-@UseGuards(FirebaseAuthGuard, TenantGuard, ModuleGuard, PermissionGuard)
+@UseGuards(FirebaseAuthGuard, TenantGuard, ModuleGuard, RoleGuard, PermissionGuard)
 @Controller('gym/staff')
 export class StaffController {
   constructor(private readonly staff: StaffService) {}
@@ -26,6 +28,7 @@ export class StaffController {
   }
 
   @Post()
+  @Roles('owner', 'admin')
   @RequirePermission('staff', 'create')
   @ApiOperation({ summary: 'Create gym staff' })
   create(@Body() dto: CreateStaffDto) {
@@ -39,12 +42,14 @@ export class StaffController {
   }
 
   @Patch(':id')
+  @Roles('owner', 'admin')
   @RequirePermission('staff', 'update')
   update(@Param('id') id: string, @Body() dto: UpdateStaffDto) {
     return this.staff.update(id, dto);
   }
 
   @Delete(':id')
+  @Roles('owner', 'admin')
   @RequirePermission('staff', 'delete')
   remove(@Param('id') id: string) {
     return this.staff.remove(id);

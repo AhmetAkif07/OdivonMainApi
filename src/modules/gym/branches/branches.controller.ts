@@ -4,6 +4,8 @@ import { FirebaseAuthGuard } from '../../../shared/auth/firebase-auth.guard';
 import { RequireModule } from '../../../shared/authorization/module.decorator';
 import { ModuleGuard } from '../../../shared/authorization/module.guard';
 import { PermissionGuard } from '../../../shared/authorization/permission.guard';
+import { RoleGuard } from '../../../shared/authorization/role.guard';
+import { Roles } from '../../../shared/authorization/roles.decorator';
 import { RequirePermission } from '../../../shared/authorization/require-permission.decorator';
 import { PagingQueryDto } from '../../../shared/http/paging.dto';
 import { TenantGuard } from '../../../shared/tenancy/tenant.guard';
@@ -13,7 +15,7 @@ import { BranchesService } from './branches.service';
 @ApiTags('gym-branches')
 @ApiBearerAuth()
 @RequireModule('gym')
-@UseGuards(FirebaseAuthGuard, TenantGuard, ModuleGuard, PermissionGuard)
+@UseGuards(FirebaseAuthGuard, TenantGuard, ModuleGuard, RoleGuard, PermissionGuard)
 @Controller('gym/branches')
 export class BranchesController {
   constructor(private readonly branches: BranchesService) {}
@@ -26,6 +28,7 @@ export class BranchesController {
   }
 
   @Post()
+  @Roles('owner', 'admin')
   @RequirePermission('branches', 'create')
   @ApiOperation({ summary: 'Create a gym branch' })
   create(@Body() dto: CreateBranchDto) {
@@ -40,6 +43,7 @@ export class BranchesController {
   }
 
   @Patch(':id')
+  @Roles('owner', 'admin')
   @RequirePermission('branches', 'update')
   @ApiOperation({ summary: 'Update a gym branch' })
   update(@Param('id') id: string, @Body() dto: UpdateBranchDto) {
@@ -47,6 +51,7 @@ export class BranchesController {
   }
 
   @Delete(':id')
+  @Roles('owner', 'admin')
   @RequirePermission('branches', 'delete')
   @ApiOperation({ summary: 'Soft-delete a gym branch' })
   remove(@Param('id') id: string) {

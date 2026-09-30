@@ -4,12 +4,14 @@ import { FirebaseAuthGuard } from '../../../shared/auth/firebase-auth.guard';
 import { RequireModule } from '../../../shared/authorization/module.decorator';
 import { ModuleGuard } from '../../../shared/authorization/module.guard';
 import { PermissionGuard } from '../../../shared/authorization/permission.guard';
+import { RoleGuard } from '../../../shared/authorization/role.guard';
+import { Roles } from '../../../shared/authorization/roles.decorator';
 import { RequirePermission } from '../../../shared/authorization/require-permission.decorator';
 import { TenantGuard } from '../../../shared/tenancy/tenant.guard';
 import { GymListQueryDto, GymRecordDto } from '../shared/ops.dto';
 import { GymCommerceService } from './commerce.service';
 
-const Guards = [FirebaseAuthGuard, TenantGuard, ModuleGuard, PermissionGuard] as const;
+const Guards = [FirebaseAuthGuard, TenantGuard, ModuleGuard, RoleGuard, PermissionGuard] as const;
 
 @ApiTags('gym-documents')
 @ApiBearerAuth()
@@ -269,12 +271,14 @@ export class GymEinvoiceController {
   constructor(private readonly commerce: GymCommerceService) {}
 
   @Get('config')
+  @Roles('owner', 'admin')
   @RequirePermission('eInvoice', 'view')
   config() {
     return this.commerce.getEinvoiceConfig();
   }
 
   @Patch('config')
+  @Roles('owner', 'admin')
   @RequirePermission('eInvoice', 'update')
   saveConfig(@Body() dto: GymRecordDto) {
     return this.commerce.saveEinvoiceConfig(dto);

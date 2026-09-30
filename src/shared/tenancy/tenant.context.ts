@@ -11,6 +11,7 @@ export interface TenantStore {
   role: UserRole;
   modules: ProductModule[];
   email: string;
+  accountType?: 'gym_member' | 'staff';
   permissions?: PermissionMap;
 }
 

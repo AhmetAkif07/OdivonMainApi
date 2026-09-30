@@ -5,10 +5,31 @@ import { TENANT_COLLECTION } from '../../../shared/firebase/firestore-path';
 import { BaseDocument } from '../../../shared/firestore/base-document';
 import { AccessSyncService } from '../access/access-sync.service';
 import { MembersRepository } from '../members/members.repository';
+import { PackagesRepository } from '../packages/packages.repository';
 import { GymStore } from '../shared/gym-store';
 import { GymListQueryDto, GymRecordDto } from '../shared/ops.dto';
 
 type Doc = BaseDocument & Record<string, unknown>;
+
+const WALLET_TX_TYPES = ['deposit', 'debit', 'refund'] as const;
+type WalletTxType = (typeof WALLET_TX_TYPES)[number];
+
+/** Staff wallet/package routes act on a member, never implicitly on the calling staff account. */
+function requireTargetMember(dto: GymRecordDto): string {
+  const userId = dto.userId || dto.memberId;
+  if (!userId) {
+    throw new AppException(ErrorCode.VALIDATION_ERROR, 'userId is required');
+  }
+  return userId;
+}
+
+function requirePositiveAmount(value: unknown): number {
+  const amount = Number(value);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new AppException(ErrorCode.VALIDATION_ERROR, 'amount must be a positive number');
+  }
+  return amount;
+}
 
 @Injectable()
 export class GymCommerceService {
@@ -16,6 +37,7 @@ export class GymCommerceService {
     private readonly store: GymStore,
     private readonly members: MembersRepository,
     private readonly accessSync: AccessSyncService,
+    private readonly packages: PackagesRepository,
   ) {}
 
   listDocuments(query: GymListQueryDto) {
@@ -64,13 +86,15 @@ export class GymCommerceService {
   }
 
   async adjustWallet(dto: GymRecordDto) {
-    const userId = dto.userId || dto.memberId || this.store.userId();
+    const userId = requireTargetMember(dto);
+    const type = (dto.walletType || dto.type || 'deposit') as WalletTxType;
+    if (!WALLET_TX_TYPES.includes(type)) {
+      throw new AppException(ErrorCode.VALIDATION_ERROR, 'Unknown wallet transaction type');
+    }
+    const amount = requirePositiveAmount(dto.amount);
     const member = await this.members.getByIdOrThrow(userId);
-    const type = dto.walletType || (dto.type as 'deposit' | 'debit' | 'refund') || 'deposit';
-    const amount = Number(dto.amount ?? 0);
     const current = Number(member.walletBalance ?? 0);
-    const next =
-      type === 'debit' ? current - amount : type === 'refund' ? current + amount : current + amount;
+    const next = type === 'debit' ? current - amount : current + amount;
     if (next < 0) {
       throw new AppException(ErrorCode.GYM_WALLET_INSUFFICIENT, 'Insufficient wallet balance');
     }
@@ -88,19 +112,31 @@ export class GymCommerceService {
     });
   }
 
+  /**
+   * Staff-side package sale. Price, duration and name always come from the package record, so a
+   * caller cannot extend a membership for an arbitrary price or length.
+   */
   async purchasePackage(dto: GymRecordDto) {
-    const userId = dto.userId || this.store.userId();
+    const userId = requireTargetMember(dto);
+    if (!dto.packageId) {
+      throw new AppException(ErrorCode.VALIDATION_ERROR, 'packageId is required');
+    }
+    const pkg = await this.packages.getByIdOrThrow(dto.packageId);
+    if (pkg.status && pkg.status !== 'active') {
+      throw new AppException(ErrorCode.GYM_PACKAGE_NOT_FOUND, 'Package is not available for sale');
+    }
     const member = await this.members.getByIdOrThrow(userId);
-    const amount = Number(dto.amount ?? dto.price ?? 0);
-    const method = dto.paymentMethod ?? 'card';
-    if (method === 'wallet') {
+    const amount = Number(pkg.price ?? 0);
+    const method = dto.paymentMethod ?? 'cash';
+    if (method === 'wallet' && amount > 0) {
       await this.adjustWallet({
         userId,
         walletType: 'debit',
         amount,
         description: dto.description ?? 'Paket ödemesi',
+        referenceId: pkg.id,
         referenceType: 'package',
-        paymentMethod: 'promotion',
+        paymentMethod: 'wallet',
       });
     }
     const now = new Date();
@@ -111,24 +147,28 @@ export class GymCommerceService {
         base = currentEnd;
       }
     }
-    const durationDays = Number(dto.durationDays ?? dto.duration ?? 30);
     const ends = new Date(base.getTime());
-    ends.setDate(ends.getDate() + durationDays);
+    ends.setDate(ends.getDate() + Number(pkg.durationDays ?? 30));
     const updated = await this.members.save({
       ...member,
       membershipStatus: 'active',
-      packageLabel: dto.name || dto.title || member.packageLabel,
+      packageLabel: pkg.name,
       packagePrice: amount,
       membershipStartsAt: now.toISOString(),
       membershipEndsAt: ends.toISOString(),
-      walletBalance: method === 'wallet' ? Number((await this.members.getByIdOrThrow(userId)).walletBalance) : member.walletBalance,
+      walletBalance:
+        method === 'wallet' && amount > 0
+          ? Number((await this.members.getByIdOrThrow(userId)).walletBalance)
+          : member.walletBalance,
     });
     await this.accessSync.syncMemberSafely(updated);
     await this.store.create(TENANT_COLLECTION.gymAccountingEntries, {
       type: 'income',
       amount,
       category: 'membership',
-      description: dto.description ?? 'Paket satışı',
+      userId,
+      description: dto.description ?? `${pkg.name} paket satışı`,
+      referenceId: pkg.id,
       referenceType: 'membership',
       paymentMethod: method,
       entryDate: now.toISOString(),
@@ -308,7 +348,7 @@ export class GymCommerceService {
       ...product,
       stock: Number(product['stock'] ?? 0) + Number(sale['quantity'] ?? 0),
     } as Doc);
-    if (sale['paymentMethod'] === 'wallet' && sale['userId']) {
+    if (sale['paymentMethod'] === 'wallet' && sale['userId'] && Number(sale['totalAmount'] ?? 0) > 0) {
       await this.adjustWallet({
         userId: String(sale['userId']),
         walletType: 'refund',
