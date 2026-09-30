@@ -578,7 +578,7 @@ describe('member lifecycle hooks', () => {
       softDelete: jest.fn().mockResolvedValue(undefined),
     };
     const accessSync = { syncMemberSafely: jest.fn().mockResolvedValue(undefined) };
-    const service = new MembersService(repo as never, accessSync as never);
+    const service = new MembersService(repo as never, accessSync as never, {} as never);
     await service.create({} as never);
     await service.update('m1', {} as never);
     await service.renew('m1', { packageName: 'P', durationDays: 30 } as never);

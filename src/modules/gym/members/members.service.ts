@@ -1,5 +1,7 @@
 import { Injectable } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { paginateInMemory } from '../../../shared/http/paginate-memory';
+import { GymReceivablesService, OpeningSaleInput } from '../ops/receivables.service';
 import {
   CancelMemberDto,
   CreateMemberDto,
@@ -17,10 +19,28 @@ export class MembersService {
   constructor(
     private readonly members: MembersRepository,
     private readonly accessSync: AccessSyncService,
+    private readonly moduleRef: ModuleRef,
   ) {}
 
+  /**
+   * Creates the member and, for an active membership, settles the package sold with it: the paid
+   * amount goes to accounting and an unpaid remainder becomes debt (see `openingSale`).
+   */
   async create(dto: CreateMemberDto) {
-    return this.synced(await this.members.create(dto));
+    const sale = openingSaleOf(dto);
+    const receivables = sale ? this.receivables() : null;
+    if (sale && receivables) {
+      // Reject a bad price/date before the login account is created.
+      await receivables.assertOpeningSale(sale);
+    }
+    const created = await this.members.create(dto);
+    const member = sale && receivables ? await receivables.openingSale(created, sale) : created;
+    return this.synced(member);
+  }
+
+  /** Resolved lazily: the ops module (receivables) already depends on this module. */
+  private receivables(): GymReceivablesService {
+    return this.moduleRef.get(GymReceivablesService, { strict: false });
   }
 
   getById(id: string) {
@@ -102,4 +122,21 @@ function membershipEndDate(value: string | null): Date {
 
 function joinNotes(existing: string | null, extra: string): string {
   return existing ? `${existing}\n${extra}` : extra;
+}
+
+/**
+ * The sale part of a new-member request. Only an active membership sells something: a catalogue
+ * package (`packageId`) or a custom one whose typed price is the sale amount.
+ */
+function openingSaleOf(dto: CreateMemberDto): OpeningSaleInput | null {
+  if (dto.membershipStatus !== 'active') return null;
+  if (!dto.packageId && !(Number(dto.packagePrice) > 0)) return null;
+  return {
+    packageId: dto.packageId ?? null,
+    paidAmount: dto.packageId ? (dto.paidAmount ?? null) : null,
+    customPrice: dto.packageId ? null : Number(dto.packagePrice),
+    paymentMethod: dto.paymentMethod,
+    installmentCount: dto.debtInstallments,
+    firstDueDate: dto.debtDueDate,
+  };
 }

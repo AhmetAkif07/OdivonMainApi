@@ -4,6 +4,7 @@ import { AppException } from '../../../shared/errors/app.exception';
 import { ErrorCode } from '../../../shared/errors/error-codes';
 import { TENANT_COLLECTION } from '../../../shared/firebase/firestore-path';
 import { BaseDocument } from '../../../shared/firestore/base-document';
+import { GymMember } from '../members/member.entity';
 import { paginateInMemory } from '../../../shared/http/paginate-memory';
 import { AccessSyncService } from '../access/access-sync.service';
 import { MembersRepository } from '../members/members.repository';
@@ -66,6 +67,23 @@ export interface GymReceivable extends BaseDocument {
   notes: string | null;
   cancelledAt: string | null;
   cancelReason: string | null;
+  /**
+   * The open debt is also shown as a negative wallet balance (member-create sales). Payments credit
+   * the wallet back and cancelling returns the remaining debt, so the two never disagree.
+   */
+  walletLinked?: boolean;
+}
+
+/** A package sold while the member is being created; the membership dates come from the form. */
+export interface OpeningSaleInput {
+  packageId?: string | null;
+  /** What was paid at the desk; defaults to the full package price. */
+  paidAmount?: number | null;
+  paymentMethod?: Exclude<ReceivablePaymentMethod, 'wallet'>;
+  /** Price of a custom (non-catalogue) package: booked as income, never creates debt. */
+  customPrice?: number | null;
+  installmentCount?: number;
+  firstDueDate?: string;
 }
 
 export type ReceivableView = Omit<GymReceivable, 'installments'> & PlanStanding;
@@ -283,10 +301,99 @@ export class GymReceivablesService {
     return toView(plan, today);
   }
 
+  /**
+   * Settles the package chosen in the new-member form. The price comes from the package record;
+   * `paidAmount` (0…price) is booked as income and any shortfall becomes a wallet-linked plan: the
+   * wallet goes negative by the same amount and climbs back to zero as the debt is paid. The
+   * membership dates are the ones the form already stored, so they are not extended here.
+   */
+  async openingSale(member: GymMember, input: OpeningSaleInput): Promise<GymMember> {
+    const method = input.paymentMethod ?? 'cash';
+    if (!input.packageId) {
+      const price = toKurus(input.customPrice ?? 0);
+      if (price > 0) {
+        const label = `${member.packageLabel ?? 'Özel paket'} satışı (yeni üye)`;
+        await this.bookIncome({ id: member.uid, userId: member.uid }, toTl(price), method, label, 'membership', 'membership');
+      }
+      return member;
+    }
+    const { pkg, priceKurus, paidKurus, debtKurus, firstDueDate } = await this.resolveOpeningSale(input.packageId, input);
+
+    const updated = await this.members.save({ ...member, packageLabel: pkg.name, packagePrice: toTl(priceKurus) });
+    if (paidKurus > 0) {
+      const label = `${pkg.name} satışı (yeni üye)`;
+      await this.bookIncome({ id: pkg.id, userId: member.uid }, toTl(paidKurus), method, label, 'membership', 'membership');
+    }
+    if (debtKurus === 0) return updated;
+
+    const paidAt = new Date().toISOString();
+    const count = input.installmentCount ?? 1;
+    const payments: ReceivablePayment[] =
+      paidKurus > 0
+        ? [{ id: randomUUID(), kind: 'down_payment', amount: toTl(paidKurus), paymentMethod: method, paidAt, recordedBy: this.store.userId(), note: null }]
+        : [];
+    const plan = await this.store.create<GymReceivable>(COLLECTION, {
+      userId: member.uid,
+      memberName: member.displayName,
+      memberNumber: member.memberNumber ?? null,
+      memberPhone: member.phone ?? null,
+      packageId: pkg.id,
+      packageName: pkg.name,
+      listPrice: toTl(priceKurus),
+      discount: 0,
+      totalAmount: toTl(priceKurus),
+      downPayment: toTl(paidKurus),
+      financedAmount: toTl(debtKurus),
+      installmentCount: count,
+      installments: buildSchedule(toTl(debtKurus), count, firstDueDate),
+      payments,
+      paidAmount: toTl(paidKurus),
+      remainingAmount: toTl(debtKurus),
+      status: 'open',
+      saleDate: paidAt,
+      notes: 'Yeni üye kaydında eksik ödeme',
+      cancelledAt: null,
+      cancelReason: null,
+      walletLinked: true,
+    });
+    return this.shiftWallet(plan, -debtKurus, 'debit', `${pkg.name} kalan borç (taksit planı)`);
+  }
+
+  /** Fails fast (before a member account is created) when the opening sale would be rejected. */
+  async assertOpeningSale(input: OpeningSaleInput): Promise<void> {
+    if (input.packageId) {
+      await this.resolveOpeningSale(input.packageId, input);
+    }
+  }
+
+  private async resolveOpeningSale(packageId: string, input: OpeningSaleInput) {
+    const pkg = await this.packages.getByIdOrThrow(packageId);
+    if (pkg.status && pkg.status !== 'active') {
+      throw new AppException(ErrorCode.GYM_PACKAGE_NOT_FOUND, 'Package is not available for sale');
+    }
+    const priceKurus = toKurus(Number(pkg.price ?? 0));
+    const paidKurus = toKurus(input.paidAmount ?? toTl(priceKurus));
+    if (paidKurus < 0 || paidKurus > priceKurus) {
+      throw new AppException(ErrorCode.VALIDATION_ERROR, 'paidAmount must be between 0 and the package price');
+    }
+    const debtKurus = priceKurus - paidKurus;
+    const today = gymToday();
+    const firstDueDate = input.firstDueDate ?? addMonths(today, 1);
+    if (debtKurus > 0 && (!isIsoDate(firstDueDate) || firstDueDate < today)) {
+      throw new AppException(ErrorCode.VALIDATION_ERROR, 'firstDueDate must be a valid date from today on');
+    }
+    return { pkg, priceKurus, paidKurus, debtKurus, firstDueDate };
+  }
+
   /** Records a payment against the plan; it settles the oldest open installments first. */
   async recordPayment(id: string, dto: ReceivablePaymentDto): Promise<ReceivableView> {
     const plan = await this.getOrThrow(id);
     assertOpen(plan);
+    if (plan.walletLinked && dto.paymentMethod === 'wallet') {
+      // The wallet already carries this debt as a negative balance; paying it "from the wallet"
+      // would count the same money twice.
+      throw new AppException(ErrorCode.VALIDATION_ERROR, 'This debt is already on the wallet; collect it in cash, card or transfer');
+    }
     const amount = toTl(toKurus(dto.amount));
     // Validates the amount against the remaining debt before any money moves.
     allocatePayment(plan.installments, amount, new Date().toISOString());
@@ -321,6 +428,9 @@ export class GymReceivablesService {
       throw error;
     }
     await this.bookIncome(saved, amount, dto.paymentMethod, `${saved.packageName} taksit tahsilatı`, 'installment');
+    if (saved.walletLinked) {
+      await this.shiftWallet(saved, toKurus(amount), 'deposit', `${saved.packageName} borç ödemesi`);
+    }
     return toView(saved, gymToday());
   }
 
@@ -334,6 +444,9 @@ export class GymReceivablesService {
       'Receivable not found',
       { status: 'cancelled', cancelledAt: new Date().toISOString(), cancelReason: dto.reason ?? null },
     );
+    if (saved.walletLinked && toKurus(plan.remainingAmount) > 0) {
+      await this.shiftWallet(saved, toKurus(plan.remainingAmount), 'refund', `${saved.packageName} borcu iptal edildi`);
+    }
     return toView(saved, gymToday());
   }
 
@@ -369,12 +482,42 @@ export class GymReceivablesService {
     });
   }
 
+  /**
+   * Moves the wallet of a wallet-linked plan by `deltaKurus` (negative = debt added). Unlike
+   * `adjustWallet` this may go below zero: the negative part is exactly the open plan debt.
+   */
+  private async shiftWallet(
+    plan: Pick<GymReceivable, 'id' | 'userId'>,
+    deltaKurus: number,
+    type: 'debit' | 'deposit' | 'refund',
+    description: string,
+  ): Promise<GymMember> {
+    const member = await this.members.getByIdOrThrow(plan.userId);
+    const updated = await this.members.save({
+      ...member,
+      walletBalance: toTl(toKurus(Number(member.walletBalance ?? 0)) + deltaKurus),
+    });
+    await this.store.create(TENANT_COLLECTION.gymWalletTx, {
+      userId: plan.userId,
+      type,
+      amount: toTl(Math.abs(deltaKurus)),
+      description,
+      referenceId: plan.id,
+      referenceType: 'receivable',
+      status: 'completed',
+      paymentMethod: 'receivable',
+      notes: '',
+    });
+    return updated;
+  }
+
   private bookIncome(
-    plan: GymReceivable,
+    plan: Pick<GymReceivable, 'id' | 'userId'>,
     amount: number,
     method: ReceivablePaymentMethod,
     description: string,
     category: 'membership' | 'installment',
+    referenceType: 'receivable' | 'membership' = 'receivable',
   ) {
     return this.store.create(TENANT_COLLECTION.gymAccountingEntries, {
       type: 'income',
@@ -383,7 +526,7 @@ export class GymReceivablesService {
       userId: plan.userId,
       description,
       referenceId: plan.id,
-      referenceType: 'receivable',
+      referenceType,
       paymentMethod: method,
       entryDate: new Date().toISOString(),
     });

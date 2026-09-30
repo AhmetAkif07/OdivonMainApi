@@ -9,6 +9,7 @@ import {
   IsOptional,
   IsString,
   Matches,
+  Max,
   Min,
   MinLength,
 } from 'class-validator';
@@ -62,6 +63,34 @@ export class CreateMemberDto {
   @IsOptional()
   @IsNumber()
   packagePrice?: number;
+
+  @ApiPropertyOptional({ description: 'Kayıtla birlikte satılan paket; fiyat paket kaydından alınır' })
+  @IsOptional()
+  @IsString()
+  packageId?: string | null;
+
+  @ApiPropertyOptional({ description: 'Kasaya işlenen tutar (0…paket fiyatı); eksik kısım borç olur' })
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  paidAmount?: number;
+
+  @ApiPropertyOptional({ enum: ['cash', 'card', 'transfer'] })
+  @IsOptional()
+  @IsIn(['cash', 'card', 'transfer'])
+  paymentMethod?: 'cash' | 'card' | 'transfer';
+
+  @ApiPropertyOptional({ description: 'Kalan borcun vadesi (YYYY-MM-DD); varsayılan bir ay sonra' })
+  @IsOptional()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  debtDueDate?: string;
+
+  @ApiPropertyOptional({ minimum: 1, maximum: 36, description: 'Kalan borcun taksit sayısı; varsayılan 1' })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(36)
+  debtInstallments?: number;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -159,7 +188,16 @@ export class CreateMemberDto {
   cardDepositPaid?: boolean;
 }
 
-export class UpdateMemberDto extends PartialType(OmitType(CreateMemberDto, ['email', 'password'] as const)) {
+export class UpdateMemberDto extends PartialType(OmitType(CreateMemberDto, [
+  'email',
+  'password',
+  // Sale fields only apply when the member is created; later sales go through wallet/receivables.
+  'packageId',
+  'paidAmount',
+  'paymentMethod',
+  'debtDueDate',
+  'debtInstallments',
+] as const)) {
   @ApiPropertyOptional()
   @IsOptional()
   @IsBoolean()
