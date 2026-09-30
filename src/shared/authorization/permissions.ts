@@ -51,6 +51,7 @@ export const PERMISSION_RESOURCES = [
   { key: 'measurements', label: 'Vücut ölçümleri', group: 'gym', modules: ['gym'] },
   { key: 'water', label: 'Su takibi', group: 'gym', modules: ['gym'] },
   { key: 'wallet', label: 'Cüzdan', group: 'gym', modules: ['gym'] },
+  { key: 'receivables', label: 'Taksit / borç takibi', group: 'gym', modules: ['gym'] },
   { key: 'shop', label: 'Mağaza / POS', group: 'gym', modules: ['gym'] },
   { key: 'accounting', label: 'Muhasebe', group: 'gym', modules: ['gym'] },
   { key: 'accessControl', label: 'Turnike', group: 'gym', modules: ['gym'] },

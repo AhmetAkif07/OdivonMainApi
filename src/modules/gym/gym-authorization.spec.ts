@@ -40,6 +40,7 @@ import {
   GymWorkoutTemplatesController,
   GymWorkoutsController,
 } from './ops/sport.controllers';
+import { GymReceivablesController } from './ops/receivables.controller';
 import { PackagesController } from './packages/packages.controller';
 import { GYM_ROLE_PERMISSIONS } from './shared/gym-roles';
 import { StaffController } from './staff/staff.controller';
@@ -69,6 +70,7 @@ const STAFF_CONTROLLERS: Type[] = [
   GymCampaignsController,
   GymSmsController,
   GymSaasController,
+  GymReceivablesController,
   AccessAgentsAdminController,
   AccessSyncController,
 ];
@@ -204,6 +206,15 @@ describe('gym route authorization', () => {
     expect(allowed(find('PATCH /gym/sms/config'), admin)).toBe(true);
     expect(allowed(find('PATCH /gym/saas'), admin)).toBe(false);
     expect(allowed(find('PATCH /gym/saas'), owner)).toBe(true);
+  });
+
+  it('lets reception sell on installments and collect, but only admins cancel a plan', () => {
+    for (const label of ['GET /gym/receivables/debtors', 'GET /gym/receivables/overdue', 'POST /gym/receivables', 'POST /gym/receivables/:id/payments']) {
+      expect(allowed(find(label), reception)).toBe(true);
+      expect(allowed(find(label), trainer)).toBe(false);
+    }
+    expect(allowed(find('POST /gym/receivables/:id/cancel'), reception)).toBe(false);
+    expect(allowed(find('POST /gym/receivables/:id/cancel'), admin)).toBe(true);
   });
 
   it('gives trainers workout and appointment access only', () => {

@@ -2,8 +2,11 @@ import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } f
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { FirebaseAuthGuard } from '../../../shared/auth/firebase-auth.guard';
 import { RequireModule } from '../../../shared/authorization/module.decorator';
+import { CurrentUser } from '../../../shared/auth/current-user.decorator';
 import { ModuleGuard } from '../../../shared/authorization/module.guard';
+import { TenantStore } from '../../../shared/tenancy/tenant.context';
 import { TenantGuard } from '../../../shared/tenancy/tenant.guard';
+import { GymReceivablesService } from '../ops/receivables.service';
 import { GymMemberGuard } from './gym-member.guard';
 import {
   CancelMobileAppointmentDto,
@@ -31,7 +34,10 @@ const Guards = [FirebaseAuthGuard, TenantGuard, ModuleGuard, GymMemberGuard] as 
 @UseGuards(...Guards)
 @Controller('gym/mobile')
 export class GymMobileController {
-  constructor(private readonly mobile: GymMobileService) {}
+  constructor(
+    private readonly mobile: GymMobileService,
+    private readonly receivables: GymReceivablesService,
+  ) {}
 
   @Get('home')
   home() {
@@ -211,6 +217,12 @@ export class GymMobileController {
   @Get('packages')
   packages() {
     return this.mobile.listPackages();
+  }
+
+  /** The member's own installment plans; the user id always comes from the token. */
+  @Get('debts')
+  debts(@CurrentUser() user: TenantStore) {
+    return this.receivables.forMember(user.userId);
   }
 
   @Get('nutrition')

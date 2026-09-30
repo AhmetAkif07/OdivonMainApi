@@ -7,6 +7,7 @@ import { AccessSyncService } from '../access/access-sync.service';
 import { MembersRepository } from '../members/members.repository';
 import { PackagesRepository } from '../packages/packages.repository';
 import { GymStore } from '../shared/gym-store';
+import { applyPackage } from '../shared/membership';
 import { GymListQueryDto, GymRecordDto } from '../shared/ops.dto';
 
 type Doc = BaseDocument & Record<string, unknown>;
@@ -140,27 +141,8 @@ export class GymCommerceService {
       });
     }
     const now = new Date();
-    let base = now;
-    if (member.membershipStatus === 'active' && member.membershipEndsAt) {
-      const currentEnd = new Date(member.membershipEndsAt);
-      if (currentEnd.getTime() > now.getTime()) {
-        base = currentEnd;
-      }
-    }
-    const ends = new Date(base.getTime());
-    ends.setDate(ends.getDate() + Number(pkg.durationDays ?? 30));
-    const updated = await this.members.save({
-      ...member,
-      membershipStatus: 'active',
-      packageLabel: pkg.name,
-      packagePrice: amount,
-      membershipStartsAt: now.toISOString(),
-      membershipEndsAt: ends.toISOString(),
-      walletBalance:
-        method === 'wallet' && amount > 0
-          ? Number((await this.members.getByIdOrThrow(userId)).walletBalance)
-          : member.walletBalance,
-    });
+    const current = method === 'wallet' && amount > 0 ? await this.members.getByIdOrThrow(userId) : member;
+    const updated = await this.members.save(applyPackage(current, pkg, amount, now));
     await this.accessSync.syncMemberSafely(updated);
     await this.store.create(TENANT_COLLECTION.gymAccountingEntries, {
       type: 'income',
