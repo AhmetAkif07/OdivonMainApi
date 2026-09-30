@@ -80,14 +80,20 @@ npx wrangler secret put IYZICO_SANDBOX_SECRET_KEY
 
 For local development, set the same names in `.dev.vars`. If the callback should
 reach a different API host, set `PAYMENT_PUBLIC_BASE_URL` to its HTTPS origin.
+Set `PAYMENT_GYM_RETURN_URL` to the public GYM license page URL when it differs
+from `https://odivongym.web.app/admin/subscription`. The callback returns the
+browser to that page with a `paymentSession` query parameter.
 Only the sandbox endpoint `https://sandbox-api.iyzipay.com` is used.
 
 Authenticated tenant owners/admins can call:
 
 - `GET /api/v1/payments/providers` to see available and selected providers.
 - `PUT /api/v1/payments/provider` with `{ "provider": "iyzico" }` to select it.
-- `POST /api/v1/payments/checkout` with a source of `vet_sale` or
-  `gym_receivable`, its `sourceId`, and the buyer's `name`, `surname`,
+- `GET /api/v1/payments/saas-plans` returns server-side GYM license prices.
+- `POST /api/v1/payments/saas-orders` with `planId` and `billingCycle`
+  creates a tenant-owner-only sandbox order. Its price is fixed on the server.
+- `POST /api/v1/payments/checkout` with a source of `vet_sale`,
+  `gym_receivable`, or `saas_subscription`, its `sourceId`, and the buyer's `name`, `surname`,
   `identityNumber`, `email`, `gsmNumber`, `address`, `city`, and `country`.
   The API calculates the remaining amount from the tenant's Firestore data and
   returns an iyzico `paymentPageUrl` and a session ID.
@@ -102,6 +108,10 @@ only**: it does not yet create vet collection entries or apply payments to gym
 receivables. Those accounting changes need their own reconciliation rules and
 tests before being enabled. A pending or succeeded session reserves its source
 to prevent another checkout for the same record.
+For `saas_subscription`, a verified sandbox result marks the test order as
+`sandbox_succeeded`. It does not activate the paid license or create an invoice:
+the sandbox processes no real funds. Production activation needs a separate
+live-provider flow and must close the current direct `PATCH /gym/saas` path.
 
 API request signing and Checkout Form result verification follow the official
 [iyzico HMAC](https://docs.iyzico.com/en/getting-started/preliminaries/authentication/hmacsha256-auth),

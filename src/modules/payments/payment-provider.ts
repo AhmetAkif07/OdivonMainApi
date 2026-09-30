@@ -1,5 +1,5 @@
 export type PaymentProviderId = 'iyzico';
-export type PaymentSource = 'vet_sale' | 'gym_receivable';
+export type PaymentSource = 'vet_sale' | 'gym_receivable' | 'saas_subscription';
 export type PaymentStatus = 'initializing' | 'pending' | 'succeeded' | 'failed';
 
 export interface CheckoutInput {

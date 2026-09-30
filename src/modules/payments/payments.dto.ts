@@ -20,7 +20,14 @@ export class CheckoutBuyerDto {
 }
 
 export class CreateCheckoutDto extends CheckoutBuyerDto {
-  @ApiProperty({ enum: ['vet_sale', 'gym_receivable'] })
-  @IsIn(['vet_sale', 'gym_receivable']) source!: PaymentSource;
+  @ApiProperty({ enum: ['vet_sale', 'gym_receivable', 'saas_subscription'] })
+  @IsIn(['vet_sale', 'gym_receivable', 'saas_subscription']) source!: PaymentSource;
   @ApiProperty() @Matches(/^[A-Za-z0-9_-]{1,128}$/) sourceId!: string;
+}
+
+export class CreateSaasOrderDto {
+  @ApiProperty({ enum: ['starter', 'pro', 'enterprise'] })
+  @IsIn(['starter', 'pro', 'enterprise']) planId!: 'starter' | 'pro' | 'enterprise';
+  @ApiProperty({ enum: ['monthly', 'yearly'] })
+  @IsIn(['monthly', 'yearly']) billingCycle!: 'monthly' | 'yearly';
 }

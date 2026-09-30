@@ -6,8 +6,9 @@ import { FirebaseService } from '../../shared/firebase/firebase.service';
 import { TENANT_COLLECTION, tenantCollectionPath } from '../../shared/firebase/firestore-path';
 import { TenantContext } from '../../shared/tenancy/tenant.context';
 import { IyzicoProvider } from './iyzico.provider';
-import { CreateCheckoutDto } from './payments.dto';
+import { CreateCheckoutDto, CreateSaasOrderDto } from './payments.dto';
 import { CheckoutInput, PaymentProvider, PaymentProviderId, PaymentSession, PaymentSource } from './payment-provider';
+import { SAAS_SANDBOX_PRICES } from './saas-prices';
 
 @Injectable()
 export class PaymentsService {
@@ -52,8 +53,29 @@ export class PaymentsService {
     return { provider, mode: 'sandbox' };
   }
 
+  saasPlans() { return SAAS_SANDBOX_PRICES; }
+
+  async createSaasOrder(dto: CreateSaasOrderDto) {
+    if (this.tenant.getStore().role !== 'owner') {
+      throw new AppException(ErrorCode.FORBIDDEN_ROLE, 'Only the tenant owner can create a SaaS order');
+    }
+    const amount = SAAS_SANDBOX_PRICES[dto.planId]?.[dto.billingCycle];
+    if (!amount) throw new AppException(ErrorCode.FINANCE_INVALID, 'Invalid SaaS plan or billing cycle');
+    const tenantId = this.tenant.getTenantId();
+    const id = randomUUID();
+    const now = new Date().toISOString();
+    await this.firebase.db.doc(`tenants/${tenantId}/paymentSaasOrders/${id}`).set({
+      id, planId: dto.planId, billingCycle: dto.billingCycle, amountKurus: amount * 100,
+      status: 'open', createdAt: now, createdBy: this.tenant.getUserId(),
+    });
+    return { id, planId: dto.planId, billingCycle: dto.billingCycle, amountKurus: amount * 100 };
+  }
+
   async createCheckout(dto: CreateCheckoutDto, ip: string) {
     const tenantId = this.tenant.getTenantId();
+    if (dto.source === 'saas_subscription' && this.tenant.getStore().role !== 'owner') {
+      throw new AppException(ErrorCode.FORBIDDEN_ROLE, 'Only the tenant owner can start a SaaS checkout');
+    }
     const selected = await this.getSelected();
     if (selected === 'none') throw new AppException(ErrorCode.INVALID_STATUS, 'Choose a payment provider first');
     const provider = this.providers.get(selected)!;
@@ -114,6 +136,16 @@ export class PaymentsService {
     return this.publicSession(await this.getSessionForTenant(id));
   }
 
+  async saasReturnUrl(id: string): Promise<string | null> {
+    const snapshot = await this.sessions().doc(id).get();
+    const session = snapshot.data() as PaymentSession | undefined;
+    if (session?.source !== 'saas_subscription') return null;
+    const url = new URL(process.env.PAYMENT_GYM_RETURN_URL ?? 'https://odivongym.web.app/admin/subscription');
+    if (url.protocol !== 'https:') throw new AppException(ErrorCode.FINANCE_INVALID, 'Invalid GYM payment return URL');
+    url.searchParams.set('paymentSession', id);
+    return url.toString();
+  }
+
   async reconcile(id: string) {
     const session = await this.getSessionForTenant(id);
     if (!session.token) throw new AppException(ErrorCode.INVALID_STATUS, 'Checkout has no token yet');
@@ -134,9 +166,19 @@ export class PaymentsService {
     const verified = await provider.verifyCheckout(token, { id, amountKurus: session.amountKurus });
     await this.firebase.db.runTransaction(async (tx) => {
       const lock = this.firebase.db.doc(`tenants/${session.tenantId}/paymentReservations/${session.source}_${session.sourceId}`);
+      const orderRef = session.source === 'saas_subscription'
+        ? this.firebase.db.doc(`tenants/${session.tenantId}/paymentSaasOrders/${session.sourceId}`) : null;
+      const orderSnapshot = orderRef ? await tx.get(orderRef) : null;
       const [latest, reservation] = await Promise.all([tx.get(ref), tx.get(lock)]);
       const current = latest.data() as PaymentSession;
       if (current.token !== token || current.status !== 'pending') return;
+      if (verified.status === 'succeeded' && orderRef) {
+        const order = orderSnapshot?.data();
+        if (!order || order.status !== 'open' || order.amountKurus !== current.amountKurus) {
+          throw new AppException(ErrorCode.FINANCE_INVALID, 'SaaS order cannot be verified');
+        }
+        tx.update(orderRef, { status: 'sandbox_succeeded', sessionId: id, updatedAt: new Date().toISOString() });
+      }
       tx.update(ref, { status: verified.status, providerPaymentId: verified.providerPaymentId,
         updatedAt: new Date().toISOString() });
       if (reservation.data()?.sessionId === id) tx.update(lock, { status: verified.status });
@@ -163,6 +205,12 @@ export class PaymentsService {
   }
 
   private async resolveSource(tenantId: string, source: PaymentSource, id: string): Promise<{ amountKurus: number; buyerId: string }> {
+    if (source === 'saas_subscription') {
+      const snapshot = await this.firebase.db.doc(`tenants/${tenantId}/paymentSaasOrders/${id}`).get();
+      const order = snapshot.data();
+      if (!order || order.status !== 'open') throw new AppException(ErrorCode.FINANCE_INVALID, 'SaaS order is not open');
+      return { amountKurus: Number(order.amountKurus), buyerId: tenantId };
+    }
     const collection = source === 'vet_sale' ? TENANT_COLLECTION.sales : TENANT_COLLECTION.gymReceivables;
     const snapshot = await this.firebase.db.doc(`${tenantCollectionPath(tenantId, collection)}/${id}`).get();
     const data = snapshot.data();

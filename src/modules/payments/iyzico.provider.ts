@@ -65,7 +65,7 @@ export class IyzicoProvider implements PaymentProvider {
         contactName: `${input.buyer.name} ${input.buyer.surname}`, address: input.buyer.address,
         city: input.buyer.city, country: input.buyer.country,
       },
-      basketItems: [{ id: input.id, name: `Odivon ${input.source === 'vet_sale' ? 'Vet' : 'Gym'} tahsilat`,
+      basketItems: [{ id: input.id, name: input.source === 'saas_subscription' ? 'Odivon GYM SaaS abonelik test' : `Odivon ${input.source === 'vet_sale' ? 'Vet' : 'Gym'} tahsilat`,
         category1: 'Service', itemType: 'VIRTUAL', price }],
     };
     const response = await this.post(INITIALIZE, body);
