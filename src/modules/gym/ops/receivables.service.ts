@@ -290,6 +290,7 @@ export class GymReceivablesService {
       notes: dto.notes ?? null,
       cancelledAt: null,
       cancelReason: null,
+      walletLinked: true,
     });
 
     const current = downKurus > 0 && method === 'wallet' ? await this.members.getByIdOrThrow(member.uid) : member;
@@ -298,6 +299,9 @@ export class GymReceivablesService {
     if (downKurus > 0) {
       await this.bookIncome(plan, toTl(downKurus), method, `${pkg.name} peşinat`, 'membership');
     }
+    // Same model as the new-member sale: the open debt also shows as a negative wallet balance and
+    // payments / cancelling bring it back, so the panel never has to move the wallet itself.
+    await this.shiftWallet(plan, -financedKurus, 'debit', `${pkg.name} kalan borç (taksit planı)`);
     return toView(plan, today);
   }
 

@@ -97,6 +97,13 @@ describe('GymReceivablesService', () => {
         expect.objectContaining({ type: 'income', amount: 1000, paymentMethod: 'card', referenceType: 'receivable' }),
       );
       expect(commerce.adjustWallet).not.toHaveBeenCalled();
+      // The financed part shows on the wallet as debt (wallet-linked plan).
+      expect(view).toMatchObject({ walletLinked: true });
+      expect(members.save).toHaveBeenLastCalledWith(expect.objectContaining({ walletBalance: -1800 }));
+      expect(store.create).toHaveBeenCalledWith(
+        'gymWalletTx',
+        expect.objectContaining({ type: 'debit', amount: 1800, referenceType: 'receivable' }),
+      );
     });
 
     it('debits the wallet when the down payment is taken from it', async () => {
@@ -106,7 +113,7 @@ describe('GymReceivablesService', () => {
 
     it('does not book income when there is no down payment', async () => {
       await service.createSale({ userId: 'm1', packageId: 'p1', downPayment: 0, installmentCount: 3 });
-      expect(store.create).toHaveBeenCalledTimes(1);
+      expect(store.create).not.toHaveBeenCalledWith('gymAccountingEntries', expect.anything());
     });
 
     it.each([
