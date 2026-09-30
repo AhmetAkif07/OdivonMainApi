@@ -16,7 +16,7 @@
     "@nestjs/microservices": "./worker/unsupported.cjs",
     "class-transformer/storage": "class-transformer/cjs/storage.js"
   },
-  "build": { "command": "npm run build && node scripts/worker-assets.mjs", "watch_dir": ["src", "worker", "scripts"] },
+  "build": { "command": "npm run build && node scripts/worker-assets.mjs && node scripts/generate-openapi.mjs", "watch_dir": ["src", "worker", "scripts"] },
   "assets": { "directory": ".wrangler/assets" },
   "routes": [{ "pattern": "mainapi.odivon.com", "custom_domain": true }],
   "vars": {

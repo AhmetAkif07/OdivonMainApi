@@ -1,6 +1,5 @@
 import { RequestMethod, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
-import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
 import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module';
@@ -29,15 +28,16 @@ export async function bootstrap(options: { swaggerUi?: boolean } = {}): Promise<
     }),
   );
 
-  const swagger = new DocumentBuilder()
-    .setTitle('Odivon Main API')
-    .setDescription('Modular monolith API for Odivon (vet / farm / gym)')
-    .setVersion('0.1.0')
-    .addBearerAuth()
-    .build();
-  SwaggerModule.setup('docs', app, SwaggerModule.createDocument(app, swagger), {
-    ui: options.swaggerUi ?? true,
-  });
+  if (options.swaggerUi !== false) {
+    const { DocumentBuilder, SwaggerModule } = await import('@nestjs/swagger');
+    const swagger = new DocumentBuilder()
+      .setTitle('Odivon Main API')
+      .setDescription('Modular monolith API for Odivon (vet / farm / gym)')
+      .setVersion('0.1.0')
+      .addBearerAuth()
+      .build();
+    SwaggerModule.setup('docs', app, SwaggerModule.createDocument(app, swagger));
+  }
 
   await app.listen(config.port);
 }

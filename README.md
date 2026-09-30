@@ -48,7 +48,9 @@ Without both secrets the API returns HTTP 503. Never deploy emulator settings or
 For local development, put real credentials in the ignored `.dev.vars` file and run
 `npm run dev:worker` (port 8799). Optional `CORS_ORIGIN` can be set in Wrangler vars.
 
-Swagger UI is served as static assets at `/docs/`, with its schema at `/docs-json`.
+Swagger UI is served as static assets at `/docs/`. The `/docs-json` schema is
+generated during the Worker build and served as a static asset to keep Worker
+startup within Cloudflare's limit.
 `/health` checks actual Firestore connectivity. Firestore uses REST on Workers;
 the protobuf schemas are prepared at isolate startup because Workers disallows
 dynamic code generation during requests. Nest also starts outside requests;
@@ -60,6 +62,52 @@ input validation and OpenAPI. It does not validate real Firebase credentials,
 authenticated CRUD, or production CPU usage. Test those after adding real secrets.
 The Free plan's CPU limit still applies; fitting the bundle size does not guarantee
 that every authenticated request will fit that limit. The throttle is per isolate.
+
+## Sandbox payments
+
+Payments use a provider interface and a tenant-specific provider setting. The only
+registered adapter is iyzico Checkout Form in **sandbox mode**. More providers can
+be added by implementing `PaymentProvider` and registering the adapter in
+`PaymentsService`. Provider credentials are server-side secrets and are never
+returned by the API. The integration never sends card data through Odivon.
+
+Set these Cloudflare secrets before testing checkout:
+
+```bash
+npx wrangler secret put IYZICO_SANDBOX_API_KEY
+npx wrangler secret put IYZICO_SANDBOX_SECRET_KEY
+```
+
+For local development, set the same names in `.dev.vars`. If the callback should
+reach a different API host, set `PAYMENT_PUBLIC_BASE_URL` to its HTTPS origin.
+Only the sandbox endpoint `https://sandbox-api.iyzipay.com` is used.
+
+Authenticated tenant owners/admins can call:
+
+- `GET /api/v1/payments/providers` to see available and selected providers.
+- `PUT /api/v1/payments/provider` with `{ "provider": "iyzico" }` to select it.
+- `POST /api/v1/payments/checkout` with a source of `vet_sale` or
+  `gym_receivable`, its `sourceId`, and the buyer's `name`, `surname`,
+  `identityNumber`, `email`, `gsmNumber`, `address`, `city`, and `country`.
+  The API calculates the remaining amount from the tenant's Firestore data and
+  returns an iyzico `paymentPageUrl` and a session ID.
+- `GET /api/v1/payments/sessions/:id` to read the outcome and
+  `POST /api/v1/payments/sessions/:id/reconcile` to recheck a pending outcome.
+
+iyzico posts its checkout token to the public callback URL. The API retrieves
+the result from iyzico and verifies its signature, conversation ID, token,
+currency and amount before recording the payment session result. Repeated
+callbacks do not reapply a result. This foundation records **payment sessions
+only**: it does not yet create vet collection entries or apply payments to gym
+receivables. Those accounting changes need their own reconciliation rules and
+tests before being enabled. A pending or succeeded session reserves its source
+to prevent another checkout for the same record.
+
+API request signing and Checkout Form result verification follow the official
+[iyzico HMAC](https://docs.iyzico.com/en/getting-started/preliminaries/authentication/hmacsha256-auth),
+[Checkout Form](https://docs.iyzico.com/en/payment-methods/checkoutform/cf-implementation),
+and [response signature](https://docs.iyzico.com/en/advanced/response-signature-validation)
+documentation.
 
 Active Firebase project: `odivon-main-api-a2095`. Firestore `(default)` is in **eur3** (Europe multi-region). Client SDK access is denied by `firestore.rules`; the API uses Admin SDK.
 

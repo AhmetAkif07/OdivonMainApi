@@ -17,4 +17,4 @@ await writeFile(new URL('index.html', target), `<!doctype html>
 await writeFile(new URL('init.js', target),
   'window.onload = () => SwaggerUIBundle({url:"/docs-json",dom_id:"#swagger-ui",deepLinking:true});\n');
 await writeFile(new URL('../_headers', target),
-  '/*\n  X-Content-Type-Options: nosniff\n  Referrer-Policy: no-referrer\n  Content-Security-Policy: default-src \'self\'; style-src \'self\' \'unsafe-inline\'; img-src \'self\' data:; frame-ancestors \'none\'\n');
+  '/*\n  X-Content-Type-Options: nosniff\n  Referrer-Policy: no-referrer\n  Content-Security-Policy: default-src \'self\'; style-src \'self\' \'unsafe-inline\'; img-src \'self\' data:; frame-ancestors \'none\'\n/docs-json\n  Content-Type: application/json; charset=utf-8\n');

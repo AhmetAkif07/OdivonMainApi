@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { generateKeyPairSync } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 import { Miniflare, Log, LogLevel, convertV4MiniflareOptions } from 'miniflare';
 
 const { privateKey } = generateKeyPairSync('rsa', {
@@ -60,10 +61,10 @@ try {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
   });
   assert.equal(response.status, 400);
-  response = await worker.dispatchFetch('https://example.com/docs-json');
-  assert.equal(response.status, 200);
-  const openApi = await response.json();
+  const openApi = JSON.parse(await readFile('.wrangler/assets/docs-json', 'utf8'));
   assert.ok(openApi.paths['/api/v1/identity/me']);
+  assert.ok(openApi.paths['/api/v1/payments/checkout']);
+  assert.ok(openApi.paths['/api/v1/payments/callback/iyzico/{id}']);
   assert.ok(openApi.paths['/api/v1/gym/access/agents/work']);
   console.log('Workers smoke checks passed: mocked Firestore success/error, auth, agent auth, validation, OpenAPI.');
 } finally {
