@@ -9,6 +9,8 @@ export interface GymMember extends BaseDocument {
   displayName: string;
   photoURL: string | null;
   phone: string | null;
+  /** T.C. kimlik no; eski kayıtlarda alan yok. */
+  nationalId?: string | null;
   gender: GymMemberGender;
   birthDate: string | null;
   membershipStatus: MembershipStatus;

@@ -35,6 +35,18 @@ export class CreateStaffDto {
   @IsString()
   branchName?: string | null;
 
+  @ApiPropertyOptional({ type: [String], description: 'Personelin çalıştığı tüm şubeler' })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  branchIds?: string[];
+
+  @ApiPropertyOptional({ type: [String] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  branchNames?: string[];
+
   @ApiPropertyOptional({ type: [String] })
   @IsOptional()
   @IsArray()

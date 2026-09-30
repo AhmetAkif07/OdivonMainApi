@@ -36,6 +36,8 @@ export class StaffRepository {
       title: dto.title ?? 'Kulüp Personeli',
       branchId: dto.branchId ?? null,
       branchName: dto.branchName ?? null,
+      branchIds: dto.branchIds ?? (dto.branchId ? [dto.branchId] : []),
+      branchNames: dto.branchNames ?? (dto.branchName ? [dto.branchName] : []),
       specialties: dto.specialties ?? [],
       customPermissions: dto.customPermissions ?? [],
       status: dto.status ?? 'active',

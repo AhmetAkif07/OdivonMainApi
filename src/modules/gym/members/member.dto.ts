@@ -8,6 +8,7 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  Matches,
   Min,
   MinLength,
 } from 'class-validator';
@@ -31,6 +32,11 @@ export class CreateMemberDto {
   @IsOptional()
   @IsString()
   phone?: string;
+
+  @ApiPropertyOptional({ description: 'T.C. kimlik no: 11 hane, 0 ile başlamaz', nullable: true })
+  @IsOptional()
+  @Matches(/^[1-9]\d{10}$/, { message: 'nationalId must be an 11-digit T.C. identity number' })
+  nationalId?: string | null;
 
   @ApiPropertyOptional({ enum: ['female', 'male', 'unspecified'] })
   @IsOptional()

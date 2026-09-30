@@ -87,7 +87,7 @@ export class MembersRepository {
       if (!term) {
         return true;
       }
-      return `${item.displayName} ${item.email} ${item.phone ?? ''} ${item.memberNumber}`
+      return `${item.displayName} ${item.email} ${item.phone ?? ''} ${item.nationalId ?? ''} ${item.memberNumber}`
         .toLocaleLowerCase('tr')
         .includes(term);
     });
@@ -100,6 +100,7 @@ export class MembersRepository {
       ...current,
       displayName: dto.displayName ?? current.displayName,
       phone: dto.phone !== undefined ? dto.phone : current.phone,
+      nationalId: dto.nationalId !== undefined ? dto.nationalId || null : (current.nationalId ?? null),
       gender: dto.gender ?? current.gender,
       birthDate: dto.birthDate !== undefined ? dto.birthDate : current.birthDate,
       membershipStatus: dto.membershipStatus ?? current.membershipStatus,
@@ -168,6 +169,7 @@ export class MembersRepository {
       displayName: dto.displayName.trim(),
       photoURL: dto.photoURL ?? null,
       phone: dto.phone?.trim() || null,
+      nationalId: dto.nationalId || null,
       gender: dto.gender ?? 'unspecified',
       birthDate: dto.birthDate ?? null,
       membershipStatus: dto.membershipStatus ?? 'trial',

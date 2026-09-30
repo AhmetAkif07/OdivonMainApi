@@ -11,6 +11,9 @@ export interface GymStaff extends BaseDocument {
   title: string;
   branchId: string | null;
   branchName: string | null;
+  /** Çok şubeli personel; eski kayıtlarda yalnız branchId vardır. */
+  branchIds?: string[];
+  branchNames?: string[];
   specialties: string[];
   customPermissions: string[];
   status: GymStaffStatus;
