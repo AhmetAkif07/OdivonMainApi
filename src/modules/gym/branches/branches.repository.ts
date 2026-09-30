@@ -12,7 +12,7 @@ import {
 import { TenantContext } from '../../../shared/tenancy/tenant.context';
 import { gymCollection, listUndeleted } from '../shared/gym-collection';
 import { CreateBranchDto, UpdateBranchDto } from './branch.dto';
-import { GymBranch } from './branch.entity';
+import { GymBranch, OpeningHours } from './branch.entity';
 
 @Injectable()
 export class BranchesRepository {
@@ -39,7 +39,7 @@ export class BranchesRepository {
       website: dto.website ?? null,
       capacity: dto.capacity,
       currentOccupancy: 0,
-      openingHours: dto.openingHours ?? [],
+      openingHours: plainHours(dto.openingHours) ?? [],
       openDays: dto.openDays ?? [1, 2, 3, 4, 5, 6, 0],
       features: dto.features ?? [],
       status: dto.status ?? 'active',
@@ -66,7 +66,7 @@ export class BranchesRepository {
     const current = await this.getByIdOrThrow(id);
     const updated: GymBranch = {
       ...current,
-      ...omitUndefined(dto),
+      ...omitUndefined({ ...dto, openingHours: plainHours(dto.openingHours) }),
       ...touchBaseFields(this.tenantContext.getUserId()),
     };
     await this.collection().doc(id).set(updated);
@@ -82,4 +82,12 @@ export class BranchesRepository {
         ...touchBaseFields(this.tenantContext.getUserId()),
       });
   }
+}
+
+/**
+ * The validation pipe turns nested items into `OpeningHoursDto` instances; Firestore refuses objects
+ * with a class prototype (the write fails with 500), so store plain copies.
+ */
+function plainHours(hours: OpeningHours[] | undefined): OpeningHours[] | undefined {
+  return hours?.map(({ day, open, close, closed }) => ({ day, open, close, closed }));
 }

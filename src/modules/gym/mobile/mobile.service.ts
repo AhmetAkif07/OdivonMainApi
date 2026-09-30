@@ -3,7 +3,7 @@ import { Injectable } from '@nestjs/common';
 import { AppException } from '../../../shared/errors/app.exception';
 import { ErrorCode } from '../../../shared/errors/error-codes';
 import { TENANT_COLLECTION } from '../../../shared/firebase/firestore-path';
-import { BaseDocument, createBaseFields } from '../../../shared/firestore/base-document';
+import { BaseDocument, createBaseFields, omitUndefined } from '../../../shared/firestore/base-document';
 import { GymMember } from '../members/member.entity';
 import { AccessSyncService } from '../access/access-sync.service';
 import { MembersRepository } from '../members/members.repository';
@@ -409,7 +409,8 @@ export class GymMobileService {
         completedAt: dto.completedAt,
         pausedDurationMs: dto.pausedDurationMs,
         restDurationMs: dto.restDurationMs,
-        sets: dto.sets,
+        // Plain copies: Firestore rejects the DTO class instances the validation pipe creates.
+        sets: dto.sets.map((set) => omitUndefined({ ...set })),
         volumeKg: settled.volumeKg,
         prCount: settled.prCount,
         activeDurationMs: settled.activeDurationMs,
