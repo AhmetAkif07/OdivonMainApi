@@ -1,0 +1,48 @@
+name: Deploy MainApi Worker
+
+# Every push to main is linted, tested and published to the Cloudflare Worker
+# "odivon-main-api" (mainapi.odivon.com). Runtime secrets (Firebase, iyzico, …) stay in the
+# Worker; CI only needs a Cloudflare API token. `wrangler deploy` runs the build command from
+# wrangler.jsonc (nest build, worker assets, OpenAPI generation).
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-mainapi
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Test & deploy
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npx eslint src
+
+      - name: Unit tests
+        run: npx jest --ci
+
+      - name: Deploy to Cloudflare
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy
