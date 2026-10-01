@@ -6,6 +6,7 @@ import { CurrentUser } from '../../../shared/auth/current-user.decorator';
 import { ModuleGuard } from '../../../shared/authorization/module.guard';
 import { TenantStore } from '../../../shared/tenancy/tenant.context';
 import { TenantGuard } from '../../../shared/tenancy/tenant.guard';
+import { GymClassBookingService } from '../ops/class-booking.service';
 import { GymReceivablesService } from '../ops/receivables.service';
 import { GymMemberGuard } from './gym-member.guard';
 import {
@@ -37,6 +38,7 @@ export class GymMobileController {
   constructor(
     private readonly mobile: GymMobileService,
     private readonly receivables: GymReceivablesService,
+    private readonly classBooking: GymClassBookingService,
   ) {}
 
   @Get('home')
@@ -194,19 +196,23 @@ export class GymMobileController {
     return this.mobile.listClassBookings();
   }
 
+  /** Books the next session of the class; uses one class credit when the package has a limit. */
   @Post('classes/:id/book')
-  bookClass(@Param('id') id: string) {
-    return this.mobile.bookClass(id);
+  async bookClass(@Param('id') id: string, @CurrentUser() user: TenantStore) {
+    const booking = await this.classBooking.book({ scheduleId: id, userId: user.userId });
+    return { id: booking.id, status: 'booked', sessionDate: booking.sessionDate };
   }
 
   @Post('classes/:id/waitlist')
-  waitlist(@Param('id') id: string) {
-    return this.mobile.joinWaitlist(id);
+  waitlist(@Param('id') id: string, @CurrentUser() user: TenantStore) {
+    return this.classBooking.joinWaitlist({ scheduleId: id, userId: user.userId });
   }
 
+  /** Own bookings only; the credit comes back when cancelled at least 2 hours before the start. */
   @Post('class-bookings/:id/cancel')
-  cancelClassBooking(@Param('id') id: string) {
-    return this.mobile.cancelClassBooking(id);
+  async cancelClassBooking(@Param('id') id: string, @CurrentUser() user: TenantStore) {
+    await this.classBooking.cancel(id, { byStaff: false, userId: user.userId });
+    return { id };
   }
 
   @Get('payments')

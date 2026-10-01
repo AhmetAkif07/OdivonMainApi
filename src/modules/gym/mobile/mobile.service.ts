@@ -11,6 +11,8 @@ import { GymPackage } from '../packages/package.entity';
 import { PackagesRepository } from '../packages/packages.repository';
 import { StaffRepository } from '../staff/staff.repository';
 import { GymStore } from '../shared/gym-store';
+import { packageCredits } from '../shared/membership';
+import { creditsLeft, nextSessionDate } from '../ops/class-booking.math';
 import {
   CancelMobileAppointmentDto,
   CreateMealLogDto,
@@ -179,7 +181,10 @@ export class GymMobileService {
       checkInEndTime: pkg?.checkInEndTime ?? null,
       allowedDays: pkg?.allowedDays ?? null,
       ptPackage: null,
-      groupClassCredits: null,
+      groupClassCredits:
+        member.classCreditsTotal == null
+          ? null
+          : { total: member.classCreditsTotal, used: member.classCreditsUsed ?? 0, left: creditsLeft(member) },
       trainerName: member.trainerName,
     };
   }
@@ -630,6 +635,10 @@ export class GymMobileService {
     }
   }
 
+  /**
+   * Weekly classes with the member's state for the next session of each: booked, waitlisted and
+   * how many places are taken in that session (class booking service).
+   */
   async listClasses() {
     const userId = this.store.userId();
     const [schedules, bookings, waitlist] = await Promise.all([
@@ -637,29 +646,37 @@ export class GymMobileService {
       this.store.list<Doc>(TENANT_COLLECTION.gymClassBookings),
       this.store.list<Doc>(TENANT_COLLECTION.gymClassWaitlist),
     ]);
-    const myBookingByClass = new Map(
-      bookings
-        .filter((item) => item['userId'] === userId && item['attendanceStatus'] !== 'cancelled')
-        .map((item) => [String(item['classScheduleId']), item.id]),
-    );
-    const myWait = new Set(
-      waitlist.filter((item) => item['userId'] === userId).map((item) => String(item['classScheduleId'])),
-    );
+    const active = (item: Doc) => item['attendanceStatus'] === 'booked' || item['attendanceStatus'] === 'checked-in';
     return schedules
       .filter((item) => item['status'] === 'active')
-      .map((item) => ({
-        id: item.id,
-        name: String(item['name'] ?? 'Ders'),
-        instructorName: String(item['instructorName'] ?? ''),
-        dayOfWeek: Number(item['dayOfWeek'] ?? 1),
-        startTime: String(item['startTime'] ?? ''),
-        endTime: String(item['endTime'] ?? ''),
-        capacity: Number(item['capacity'] ?? 0),
-        taken: Number(item['currentBookings'] ?? 0),
-        booked: myBookingByClass.has(item.id),
-        bookingId: myBookingByClass.get(item.id) ?? null,
-        waitlisted: myWait.has(item.id),
-      }));
+      .map((item) => {
+        const dayOfWeek = Number(item['dayOfWeek'] ?? 1);
+        const startTime = String(item['startTime'] ?? '');
+        const sessionDate = nextSessionDate(dayOfWeek, startTime);
+        const session = bookings.filter(
+          (b) => b['classScheduleId'] === item.id && b['sessionDate'] === sessionDate && active(b),
+        );
+        const mine = session.find((b) => b['userId'] === userId);
+        return {
+          id: item.id,
+          name: String(item['name'] ?? 'Ders'),
+          instructorName: String(item['instructorName'] ?? ''),
+          dayOfWeek,
+          startTime,
+          endTime: String(item['endTime'] ?? ''),
+          sessionDate,
+          capacity: Number(item['capacity'] ?? 0),
+          taken: session.length,
+          booked: !!mine,
+          bookingId: mine?.id ?? null,
+          waitlisted: waitlist.some(
+            (w) =>
+              w['userId'] === userId &&
+              w['classScheduleId'] === item.id &&
+              (!w['sessionDate'] || w['sessionDate'] === sessionDate),
+          ),
+        };
+      });
   }
 
   async listClassBookings() {
@@ -671,111 +688,10 @@ export class GymMobileService {
         classScheduleId: String(item['classScheduleId'] ?? ''),
         className: String(item['className'] ?? ''),
         status: String(item['attendanceStatus'] ?? 'booked'),
+        sessionDate: (item['sessionDate'] as string | undefined) ?? null,
+        startTime: (item['startTime'] as string | undefined) ?? null,
         bookingDate: String(item['bookingDate'] ?? item.createdAt),
       }));
-  }
-
-  async bookClass(scheduleId: string) {
-    const schedule = await this.store.getOrThrow<Doc>(
-      TENANT_COLLECTION.gymClassSchedules,
-      scheduleId,
-      ErrorCode.GYM_CLASS_NOT_FOUND,
-      'Class not found',
-    );
-    const userId = this.store.userId();
-    const bookings = await this.store.list<Doc>(TENANT_COLLECTION.gymClassBookings);
-    const already = bookings.find(
-      (item) =>
-        item['userId'] === userId &&
-        item['classScheduleId'] === scheduleId &&
-        item['attendanceStatus'] !== 'cancelled',
-    );
-    if (already) {
-      return { id: already.id, status: 'booked' };
-    }
-    const capacity = Number(schedule['capacity'] ?? 0);
-    const taken = Number(schedule['currentBookings'] ?? 0);
-    if (capacity && taken >= capacity) {
-      throw new AppException(ErrorCode.GYM_CLASS_FULL, 'Class is full');
-    }
-    const enrolled = Array.isArray(schedule['enrolledMemberIds'])
-      ? [...(schedule['enrolledMemberIds'] as string[])]
-      : [];
-    if (!enrolled.includes(userId)) {
-      enrolled.push(userId);
-    }
-    const booking = await this.store.create(TENANT_COLLECTION.gymClassBookings, {
-      userId,
-      classScheduleId: scheduleId,
-      className: schedule['name'] ?? '',
-      attendanceStatus: 'booked',
-      bookingDate: new Date().toISOString(),
-    });
-    await this.store.save(TENANT_COLLECTION.gymClassSchedules, {
-      ...schedule,
-      currentBookings: taken + 1,
-      enrolledMemberIds: enrolled,
-    } as Doc);
-    return { id: booking.id, status: 'booked' };
-  }
-
-  async joinWaitlist(scheduleId: string) {
-    await this.store.getOrThrow(
-      TENANT_COLLECTION.gymClassSchedules,
-      scheduleId,
-      ErrorCode.GYM_CLASS_NOT_FOUND,
-      'Class not found',
-    );
-    const userId = this.store.userId();
-    const existing = (await this.store.list<Doc>(TENANT_COLLECTION.gymClassWaitlist)).find(
-      (item) => item['userId'] === userId && item['classScheduleId'] === scheduleId,
-    );
-    if (existing) {
-      throw new AppException(ErrorCode.GYM_WAITLIST_EXISTS, 'Already on waitlist');
-    }
-    const created = await this.store.create(TENANT_COLLECTION.gymClassWaitlist, {
-      userId,
-      classScheduleId: scheduleId,
-    });
-    return { id: created.id, status: 'waitlisted' };
-  }
-
-  async cancelClassBooking(bookingId: string) {
-    const booking = await this.store.getOrThrow<Doc>(
-      TENANT_COLLECTION.gymClassBookings,
-      bookingId,
-      ErrorCode.GYM_BOOKING_NOT_FOUND,
-      'Booking not found',
-    );
-    if (booking['userId'] !== this.store.userId()) {
-      throw new AppException(ErrorCode.GYM_BOOKING_NOT_FOUND, 'Booking not found');
-    }
-    await this.store.update(
-      TENANT_COLLECTION.gymClassBookings,
-      bookingId,
-      ErrorCode.GYM_BOOKING_NOT_FOUND,
-      'Booking not found',
-      { attendanceStatus: 'cancelled' },
-    );
-    const scheduleId = String(booking['classScheduleId'] ?? '');
-    if (scheduleId) {
-      const schedule = await this.store.getOrThrow<Doc>(
-        TENANT_COLLECTION.gymClassSchedules,
-        scheduleId,
-        ErrorCode.GYM_CLASS_NOT_FOUND,
-        'Class not found',
-      );
-      const enrolled = (
-        Array.isArray(schedule['enrolledMemberIds']) ? schedule['enrolledMemberIds'] : []
-      ) as string[];
-      await this.store.save(TENANT_COLLECTION.gymClassSchedules, {
-        ...schedule,
-        currentBookings: Math.max(0, Number(schedule['currentBookings'] ?? 1) - 1),
-        enrolledMemberIds: enrolled.filter((id) => id !== booking['userId']),
-      } as Doc);
-      await this.promoteWaitlist(scheduleId);
-    }
-    return { id: bookingId };
   }
 
   async listPayments() {
@@ -1050,6 +966,7 @@ export class GymMobileService {
       packagePrice: amount,
       membershipStartsAt: now.toISOString(),
       membershipEndsAt: ends.toISOString(),
+      ...packageCredits(pkg),
     });
     await this.accessSync.syncMemberSafely(renewed);
     await this.store.create(TENANT_COLLECTION.gymWalletTx, {
@@ -1159,54 +1076,6 @@ export class GymMobileService {
       throw new AppException(ErrorCode.GYM_THREAD_NOT_FOUND, 'Thread not found');
     }
     return thread;
-  }
-
-  private async promoteWaitlist(scheduleId: string) {
-    const waiting = (await this.store.list<Doc>(TENANT_COLLECTION.gymClassWaitlist))
-      .filter((item) => item['classScheduleId'] === scheduleId)
-      .sort((left, right) => left.createdAt.localeCompare(right.createdAt));
-    const next = waiting[0];
-    if (!next) {
-      return;
-    }
-    const userId = String(next['userId']);
-    await this.store.softDelete(
-      TENANT_COLLECTION.gymClassWaitlist,
-      next.id,
-      ErrorCode.GYM_CLASS_NOT_FOUND,
-      'Waitlist not found',
-    );
-    const schedule = await this.store.getOrThrow<Doc>(
-      TENANT_COLLECTION.gymClassSchedules,
-      scheduleId,
-      ErrorCode.GYM_CLASS_NOT_FOUND,
-      'Class not found',
-    );
-    const enrolled = Array.isArray(schedule['enrolledMemberIds'])
-      ? [...(schedule['enrolledMemberIds'] as string[])]
-      : [];
-    if (!enrolled.includes(userId)) {
-      enrolled.push(userId);
-    }
-    await this.store.create(TENANT_COLLECTION.gymClassBookings, {
-      userId,
-      classScheduleId: scheduleId,
-      className: schedule['name'] ?? '',
-      attendanceStatus: 'booked',
-      bookingDate: new Date().toISOString(),
-    });
-    await this.store.save(TENANT_COLLECTION.gymClassSchedules, {
-      ...schedule,
-      currentBookings: Number(schedule['currentBookings'] ?? 0) + 1,
-      enrolledMemberIds: enrolled,
-    } as Doc);
-    await this.store.create(TENANT_COLLECTION.gymMemberNotifications, {
-      userId,
-      type: 'class_promoted',
-      title: 'Bekleme listesinden yer açıldı',
-      body: `${String(schedule['name'] ?? 'Ders')} kaydın onaylandı.`,
-      readAt: null,
-    });
   }
 
   private monthlyProgressFor(userId: string, visitsThisMonth: number, measurements: Doc[]) {

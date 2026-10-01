@@ -174,22 +174,29 @@ export class GymRemindersService {
 
   /** Daily cron entry: every active tenant with the gym module, each in its own tenant context. */
   async runAllTenants(day = gymToday()): Promise<ReminderRunResult[]> {
+    const results = await this.forEachGymTenant('reminders', () => this.runForTenant({ day }));
+    this.logger.log(`Reminder run ${day}: ${results.reduce((sum, r) => sum + r.created, 0)} created in ${results.length} gyms`);
+    return results;
+  }
+
+  /**
+   * Runs a daily job once per active tenant with the gym module, inside that tenant's context (as a
+   * system user). A failure in one gym is logged and does not stop the others.
+   */
+  async forEachGymTenant<T>(job: string, run: () => Promise<T>): Promise<T[]> {
     const snapshot = await this.firebase.db.collection(ROOT_COLLECTION.tenants).where('modules', 'array-contains', 'gym').get();
-    const results: ReminderRunResult[] = [];
+    const results: T[] = [];
     for (const doc of snapshot.docs) {
-      const tenant = doc.data() as { status?: string; modules?: string[] };
+      const tenant = doc.data() as { status?: string };
       if (tenant.status && tenant.status !== 'active') continue;
       try {
-        const run = await this.tenantContext.run(
-          { tenantId: doc.id, userId: SYSTEM_USER, role: 'owner', modules: ['gym'], email: '' },
-          () => this.runForTenant({ day }),
+        results.push(
+          await this.tenantContext.run({ tenantId: doc.id, userId: SYSTEM_USER, role: 'owner', modules: ['gym'], email: '' }, run),
         );
-        results.push(run);
       } catch (error) {
-        this.logger.error(`Reminder run failed for tenant ${doc.id}`, error as Error);
+        this.logger.error(`Daily job ${job} failed for tenant ${doc.id}`, error as Error);
       }
     }
-    this.logger.log(`Reminder run ${day}: ${results.reduce((sum, r) => sum + r.created, 0)} created in ${results.length} gyms`);
     return results;
   }
 

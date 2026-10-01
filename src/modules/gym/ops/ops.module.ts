@@ -11,6 +11,7 @@ import {
   GymSuppliersController,
   GymWalletController,
 } from './commerce.controllers';
+import { GymClassBookingService } from './class-booking.service';
 import { GymCommerceService } from './commerce.service';
 import {
   GymAccessController,
@@ -56,7 +57,7 @@ import { GymSportService } from './sport.service';
     GymSaasController,
     GymReceivablesController,
   ],
-  providers: [GymStore, GymSportService, GymCommerceService, GymOpsService, GymReceivablesService],
-  exports: [GymStore, GymSportService, GymCommerceService, GymOpsService, GymReceivablesService],
+  providers: [GymStore, GymSportService, GymCommerceService, GymOpsService, GymReceivablesService, GymClassBookingService],
+  exports: [GymStore, GymSportService, GymCommerceService, GymOpsService, GymReceivablesService, GymClassBookingService],
 })
 export class GymOpsModule {}

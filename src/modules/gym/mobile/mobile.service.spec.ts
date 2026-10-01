@@ -185,12 +185,6 @@ describe('GymMobileService', () => {
     expect(computeStreak(['2026-09-20T08:00:00.000Z'], now)).toBe(0);
   });
 
-  it('rejects waitlist when already queued', async () => {
-    store.getOrThrow.mockResolvedValue({ id: 'c1', name: 'Yoga' });
-    store.list.mockResolvedValue([{ id: 'w1', userId: 'u1', classScheduleId: 'c1' }]);
-    await expect(service.joinWaitlist('c1')).rejects.toMatchObject({ code: ErrorCode.GYM_WAITLIST_EXISTS });
-  });
-
   it('does not delete another member progress photo', async () => {
     store.getOrThrow.mockResolvedValue({ id: 'ph1', userId: 'other', storagePath: 'x' });
     await expect(service.deleteProgressPhoto('ph1')).rejects.toMatchObject({

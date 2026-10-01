@@ -43,6 +43,7 @@ export class PackagesRepository {
       checkInStartTime: dto.checkInStartTime ?? '06:00',
       checkInEndTime: dto.checkInEndTime ?? '23:00',
       sessionCount: dto.sessionCount ?? null,
+      classCredits: dto.classCredits ?? null,
       isUnlimitedSessions: dto.isUnlimitedSessions ?? false,
       barcode: dto.barcode ?? '',
       isHidden: dto.isHidden ?? false,

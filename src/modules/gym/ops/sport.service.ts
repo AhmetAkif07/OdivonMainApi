@@ -45,34 +45,6 @@ export class GymSportService {
     });
   }
 
-  async bookClass(scheduleId: string, dto: GymRecordDto) {
-    const schedule = (await this.getClass(scheduleId)) as Doc;
-    const userId = dto.userId || this.store.userId();
-    const capacity = Number(schedule['capacity'] ?? 0);
-    const taken = Number(schedule['currentBookings'] ?? 0);
-    if (capacity && taken >= capacity) {
-      throw new AppException(ErrorCode.GYM_CLASS_FULL, 'Class is full');
-    }
-    const enrolled = Array.isArray(schedule['enrolledMemberIds']) ? [...(schedule['enrolledMemberIds'] as string[])] : [];
-    if (!enrolled.includes(userId)) {
-      enrolled.push(userId);
-    }
-    const booking = await this.store.create(TENANT_COLLECTION.gymClassBookings, {
-      userId,
-      classScheduleId: scheduleId,
-      className: dto.className || schedule['name'],
-      attendanceStatus: 'booked',
-      notes: dto.notes ?? '',
-      bookingDate: new Date().toISOString(),
-    });
-    await this.store.save(TENANT_COLLECTION.gymClassSchedules, {
-      ...schedule,
-      currentBookings: taken + 1,
-      enrolledMemberIds: enrolled,
-    } as Doc);
-    return booking;
-  }
-
   async assignMembers(scheduleId: string, dto: GymRecordDto) {
     const schedule = (await this.getClass(scheduleId)) as Doc;
     const ids = dto.enrolledMemberIds ?? [];
@@ -82,33 +54,6 @@ export class GymSportService {
       currentBookings: ids.length,
     } as Doc);
     return this.getClass(scheduleId);
-  }
-
-  async cancelBooking(bookingId: string) {
-    const booking = (await this.store.getOrThrow(
-      TENANT_COLLECTION.gymClassBookings,
-      bookingId,
-      ErrorCode.GYM_BOOKING_NOT_FOUND,
-      'Booking not found',
-    )) as Doc;
-    const scheduleId = String(booking['classScheduleId'] ?? '');
-    await this.store.update(
-      TENANT_COLLECTION.gymClassBookings,
-      bookingId,
-      ErrorCode.GYM_BOOKING_NOT_FOUND,
-      'Booking not found',
-      { attendanceStatus: 'cancelled' },
-    );
-    if (scheduleId) {
-      const schedule = (await this.getClass(scheduleId)) as Doc;
-      const enrolled = (Array.isArray(schedule['enrolledMemberIds']) ? schedule['enrolledMemberIds'] : []) as string[];
-      await this.store.save(TENANT_COLLECTION.gymClassSchedules, {
-        ...schedule,
-        currentBookings: Math.max(0, Number(schedule['currentBookings'] ?? 1) - 1),
-        enrolledMemberIds: enrolled.filter((id) => id !== booking['userId']),
-      } as Doc);
-    }
-    return { id: bookingId };
   }
 
   listAppointments(query: GymListQueryDto) {

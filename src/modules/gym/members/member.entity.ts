@@ -40,5 +40,10 @@ export interface GymMember extends BaseDocument {
   isArchived: boolean;
   archivedAt: string | null;
   autoRenew?: boolean;
+  /** Group-class credits of the current package period; null = unlimited (or no credit system). */
+  classCreditsTotal?: number | null;
+  classCreditsUsed?: number;
+  /** Booked classes not attended (marked by staff or closed automatically the next day). */
+  noShowCount?: number;
   waterTargetMl?: number;
 }

@@ -4,6 +4,7 @@ import helmet from 'helmet';
 import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module';
 import { loadConfiguration } from './config/configuration';
+import { GymClassBookingService } from './modules/gym/ops/class-booking.service';
 import { GymRemindersService } from './modules/gym/reminders/reminders.service';
 
 let application: INestApplication | null = null;
@@ -54,5 +55,9 @@ export async function runScheduledJobs(): Promise<void> {
   if (!application) {
     throw new Error('Application is not bootstrapped');
   }
-  await application.get(GymRemindersService).runAllTenants();
+  const reminders = application.get(GymRemindersService);
+  const classBookings = application.get(GymClassBookingService);
+  // Unmarked bookings of past class sessions become no-shows, then the day's reminders go out.
+  await reminders.forEachGymTenant('class-sessions', () => classBookings.closePastSessions());
+  await reminders.runAllTenants();
 }

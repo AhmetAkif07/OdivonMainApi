@@ -10,7 +10,7 @@ import { AccessSyncService } from '../access/access-sync.service';
 import { MembersRepository } from '../members/members.repository';
 import { PackagesRepository } from '../packages/packages.repository';
 import { GymStore } from '../shared/gym-store';
-import { applyPackage } from '../shared/membership';
+import { applyPackage, packageCredits } from '../shared/membership';
 import { GymCommerceService } from './commerce.service';
 import {
   CancelReceivableDto,
@@ -322,7 +322,12 @@ export class GymReceivablesService {
     );
     if (saleKurus === 0) return member;
 
-    const updated = await this.members.save({ ...member, packageLabel: name, packagePrice: toTl(saleKurus) });
+    const updated = await this.members.save({
+      ...member,
+      packageLabel: name,
+      packagePrice: toTl(saleKurus),
+      ...(pkg ? packageCredits(pkg) : {}),
+    });
     if (paidKurus > 0) {
       const label = `${name} satışı (yeni üye)`;
       await this.bookIncome({ id: pkg?.id ?? member.uid, userId: member.uid }, toTl(paidKurus), method, label, 'membership', 'membership');

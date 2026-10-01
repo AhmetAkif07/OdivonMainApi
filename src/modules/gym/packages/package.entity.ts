@@ -15,6 +15,8 @@ export interface GymPackage extends BaseDocument {
   checkInStartTime: string;
   checkInEndTime: string;
   sessionCount: number | null;
+  /** Group-class credits per membership period; null/absent = unlimited classes. */
+  classCredits?: number | null;
   isUnlimitedSessions: boolean;
   barcode: string;
   isHidden: boolean;

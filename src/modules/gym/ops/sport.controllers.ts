@@ -7,6 +7,8 @@ import { PermissionGuard } from '../../../shared/authorization/permission.guard'
 import { RequirePermission } from '../../../shared/authorization/require-permission.decorator';
 import { TenantGuard } from '../../../shared/tenancy/tenant.guard';
 import { GymListQueryDto, GymRecordDto } from '../shared/ops.dto';
+import { AttendanceDto, PromoteDto, SessionQueryDto, StaffBookingDto, StaffWaitlistDto } from './class-booking.dto';
+import { GymClassBookingService } from './class-booking.service';
 import { GymSportService } from './sport.service';
 
 const Guards = [FirebaseAuthGuard, TenantGuard, ModuleGuard, PermissionGuard] as const;
@@ -17,7 +19,10 @@ const Guards = [FirebaseAuthGuard, TenantGuard, ModuleGuard, PermissionGuard] as
 @UseGuards(...Guards)
 @Controller('gym/classes')
 export class GymClassesController {
-  constructor(private readonly sport: GymSportService) {}
+  constructor(
+    private readonly sport: GymSportService,
+    private readonly classBookings: GymClassBookingService,
+  ) {}
 
   @Get()
   @RequirePermission('classes', 'view')
@@ -55,10 +60,38 @@ export class GymClassesController {
     return this.sport.removeClass(id);
   }
 
+  /** Books a member into one session (default: the next); checks capacity and class credits. */
   @Post(':id/bookings')
   @RequirePermission('classes', 'create')
-  book(@Param('id') id: string, @Body() dto: GymRecordDto) {
-    return this.sport.bookClass(id, dto);
+  book(@Param('id') id: string, @Body() dto: StaffBookingDto) {
+    return this.classBookings.book({ scheduleId: id, userId: dto.userId, sessionDate: dto.sessionDate, notes: dto.notes });
+  }
+
+  /** One session: bookings with attendance, the waitlist and free places. */
+  @Get(':id/roster')
+  @RequirePermission('classes', 'view')
+  roster(@Param('id') id: string, @Query() query: SessionQueryDto) {
+    return this.classBookings.roster(id, query.date);
+  }
+
+  /** Yoklama: came (checked-in) / did not come (no-show). */
+  @Post(':id/attendance')
+  @RequirePermission('classes', 'update')
+  attendance(@Param('id') id: string, @Body() dto: AttendanceDto) {
+    return this.classBookings.markAttendance(id, dto.sessionDate, dto.entries);
+  }
+
+  @Post(':id/waitlist')
+  @RequirePermission('classes', 'create')
+  joinWaitlist(@Param('id') id: string, @Body() dto: StaffWaitlistDto) {
+    return this.classBookings.joinWaitlist({ scheduleId: id, userId: dto.userId, sessionDate: dto.sessionDate });
+  }
+
+  /** Fills free places of the session from the waitlist (also happens on every cancellation). */
+  @Post(':id/waitlist/promote')
+  @RequirePermission('classes', 'update')
+  promote(@Param('id') id: string, @Body() dto: PromoteDto) {
+    return this.classBookings.promote(id, dto.sessionDate);
   }
 
   @Patch(':id/members')
@@ -70,7 +103,8 @@ export class GymClassesController {
   @Delete(':id/bookings/:bookingId')
   @RequirePermission('classes', 'delete')
   cancelBooking(@Param('bookingId') bookingId: string) {
-    return this.sport.cancelBooking(bookingId);
+    // Staff cancellation always returns the credit and promotes the waitlist.
+    return this.classBookings.cancel(bookingId, { byStaff: true });
   }
 }
 

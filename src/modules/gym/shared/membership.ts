@@ -22,5 +22,11 @@ export function applyPackage(member: GymMember, pkg: GymPackage, price: number, 
     packagePrice: price,
     membershipStartsAt: now.toISOString(),
     membershipEndsAt: ends.toISOString(),
+    ...packageCredits(pkg),
   };
+}
+
+/** Group-class credits granted by a package for one membership period (null = unlimited). */
+export function packageCredits(pkg: Pick<GymPackage, 'classCredits'>): { classCreditsTotal: number | null; classCreditsUsed: number } {
+  return { classCreditsTotal: pkg.classCredits ?? null, classCreditsUsed: 0 };
 }

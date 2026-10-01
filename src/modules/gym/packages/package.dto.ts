@@ -83,6 +83,12 @@ export class CreatePackageDto {
   @IsInt()
   sessionCount?: number | null;
 
+  @ApiPropertyOptional({ description: 'Grup dersi hakkı (dönem başına); boş = sınırsız', nullable: true })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  classCredits?: number | null;
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsBoolean()
