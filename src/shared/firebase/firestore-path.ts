@@ -76,6 +76,8 @@ export const TENANT_COLLECTION = {
   gymAuditLogs: 'gymAuditLogs',
   gymReminders: 'gymReminders',
   gymReminderSettings: 'gymReminderSettings',
+  gymReferralSettings: 'gymReferralSettings',
+  gymReferralRewards: 'gymReferralRewards',
   spaSettings: 'spaSettings',
   spaCustomers: 'spaCustomers',
   spaRooms: 'spaRooms',

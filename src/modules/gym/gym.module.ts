@@ -3,6 +3,7 @@ import { GymAuditModule } from './audit/gym-audit.module';
 import { GymBranchesModule } from './branches/branches.module';
 import { GymController } from './gym.controller';
 import { GymInfoModule } from './info/gym-info.module';
+import { GymLeadsModule } from './leads/leads.module';
 import { GymMembersModule } from './members/members.module';
 import { GymMobileModule } from './mobile/mobile.module';
 import { GymOnboardingModule } from './onboarding/onboarding.module';
@@ -24,6 +25,7 @@ import { GymStaffModule } from './staff/staff.module';
     GymOpsModule,
     GymMobileModule,
     GymRemindersModule,
+    GymLeadsModule,
     GymReportsModule,
   ],
   controllers: [GymController],

@@ -3,6 +3,7 @@ import { AppException } from '../../../shared/errors/app.exception';
 import { ErrorCode } from '../../../shared/errors/error-codes';
 import { TENANT_COLLECTION } from '../../../shared/firebase/firestore-path';
 import { BaseDocument } from '../../../shared/firestore/base-document';
+import { isLeadStage, LeadRecord, stageChange } from '../leads/leads.rules';
 import { GymStore } from '../shared/gym-store';
 import { GymListQueryDto, GymRecordDto } from '../shared/ops.dto';
 
@@ -240,14 +241,24 @@ export class GymSportService {
   }
 
   createGuest(dto: GymRecordDto) {
+    const status = isLeadStage(dto.status) ? dto.status : 'visited';
     return this.store.create(TENANT_COLLECTION.gymGuestMembers, {
       ...dto,
-      status: dto.status ?? 'visited',
+      status,
+      source: dto.source ?? (dto.referrerMemberId ? 'referral' : null),
+      stageHistory: [{ stage: status, at: new Date().toISOString(), by: this.store.userId() }],
     });
   }
 
-  updateGuest(id: string, dto: GymRecordDto) {
-    return this.store.update(TENANT_COLLECTION.gymGuestMembers, id, ErrorCode.GYM_GUEST_NOT_FOUND, 'Guest not found', dto);
+  /** A status change is also written to the lead's stage history (for the funnel report). */
+  async updateGuest(id: string, dto: GymRecordDto) {
+    const current = await this.store.getOrThrow<Doc & LeadRecord>(TENANT_COLLECTION.gymGuestMembers, id, ErrorCode.GYM_GUEST_NOT_FOUND, 'Guest not found');
+    const stage = isLeadStage(dto.status) && dto.status !== current.status ? stageChange(current, dto.status, this.store.userId()) : {};
+    return this.store.update(TENANT_COLLECTION.gymGuestMembers, id, ErrorCode.GYM_GUEST_NOT_FOUND, 'Guest not found', {
+      ...dto,
+      ...stage,
+      ...(dto.lostReason !== undefined ? { lostReason: dto.lostReason } : {}),
+    });
   }
 
   removeGuest(id: string) {

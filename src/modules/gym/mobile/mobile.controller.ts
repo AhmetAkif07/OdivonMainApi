@@ -6,6 +6,7 @@ import { CurrentUser } from '../../../shared/auth/current-user.decorator';
 import { ModuleGuard } from '../../../shared/authorization/module.guard';
 import { TenantStore } from '../../../shared/tenancy/tenant.context';
 import { TenantGuard } from '../../../shared/tenancy/tenant.guard';
+import { GymLeadsService } from '../leads/leads.service';
 import { GymClassBookingService } from '../ops/class-booking.service';
 import { GymReceivablesService } from '../ops/receivables.service';
 import { GymMemberGuard } from './gym-member.guard';
@@ -39,6 +40,7 @@ export class GymMobileController {
     private readonly mobile: GymMobileService,
     private readonly receivables: GymReceivablesService,
     private readonly classBooking: GymClassBookingService,
+    private readonly leads: GymLeadsService,
   ) {}
 
   @Get('home')
@@ -213,6 +215,12 @@ export class GymMobileController {
   async cancelClassBooking(@Param('id') id: string, @CurrentUser() user: TenantStore) {
     await this.classBooking.cancel(id, { byStaff: false, userId: user.userId });
     return { id };
+  }
+
+  /** Referral programme (when the gym runs one) and the member's own referrals with their rewards. */
+  @Get('referrals')
+  referrals(@CurrentUser() user: TenantStore) {
+    return this.leads.memberSummary(user.userId);
   }
 
   @Get('payments')

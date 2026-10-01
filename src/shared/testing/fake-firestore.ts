@@ -11,6 +11,13 @@ function firestoreError(code: number, message: string) {
   return Object.assign(new Error(message), { code });
 }
 
+export interface FakeSnapshot {
+  id: string;
+  ref: FakeDocRef;
+  exists: boolean;
+  data(): Data | undefined;
+}
+
 export class FakeFirestore {
   readonly docs = new Map<string, Data>();
   private lock: Promise<unknown> = Promise.resolve();
@@ -90,12 +97,12 @@ export class FakeDocRef {
     return this.db;
   }
 
-  snapshot() {
+  snapshot(): FakeSnapshot {
     const data = this.db.docs.get(this.path);
     return { id: this.id, ref: this, exists: data !== undefined, data: () => (data ? { ...data } : undefined) };
   }
 
-  async get() {
+  async get(): Promise<FakeSnapshot> {
     return this.snapshot();
   }
 

@@ -283,6 +283,24 @@ export class GymRecordDto {
   @IsString()
   assignedStaffName?: string;
 
+  /** Lead source (walk_in, instagram, referral, …). */
+  @IsOptional()
+  @IsString()
+  source?: string;
+
+  /** Member who referred this lead (referral programme). */
+  @IsOptional()
+  @IsString()
+  referrerMemberId?: string | null;
+
+  @IsOptional()
+  @IsString()
+  referrerName?: string | null;
+
+  @IsOptional()
+  @IsString()
+  lostReason?: string | null;
+
   @IsOptional()
   @IsString()
   code?: string;
