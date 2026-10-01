@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Put, Req, Res, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Logger, Param, Post, Put, Req, Res, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Request, Response } from 'express';
 import { FirebaseAuthGuard } from '../../shared/auth/firebase-auth.guard';
@@ -27,7 +27,7 @@ export class PaymentsController {
   @Post('checkout')
   @ApiOperation({ summary: 'Create a sandbox checkout from a vet sale or gym receivable' })
   checkout(@Body() dto: CreateCheckoutDto, @Req() request: Request) {
-    return this.payments.createCheckout(dto, request.header('cf-connecting-ip') ?? request.ip ?? '127.0.0.1');
+    return this.payments.createCheckout(dto, request.header('cf-connecting-ip') ?? request.ip ?? '127.0.0.1', request.header('origin'));
   }
 
   @Get('saas-plans')
@@ -50,14 +50,26 @@ export class PaymentsController {
 @ApiTags('payments')
 @Controller('payments/callback')
 export class PaymentCallbackController {
+  private readonly logger = new Logger(PaymentCallbackController.name);
+
   constructor(private readonly payments: PaymentsService) {}
 
+  /**
+   * iyzico posts the browser here (form-encoded `token`). The result is retrieved server-side;
+   * the browser is then sent back to the panel result page, also when verification fails.
+   */
   @Post('iyzico/:id')
   @ApiOperation({ summary: 'iyzico checkout callback; payment is confirmed by server-side retrieve' })
   async callback(@Param('id') id: string, @Body('token') token: string, @Res() response: Response) {
-    const result = await this.payments.handleCallback(id, token);
-    const returnUrl = await this.payments.saasReturnUrl(id);
+    let outcome: 'succeeded' | 'failed' | 'pending' | 'error';
+    try {
+      outcome = (await this.payments.handleCallback(id, String(token ?? ''))).status as 'succeeded' | 'failed' | 'pending';
+    } catch (error) {
+      this.logger.warn(`Payment callback ${id} failed: ${(error as Error).message}`);
+      outcome = 'error';
+    }
+    const returnUrl = await this.payments.returnUrl(id, outcome).catch(() => null);
     if (returnUrl) return response.redirect(303, returnUrl);
-    return response.json(result);
+    return response.status(outcome === 'error' ? 400 : 200).json({ status: outcome });
   }
 }

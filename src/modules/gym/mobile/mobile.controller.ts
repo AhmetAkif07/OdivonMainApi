@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { FirebaseAuthGuard } from '../../../shared/auth/firebase-auth.guard';
 import { RequireModule } from '../../../shared/authorization/module.decorator';
@@ -6,6 +6,9 @@ import { CurrentUser } from '../../../shared/auth/current-user.decorator';
 import { ModuleGuard } from '../../../shared/authorization/module.guard';
 import { TenantStore } from '../../../shared/tenancy/tenant.context';
 import { TenantGuard } from '../../../shared/tenancy/tenant.guard';
+import { Request } from 'express';
+import { MemberCheckoutDto } from '../../payments/payments.dto';
+import { PaymentsService } from '../../payments/payments.service';
 import { GymLeadsService } from '../leads/leads.service';
 import { GymClassBookingService } from '../ops/class-booking.service';
 import { GymReceivablesService } from '../ops/receivables.service';
@@ -41,6 +44,7 @@ export class GymMobileController {
     private readonly receivables: GymReceivablesService,
     private readonly classBooking: GymClassBookingService,
     private readonly leads: GymLeadsService,
+    private readonly onlinePayments: PaymentsService,
   ) {}
 
   @Get('home')
@@ -215,6 +219,26 @@ export class GymMobileController {
   async cancelClassBooking(@Param('id') id: string, @CurrentUser() user: TenantStore) {
     await this.classBooking.cancel(id, { byStaff: false, userId: user.userId });
     return { id };
+  }
+
+  /**
+   * Card payment (iyzico checkout form, 3D Secure on iyzico's page): package, wallet top-up or the
+   * member's own debt. Returns the payment page URL; the result is applied by the callback.
+   */
+  @Post('payments/checkout')
+  checkoutPayment(@Body() dto: MemberCheckoutDto, @Req() request: Request) {
+    return this.onlinePayments.createMemberCheckout(dto, request.header('cf-connecting-ip') ?? request.ip ?? '127.0.0.1', request.header('origin'));
+  }
+
+  @Get('payments/:id')
+  payment(@Param('id') id: string) {
+    return this.onlinePayments.getOwn(id);
+  }
+
+  /** Asks iyzico again (result page "check again"); applies a success that the callback missed. */
+  @Post('payments/:id/reconcile')
+  reconcilePayment(@Param('id') id: string) {
+    return this.onlinePayments.reconcileOwn(id);
   }
 
   /** Referral programme (when the gym runs one) and the member's own referrals with their rewards. */

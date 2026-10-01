@@ -1,6 +1,7 @@
 export type PaymentProviderId = 'iyzico';
-export type PaymentSource = 'vet_sale' | 'gym_receivable' | 'saas_subscription';
-export type PaymentStatus = 'initializing' | 'pending' | 'succeeded' | 'failed';
+export type PaymentSource = 'vet_sale' | 'gym_receivable' | 'saas_subscription' | 'gym_member_package' | 'gym_wallet_topup';
+/** `abandoned`: superseded or expired before a result; still verifiable if paid on an old tab. */
+export type PaymentStatus = 'initializing' | 'pending' | 'succeeded' | 'failed' | 'abandoned';
 
 export interface CheckoutInput {
   id: string;
@@ -34,6 +35,8 @@ export interface VerifiedPayment {
 
 export interface PaymentProvider {
   readonly id: PaymentProviderId;
+  mode(): 'sandbox' | 'live';
+  configured(): boolean;
   createCheckout(input: CheckoutInput): Promise<CheckoutResult>;
   verifyCheckout(token: string, input: Pick<CheckoutInput, 'id' | 'amountKurus'>): Promise<VerifiedPayment>;
 }
@@ -53,4 +56,11 @@ export interface PaymentSession {
   createdBy: string;
   createdAt: string;
   updatedAt: string;
+  /** Member whose wallet / membership / debt the payment is for (gym sources). */
+  userId?: string | null;
+  /** Panel origin the browser returns to after the payment page. */
+  returnOrigin?: string | null;
+  /** Set when the gym-side effect (wallet, membership, debt) was applied. */
+  fulfilledAt?: string | null;
+  reviewPending?: boolean;
 }

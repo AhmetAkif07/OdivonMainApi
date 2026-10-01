@@ -2,9 +2,20 @@ import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
 import { AppException } from '../../shared/errors/app.exception';
 import { ErrorCode } from '../../shared/errors/error-codes';
-import { CheckoutInput, CheckoutResult, PaymentProvider, VerifiedPayment } from './payment-provider';
+import { CheckoutInput, CheckoutResult, PaymentProvider, PaymentSource, VerifiedPayment } from './payment-provider';
 
-const BASE_URL = 'https://sandbox-api.iyzipay.com';
+const BASKET_NAMES: Record<PaymentSource, string> = {
+  saas_subscription: 'Odivon GYM SaaS abonelik',
+  vet_sale: 'Odivon Vet tahsilat',
+  gym_receivable: 'Spor salonu taksit ödemesi',
+  gym_member_package: 'Spor salonu üyelik paketi',
+  gym_wallet_topup: 'Spor salonu cüzdan yüklemesi',
+};
+
+const SANDBOX_URL = 'https://sandbox-api.iyzipay.com';
+const LIVE_URL = 'https://api.iyzipay.com';
+/** Hosts iyzico serves its checkout form from (sandbox and live). */
+const PAGE_HOSTS = ['sandbox-api.iyzipay.com', 'sandbox-cpp.iyzipay.com', 'api.iyzipay.com', 'cpp.iyzipay.com'];
 const INITIALIZE = '/payment/iyzipos/checkoutform/initialize/auth/ecom';
 const RETRIEVE = '/payment/iyzipos/checkoutform/auth/ecom/detail';
 
@@ -41,13 +52,29 @@ export function verifyIyzicoSignature(secretKey: string, fields: Array<string | 
 export class IyzicoProvider implements PaymentProvider {
   readonly id = 'iyzico' as const;
 
+  /**
+   * Keys come from Worker secrets: IYZICO_API_KEY / IYZICO_SECRET_KEY (or the older
+   * IYZICO_SANDBOX_* names). IYZICO_BASE_URL selects live (https://api.iyzipay.com); sandbox by default.
+   */
   private credentials() {
-    const apiKey = process.env.IYZICO_SANDBOX_API_KEY;
-    const secretKey = process.env.IYZICO_SANDBOX_SECRET_KEY;
+    const apiKey = process.env.IYZICO_API_KEY ?? process.env.IYZICO_SANDBOX_API_KEY;
+    const secretKey = process.env.IYZICO_SECRET_KEY ?? process.env.IYZICO_SANDBOX_SECRET_KEY;
     if (!apiKey || !secretKey) {
-      throw new AppException(ErrorCode.INVALID_STATUS, 'iyzico sandbox credentials are not configured');
+      throw new AppException(ErrorCode.INVALID_STATUS, 'iyzico credentials are not configured');
     }
     return { apiKey, secretKey };
+  }
+
+  private baseUrl(): string {
+    return process.env.IYZICO_BASE_URL === LIVE_URL ? LIVE_URL : SANDBOX_URL;
+  }
+
+  mode(): 'sandbox' | 'live' {
+    return this.baseUrl() === LIVE_URL ? 'live' : 'sandbox';
+  }
+
+  configured(): boolean {
+    return Boolean((process.env.IYZICO_API_KEY ?? process.env.IYZICO_SANDBOX_API_KEY) && (process.env.IYZICO_SECRET_KEY ?? process.env.IYZICO_SANDBOX_SECRET_KEY));
   }
 
   async createCheckout(input: CheckoutInput): Promise<CheckoutResult> {
@@ -65,7 +92,7 @@ export class IyzicoProvider implements PaymentProvider {
         contactName: `${input.buyer.name} ${input.buyer.surname}`, address: input.buyer.address,
         city: input.buyer.city, country: input.buyer.country,
       },
-      basketItems: [{ id: input.id, name: input.source === 'saas_subscription' ? 'Odivon GYM SaaS abonelik test' : `Odivon ${input.source === 'vet_sale' ? 'Vet' : 'Gym'} tahsilat`,
+      basketItems: [{ id: input.id, name: BASKET_NAMES[input.source],
         category1: 'Service', itemType: 'VIRTUAL', price }],
     };
     const response = await this.post(INITIALIZE, body);
@@ -78,8 +105,7 @@ export class IyzicoProvider implements PaymentProvider {
     let page: URL;
     try { page = new URL(response.paymentPageUrl); }
     catch { throw new AppException(ErrorCode.FINANCE_INVALID, 'iyzico returned an invalid checkout URL'); }
-    if (page.protocol !== 'https:' ||
-      !['sandbox-api.iyzipay.com', 'sandbox-cpp.iyzipay.com'].includes(page.hostname)) {
+    if (page.protocol !== 'https:' || !PAGE_HOSTS.includes(page.hostname)) {
       throw new AppException(ErrorCode.FINANCE_INVALID, 'iyzico returned an invalid checkout URL');
     }
     return { token: response.token, paymentPageUrl: page.toString() };
@@ -110,7 +136,7 @@ export class IyzicoProvider implements PaymentProvider {
     const nonce = randomUUID();
     let response: Response;
     try {
-      response = await fetch(`${BASE_URL}${path}`, {
+      response = await fetch(`${this.baseUrl()}${path}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -121,9 +147,9 @@ export class IyzicoProvider implements PaymentProvider {
         signal: AbortSignal.timeout(10_000),
       });
     } catch {
-      throw new AppException(ErrorCode.FINANCE_INVALID, 'iyzico sandbox is unavailable');
+      throw new AppException(ErrorCode.FINANCE_INVALID, 'iyzico is unavailable');
     }
-    if (!response.ok) throw new AppException(ErrorCode.FINANCE_INVALID, `iyzico sandbox returned HTTP ${response.status}`);
+    if (!response.ok) throw new AppException(ErrorCode.FINANCE_INVALID, `iyzico returned HTTP ${response.status}`);
     try { return await response.json() as IyzicoResponse; }
     catch { throw new AppException(ErrorCode.FINANCE_INVALID, 'iyzico returned an invalid response'); }
   }

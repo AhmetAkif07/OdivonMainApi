@@ -993,7 +993,7 @@ export class GymMobileService {
       status: 'not_implemented',
       provider: dto.provider ?? null,
       packageId: dto.packageId,
-      message: 'Kartlı ödeme henüz bağlanmadı. Cüzdanla yenileme kullanılabilir.',
+      message: 'Kartla ödeme için POST /gym/mobile/payments/checkout kullanılır.',
     };
   }
 
