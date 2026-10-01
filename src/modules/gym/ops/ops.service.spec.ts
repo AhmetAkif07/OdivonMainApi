@@ -72,3 +72,15 @@ describe('GymOpsService.scan token', () => {
     expect(update).toHaveBeenCalled();
   });
 });
+
+describe('GymOpsService.saveSaas', () => {
+  it('refuses plan, status and period changes from the gym; only refreshes usage', async () => {
+    const store = { upsertSingleton: jest.fn(async (_name: string, fields: object) => fields) };
+    const members = { list: jest.fn(async () => [{}, {}]) };
+    const service = new GymOpsService(store as never, members as never, {} as never, {} as never);
+    await expect(service.saveSaas({ status: 'active', planId: 'enterprise' } as never)).rejects.toMatchObject({ code: 'FORBIDDEN_ROLE' });
+    await expect(service.saveSaas({ currentPeriodEndsAt: '2030-01-01' } as never)).rejects.toMatchObject({ code: 'FORBIDDEN_ROLE' });
+    expect(store.upsertSingleton).not.toHaveBeenCalled();
+    await expect(service.saveSaas({} as never)).resolves.toEqual({ memberCount: 2 });
+  });
+});

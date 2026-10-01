@@ -302,7 +302,8 @@ export class PaymentsService {
     const platform = input.source === 'saas_subscription';
     let credentials: IyzicoCredentials | undefined;
     if (platform) {
-      if ((await this.getSelected()) === 'none') throw new AppException(ErrorCode.INVALID_STATUS, 'Choose a payment provider first');
+      // Odivon's own account: no per-gym provider choice, only the platform keys are needed.
+      if (!this.providers.get('iyzico')!.configured()) throw new AppException(ErrorCode.INVALID_STATUS, 'Online subscription payment is not available yet');
     } else {
       credentials = (await this.gymCredentials?.resolve(tenantId)) ?? undefined;
       if (!credentials) throw new AppException(ErrorCode.INVALID_STATUS, 'Card payments are not set up for this gym');

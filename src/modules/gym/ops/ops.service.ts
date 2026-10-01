@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { AppException } from '../../../shared/errors/app.exception';
 import { ErrorCode } from '../../../shared/errors/error-codes';
 import { TENANT_COLLECTION } from '../../../shared/firebase/firestore-path';
 import { PaginatedResult } from '../../../shared/http/paginated.result';
@@ -13,6 +14,10 @@ import { GymStore } from '../shared/gym-store';
 import { GymListQueryDto, GymRecordDto } from '../shared/ops.dto';
 
 type Doc = BaseDocument & Record<string, unknown>;
+
+
+/** Subscription fields only the billing flow may write. */
+const SAAS_MANAGED_FIELDS = ['planId', 'billingCycle', 'status', 'trialStartedAt', 'trialEndsAt', 'currentPeriodStartsAt', 'currentPeriodEndsAt'] as const;
 
 @Injectable()
 export class GymOpsService {
@@ -316,14 +321,17 @@ export class GymOpsService {
     return this.store.getSingleton(TENANT_COLLECTION.gymSaasSubscription);
   }
 
+  /**
+   * Plan, status and period dates are written only by the billing flow after a verified payment
+   * (see PaymentsService); a client cannot activate or extend its own subscription. This endpoint
+   * only refreshes the usage figures shown on the subscription screen.
+   */
   async saveSaas(dto: GymRecordDto) {
+    const managed = SAAS_MANAGED_FIELDS.filter((field) => (dto as Record<string, unknown>)[field] !== undefined);
+    if (managed.length) {
+      throw new AppException(ErrorCode.FORBIDDEN_ROLE, `Subscription fields are managed by billing: ${managed.join(', ')}`);
+    }
     const members = await this.members.list({ archived: false });
-    return this.store.upsertSingleton(TENANT_COLLECTION.gymSaasSubscription, {
-      ...dto,
-      planId: dto.planId ?? 'pro',
-      billingCycle: dto.billingCycle ?? 'monthly',
-      status: dto.status ?? 'trial',
-      memberCount: members.length,
-    });
+    return this.store.upsertSingleton(TENANT_COLLECTION.gymSaasSubscription, { memberCount: members.length });
   }
 }
