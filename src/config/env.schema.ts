@@ -10,6 +10,13 @@ const envSchema = z
     FIRESTORE_EMULATOR_HOST: z.string().optional(),
     FIREBASE_AUTH_EMULATOR_HOST: z.string().optional(),
     CORS_ORIGIN: z.string().optional(),
+    /** Longest a sign-in stays valid, counted from the token's auth_time ("remember me"). */
+    SESSION_MAX_AGE_DAYS: z.coerce.number().int().min(1).max(365).default(30),
+    /** Clients sending an older X-Client-Version get 426; unset = no check. */
+    MIN_CLIENT_VERSION: z
+      .string()
+      .regex(/^\d+\.\d+\.\d+$/)
+      .optional(),
   })
   .superRefine((data, ctx) => {
     const usingEmulator = Boolean(

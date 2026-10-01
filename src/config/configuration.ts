@@ -6,6 +6,8 @@ export function loadConfiguration() {
     nodeEnv: env.NODE_ENV,
     port: env.PORT,
     corsOrigin: env.CORS_ORIGIN,
+    sessionMaxAgeDays: env.SESSION_MAX_AGE_DAYS,
+    minClientVersion: env.MIN_CLIENT_VERSION,
     firebase: {
       projectId: env.FIREBASE_PROJECT_ID,
       clientEmail: env.FIREBASE_CLIENT_EMAIL,

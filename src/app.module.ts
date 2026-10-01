@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { ClientThrottlerGuard } from './shared/http/client-throttler.guard';
+import { ClientVersionGuard } from './shared/http/client-version.guard';
 import { ValidationPipe } from '@nestjs/common';
 import { AuditModule } from './shared/audit/audit.module';
 import { AuthorizationModule } from './shared/authorization/authorization.module';
@@ -50,6 +51,7 @@ import { PaymentsModule } from './modules/payments/payments.module';
     },
     { provide: APP_FILTER, useClass: GlobalExceptionFilter },
     { provide: APP_INTERCEPTOR, useClass: ResponseInterceptor },
+    { provide: APP_GUARD, useClass: ClientVersionGuard },
     ...(process.env.NODE_ENV === 'production'
       ? [{ provide: APP_GUARD, useClass: ClientThrottlerGuard }]
       : []),
