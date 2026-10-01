@@ -48,6 +48,7 @@ export const GYM_ROLE_PERMISSIONS: Record<GymStaffRoleKey, PermissionMap> = {
     eInvoice: [...ALL],
     saas: ['view'],
     gymAudit: ['view'],
+    reminders: [...ALL],
     users: ['view'],
   },
   reception: {
@@ -69,6 +70,7 @@ export const GYM_ROLE_PERMISSIONS: Record<GymStaffRoleKey, PermissionMap> = {
     disciplines: ['view'],
     memberDocuments: ['view', 'create', 'update'],
     saas: ['view'],
+    reminders: ['view'],
   },
   trainer: {
     members: ['view'],

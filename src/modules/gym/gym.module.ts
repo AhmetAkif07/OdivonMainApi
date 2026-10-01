@@ -8,6 +8,7 @@ import { GymMobileModule } from './mobile/mobile.module';
 import { GymOnboardingModule } from './onboarding/onboarding.module';
 import { GymOpsModule } from './ops/ops.module';
 import { GymPackagesModule } from './packages/packages.module';
+import { GymRemindersModule } from './reminders/reminders.module';
 import { GymStaffModule } from './staff/staff.module';
 
 @Module({
@@ -21,6 +22,7 @@ import { GymStaffModule } from './staff/staff.module';
     GymOnboardingModule,
     GymOpsModule,
     GymMobileModule,
+    GymRemindersModule,
   ],
   controllers: [GymController],
 })

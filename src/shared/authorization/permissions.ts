@@ -64,6 +64,7 @@ export const PERMISSION_RESOURCES = [
   { key: 'eInvoice', label: 'E-fatura', group: 'gym', modules: ['gym'] },
   { key: 'saas', label: 'SaaS abonelik', group: 'gym', modules: ['gym'] },
   { key: 'gymAudit', label: 'İşlem kaydı', group: 'gym', modules: ['gym'] },
+  { key: 'reminders', label: 'Hatırlatmalar', group: 'gym', modules: ['gym'] },
   { key: 'spaCustomers', label: 'Müşteriler', group: 'spa', modules: ['spa'] },
   { key: 'spaAppointments', label: 'Randevular', group: 'spa', modules: ['spa'] },
   { key: 'spaCatalog', label: 'Hizmet / Oda / Ürün', group: 'spa', modules: ['spa'] },

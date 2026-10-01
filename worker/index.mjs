@@ -18,4 +18,10 @@ export default {
     }
     return handler.fetch(request, env, ctx);
   },
+
+  // Daily cron (wrangler.jsonc triggers): membership, overdue-installment and absence reminders.
+  async scheduled(controller, env, ctx) {
+    if (!configured) return;
+    ctx.waitUntil(bootstrapModule.runScheduledJobs());
+  },
 };

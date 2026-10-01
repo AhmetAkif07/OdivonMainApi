@@ -1,14 +1,18 @@
-import { RequestMethod, ValidationPipe } from '@nestjs/common';
+import { INestApplication, RequestMethod, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import helmet from 'helmet';
 import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module';
 import { loadConfiguration } from './config/configuration';
+import { GymRemindersService } from './modules/gym/reminders/reminders.service';
+
+let application: INestApplication | null = null;
 
 
 export async function bootstrap(options: { swaggerUi?: boolean } = {}): Promise<void> {
   const config = loadConfiguration();
   const app = await NestFactory.create(AppModule, { bufferLogs: true, abortOnError: false });
+  application = app;
   app.useLogger(app.get(Logger));
   app.use(helmet());
   app.enableCors({
@@ -42,4 +46,13 @@ export async function bootstrap(options: { swaggerUi?: boolean } = {}): Promise<
   await app.listen(config.port);
 }
 
-
+/**
+ * Daily jobs run by the Worker cron trigger (wrangler.jsonc). Each job is idempotent, so an extra
+ * or repeated trigger cannot send the same reminder twice.
+ */
+export async function runScheduledJobs(): Promise<void> {
+  if (!application) {
+    throw new Error('Application is not bootstrapped');
+  }
+  await application.get(GymRemindersService).runAllTenants();
+}

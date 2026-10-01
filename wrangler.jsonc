@@ -19,6 +19,8 @@
   "build": { "command": "npm run build && node scripts/worker-assets.mjs && node scripts/generate-openapi.mjs", "watch_dir": ["src", "worker", "scripts"] },
   "assets": { "directory": ".wrangler/assets" },
   "routes": [{ "pattern": "mainapi.odivon.com", "custom_domain": true }],
+  // 05:00 UTC = 08:00 Europe/Istanbul: daily gym reminders (see runScheduledJobs).
+  "triggers": { "crons": ["0 5 * * *"] },
   "vars": {
     "NODE_ENV": "production",
     "PORT": "3000",

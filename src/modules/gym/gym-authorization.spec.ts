@@ -15,6 +15,7 @@ import {
 } from './access/access.controllers';
 import { AgentAuthGuard } from './access/agent-auth.guard';
 import { GymAuditController } from './audit/gym-audit.controller';
+import { GymRemindersController } from './reminders/reminders.controller';
 import { BranchesController } from './branches/branches.controller';
 import { GymController } from './gym.controller';
 import { GymInfoController } from './info/gym-info.controller';
@@ -73,6 +74,7 @@ const STAFF_CONTROLLERS: Type[] = [
   GymSaasController,
   GymReceivablesController,
   GymAuditController,
+  GymRemindersController,
   AccessAgentsAdminController,
   AccessSyncController,
 ];
@@ -217,6 +219,15 @@ describe('gym route authorization', () => {
     }
     expect(allowed(find('POST /gym/receivables/:id/cancel'), reception)).toBe(false);
     expect(allowed(find('POST /gym/receivables/:id/cancel'), admin)).toBe(true);
+  });
+
+  it('lets reception see reminders but only admins change settings or run them', () => {
+    expect(allowed(find('GET /gym/reminders'), reception)).toBe(true);
+    expect(allowed(find('GET /gym/reminders'), trainer)).toBe(false);
+    expect(allowed(find('PATCH /gym/reminders/settings'), reception)).toBe(false);
+    expect(allowed(find('POST /gym/reminders/run'), reception)).toBe(false);
+    expect(allowed(find('PATCH /gym/reminders/settings'), admin)).toBe(true);
+    expect(allowed(find('POST /gym/reminders/run'), owner)).toBe(true);
   });
 
   it('shows the audit log to owners and manager-role admins only', () => {
