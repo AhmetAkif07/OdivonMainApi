@@ -126,15 +126,17 @@ function joinNotes(existing: string | null, extra: string): string {
 
 /**
  * The sale part of a new-member request. Only an active membership sells something: a catalogue
- * package (`packageId`) or a custom one whose typed price is the sale amount.
+ * package (`packageId`) or a custom one. `packagePrice` is the agreed price typed in the form (below
+ * the list price = discount); `paidAmount` is what reached the till, the rest becomes debt.
  */
 function openingSaleOf(dto: CreateMemberDto): OpeningSaleInput | null {
   if (dto.membershipStatus !== 'active') return null;
-  if (!dto.packageId && !(Number(dto.packagePrice) > 0)) return null;
+  const typedPrice = dto.packagePrice != null && Number.isFinite(Number(dto.packagePrice)) ? Number(dto.packagePrice) : null;
+  if (!dto.packageId && !(typedPrice && typedPrice > 0)) return null;
   return {
     packageId: dto.packageId ?? null,
-    paidAmount: dto.packageId ? (dto.paidAmount ?? null) : null,
-    customPrice: dto.packageId ? null : Number(dto.packagePrice),
+    salePrice: typedPrice,
+    paidAmount: dto.paidAmount ?? null,
     paymentMethod: dto.paymentMethod,
     installmentCount: dto.debtInstallments,
     firstDueDate: dto.debtDueDate,

@@ -305,6 +305,14 @@ export class GymCommerceService {
         referenceType: 'product-sale',
         paymentMethod: method,
         entryDate: new Date().toISOString(),
+        // Product breakdown of the receipt (panel: AccountingEntry.items).
+        items: sales.map((sale) => ({
+          productId: sale['productId'],
+          productName: sale['productName'],
+          quantity: sale['quantity'],
+          unitPrice: sale['unitPrice'],
+          totalAmount: sale['totalAmount'],
+        })),
       });
     }
     return sales.length === 1 ? sales[0] : { items: sales, totalAmount };

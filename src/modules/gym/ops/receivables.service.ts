@@ -77,11 +77,14 @@ export interface GymReceivable extends BaseDocument {
 /** A package sold while the member is being created; the membership dates come from the form. */
 export interface OpeningSaleInput {
   packageId?: string | null;
-  /** What was paid at the desk; defaults to the full package price. */
+  /**
+   * Agreed price. For a catalogue package it defaults to the list price (lower = discount); for a
+   * custom package (no packageId) it is the only price there is.
+   */
+  salePrice?: number | null;
+  /** What was paid at the desk; defaults to the full sale price. */
   paidAmount?: number | null;
   paymentMethod?: Exclude<ReceivablePaymentMethod, 'wallet'>;
-  /** Price of a custom (non-catalogue) package: booked as income, never creates debt. */
-  customPrice?: number | null;
   installmentCount?: number;
   firstDueDate?: string;
 }
@@ -313,20 +316,16 @@ export class GymReceivablesService {
    */
   async openingSale(member: GymMember, input: OpeningSaleInput): Promise<GymMember> {
     const method = input.paymentMethod ?? 'cash';
-    if (!input.packageId) {
-      const price = toKurus(input.customPrice ?? 0);
-      if (price > 0) {
-        const label = `${member.packageLabel ?? 'Özel paket'} satışı (yeni üye)`;
-        await this.bookIncome({ id: member.uid, userId: member.uid }, toTl(price), method, label, 'membership', 'membership');
-      }
-      return member;
-    }
-    const { pkg, priceKurus, paidKurus, debtKurus, firstDueDate } = await this.resolveOpeningSale(input.packageId, input);
+    const { pkg, name, listKurus, saleKurus, paidKurus, debtKurus, firstDueDate } = await this.resolveOpeningSale(
+      input,
+      member.packageLabel,
+    );
+    if (saleKurus === 0) return member;
 
-    const updated = await this.members.save({ ...member, packageLabel: pkg.name, packagePrice: toTl(priceKurus) });
+    const updated = await this.members.save({ ...member, packageLabel: name, packagePrice: toTl(saleKurus) });
     if (paidKurus > 0) {
-      const label = `${pkg.name} satışı (yeni üye)`;
-      await this.bookIncome({ id: pkg.id, userId: member.uid }, toTl(paidKurus), method, label, 'membership', 'membership');
+      const label = `${name} satışı (yeni üye)`;
+      await this.bookIncome({ id: pkg?.id ?? member.uid, userId: member.uid }, toTl(paidKurus), method, label, 'membership', 'membership');
     }
     if (debtKurus === 0) return updated;
 
@@ -341,11 +340,11 @@ export class GymReceivablesService {
       memberName: member.displayName,
       memberNumber: member.memberNumber ?? null,
       memberPhone: member.phone ?? null,
-      packageId: pkg.id,
-      packageName: pkg.name,
-      listPrice: toTl(priceKurus),
-      discount: 0,
-      totalAmount: toTl(priceKurus),
+      packageId: pkg?.id ?? '',
+      packageName: name,
+      listPrice: toTl(listKurus),
+      discount: toTl(Math.max(0, listKurus - saleKurus)),
+      totalAmount: toTl(saleKurus),
       downPayment: toTl(paidKurus),
       financedAmount: toTl(debtKurus),
       installmentCount: count,
@@ -360,33 +359,36 @@ export class GymReceivablesService {
       cancelReason: null,
       walletLinked: true,
     });
-    return this.shiftWallet(plan, -debtKurus, 'debit', `${pkg.name} kalan borç (taksit planı)`);
+    return this.shiftWallet(plan, -debtKurus, 'debit', `${name} kalan borç (taksit planı)`);
   }
 
   /** Fails fast (before a member account is created) when the opening sale would be rejected. */
   async assertOpeningSale(input: OpeningSaleInput): Promise<void> {
-    if (input.packageId) {
-      await this.resolveOpeningSale(input.packageId, input);
-    }
+    await this.resolveOpeningSale(input, null);
   }
 
-  private async resolveOpeningSale(packageId: string, input: OpeningSaleInput) {
-    const pkg = await this.packages.getByIdOrThrow(packageId);
-    if (pkg.status && pkg.status !== 'active') {
+  private async resolveOpeningSale(input: OpeningSaleInput, label: string | null) {
+    const pkg = input.packageId ? await this.packages.getByIdOrThrow(input.packageId) : null;
+    if (pkg?.status && pkg.status !== 'active') {
       throw new AppException(ErrorCode.GYM_PACKAGE_NOT_FOUND, 'Package is not available for sale');
     }
-    const priceKurus = toKurus(Number(pkg.price ?? 0));
-    const paidKurus = toKurus(input.paidAmount ?? toTl(priceKurus));
-    if (paidKurus < 0 || paidKurus > priceKurus) {
+    const listKurus = pkg ? toKurus(Number(pkg.price ?? 0)) : toKurus(input.salePrice ?? 0);
+    const saleKurus = input.salePrice != null ? toKurus(input.salePrice) : listKurus;
+    if (saleKurus < 0) {
+      throw new AppException(ErrorCode.VALIDATION_ERROR, 'salePrice cannot be negative');
+    }
+    const paidKurus = toKurus(input.paidAmount ?? toTl(saleKurus));
+    if (paidKurus < 0 || paidKurus > saleKurus) {
       throw new AppException(ErrorCode.VALIDATION_ERROR, 'paidAmount must be between 0 and the package price');
     }
-    const debtKurus = priceKurus - paidKurus;
+    const name = pkg?.name ?? (label?.trim() || 'Özel paket');
+    const debtKurus = saleKurus - paidKurus;
     const today = gymToday();
     const firstDueDate = input.firstDueDate ?? addMonths(today, 1);
     if (debtKurus > 0 && (!isIsoDate(firstDueDate) || firstDueDate < today)) {
       throw new AppException(ErrorCode.VALIDATION_ERROR, 'firstDueDate must be a valid date from today on');
     }
-    return { pkg, priceKurus, paidKurus, debtKurus, firstDueDate };
+    return { pkg, name, listKurus, saleKurus, paidKurus, debtKurus, firstDueDate };
   }
 
   /** Records a payment against the plan; it settles the oldest open installments first. */

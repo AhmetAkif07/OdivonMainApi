@@ -81,3 +81,35 @@ describe('GymCommerceService wallet and package sale', () => {
     await expectCode(service.purchasePackage({ userId: 'm1', packageId: 'p1' }), ErrorCode.GYM_PACKAGE_NOT_FOUND);
   });
 });
+
+describe('GymCommerceService checkout receipt', () => {
+  it('books one income entry with the product lines of the receipt', async () => {
+    const products: Record<string, Record<string, unknown>> = {
+      su: { id: 'su', name: 'Su', price: 20, stock: 10 },
+      bar: { id: 'bar', name: 'Protein Bar', price: 75, stock: 5 },
+    };
+    const store = {
+      userId: jest.fn(() => 'staff-1'),
+      getOrThrow: jest.fn(async (_name: string, id: string) => products[id]),
+      save: jest.fn(),
+      create: jest.fn(async (_name: string, fields: object) => ({ id: `s${Math.random()}`, ...fields })),
+    };
+    const service = new GymCommerceService(store as never, {} as never, {} as never, {} as never);
+    await service.checkout({
+      paymentMethod: 'cash',
+      items: [
+        { productId: 'su', quantity: 2 },
+        { productId: 'bar', quantity: 1 },
+      ],
+    });
+    const entry = store.create.mock.calls.find(([name]) => name === 'gymAccountingEntries')?.[1];
+    expect(entry).toMatchObject({
+      type: 'income',
+      amount: 115,
+      items: [
+        { productId: 'su', productName: 'Su', quantity: 2, unitPrice: 20, totalAmount: 40 },
+        { productId: 'bar', productName: 'Protein Bar', quantity: 1, unitPrice: 75, totalAmount: 75 },
+      ],
+    });
+  });
+});

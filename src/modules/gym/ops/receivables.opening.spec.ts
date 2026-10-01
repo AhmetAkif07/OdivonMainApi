@@ -132,12 +132,36 @@ describe('opening sale (new member with a package)', () => {
     expect(updated.walletBalance).toBe(0);
   });
 
-  it('custom package: the typed price is income, never debt', async () => {
+  it('custom package paid in full: the typed price is income, no debt', async () => {
     const h = harness();
-    await h.service.openingSale({ ...h.member, packageLabel: 'Özel Süre' }, { customPrice: 1000, paymentMethod: 'cash' });
+    await h.service.openingSale({ ...h.member, packageLabel: 'Özel Süre' }, { salePrice: 1000, paymentMethod: 'cash' });
     expect(h.income()).toEqual([1000]);
     expect(h.state.plans.size).toBe(0);
     expect(h.packages.getByIdOrThrow).not.toHaveBeenCalled();
+  });
+
+  it('custom package paid in part: the rest becomes wallet-linked debt', async () => {
+    const h = harness();
+    const updated = await h.service.openingSale({ ...h.member, packageLabel: 'Özel Süre' }, { salePrice: 1000, paidAmount: 400 });
+    expect(updated).toMatchObject({ packageLabel: 'Özel Süre', packagePrice: 1000, walletBalance: -600 });
+    expect(h.income()).toEqual([400]);
+    const [plan] = [...h.state.plans.values()];
+    expect(plan).toMatchObject({ packageId: '', packageName: 'Özel Süre', totalAmount: 1000, remainingAmount: 600, walletLinked: true });
+  });
+
+  it('a lower typed price is a discount on the list price', async () => {
+    const h = harness();
+    const updated = await h.service.openingSale(h.member, { packageId: 'p1', salePrice: 2500, paidAmount: 1000 });
+    expect(updated).toMatchObject({ packagePrice: 2500, walletBalance: -1500 });
+    const [plan] = [...h.state.plans.values()];
+    expect(plan).toMatchObject({ listPrice: 3000, discount: 500, totalAmount: 2500, downPayment: 1000, remainingAmount: 1500 });
+    expect(h.income()).toEqual([1000]);
+  });
+
+  it('rejects paying more than the agreed price', async () => {
+    const h = harness();
+    await expect(h.service.assertOpeningSale({ packageId: 'p1', salePrice: 2500, paidAmount: 2600 })).rejects.toThrow('between 0');
+    await expect(h.service.assertOpeningSale({ salePrice: 500, paidAmount: 600 })).rejects.toThrow('between 0');
   });
 
   it.each([
@@ -171,7 +195,7 @@ describe('MembersService.create with a package', () => {
       debtDueDate: '2099-01-15',
       debtInstallments: 2,
     } as CreateMemberDto);
-    const sale = { packageId: 'p1', paidAmount: 1000, customPrice: null, paymentMethod: 'card', installmentCount: 2, firstDueDate: '2099-01-15' };
+    const sale = { packageId: 'p1', salePrice: 3000, paidAmount: 1000, paymentMethod: 'card', installmentCount: 2, firstDueDate: '2099-01-15' };
     expect(receivables.assertOpeningSale).toHaveBeenCalledWith(sale);
     expect(receivables.assertOpeningSale.mock.invocationCallOrder[0]).toBeLessThan(repo.create.mock.invocationCallOrder[0]);
     expect(receivables.openingSale).toHaveBeenCalledWith(created, sale);
