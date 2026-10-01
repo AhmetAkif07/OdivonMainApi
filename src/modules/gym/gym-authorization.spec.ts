@@ -16,6 +16,7 @@ import {
 import { AgentAuthGuard } from './access/agent-auth.guard';
 import { GymAuditController } from './audit/gym-audit.controller';
 import { GymRemindersController } from './reminders/reminders.controller';
+import { GymReportsController } from './reports/reports.controller';
 import { BranchesController } from './branches/branches.controller';
 import { GymController } from './gym.controller';
 import { GymInfoController } from './info/gym-info.controller';
@@ -75,6 +76,7 @@ const STAFF_CONTROLLERS: Type[] = [
   GymReceivablesController,
   GymAuditController,
   GymRemindersController,
+  GymReportsController,
   AccessAgentsAdminController,
   AccessSyncController,
 ];
@@ -228,6 +230,13 @@ describe('gym route authorization', () => {
     expect(allowed(find('POST /gym/reminders/run'), reception)).toBe(false);
     expect(allowed(find('PATCH /gym/reminders/settings'), admin)).toBe(true);
     expect(allowed(find('POST /gym/reminders/run'), owner)).toBe(true);
+  });
+
+  it('shows live occupancy to reception, reports only to managers', () => {
+    expect(allowed(find('GET /gym/reports/occupancy/now'), reception)).toBe(true);
+    expect(allowed(find('GET /gym/reports/occupancy/hourly'), reception)).toBe(false);
+    expect(allowed(find('GET /gym/reports/churn'), reception)).toBe(false);
+    expect(allowed(find('GET /gym/reports/churn'), admin)).toBe(true);
   });
 
   it('shows the audit log to owners and manager-role admins only', () => {
