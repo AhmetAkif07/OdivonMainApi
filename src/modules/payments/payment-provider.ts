@@ -33,12 +33,20 @@ export interface VerifiedPayment {
   providerPaymentId: string | null;
 }
 
+export interface IyzicoCredentials {
+  apiKey: string;
+  secretKey: string;
+  mode: 'sandbox' | 'live';
+}
+
 export interface PaymentProvider {
   readonly id: PaymentProviderId;
   mode(): 'sandbox' | 'live';
   configured(): boolean;
-  createCheckout(input: CheckoutInput): Promise<CheckoutResult>;
-  verifyCheckout(token: string, input: Pick<CheckoutInput, 'id' | 'amountKurus'>): Promise<VerifiedPayment>;
+  /** Without credentials the platform (SaaS) keys are used. */
+  createCheckout(input: CheckoutInput, credentials?: IyzicoCredentials): Promise<CheckoutResult>;
+  verifyCheckout(token: string, input: Pick<CheckoutInput, 'id' | 'amountKurus'>, credentials?: IyzicoCredentials): Promise<VerifiedPayment>;
+  testCredentials(credentials: IyzicoCredentials): Promise<{ ok: boolean; message: string | null }>;
 }
 
 export interface PaymentSession {
@@ -63,4 +71,6 @@ export interface PaymentSession {
   /** Set when the gym-side effect (wallet, membership, debt) was applied. */
   fulfilledAt?: string | null;
   reviewPending?: boolean;
+  /** Whose iyzico keys created the checkout: the gym's own or the platform's (SaaS). */
+  credentialScope?: 'tenant' | 'platform';
 }

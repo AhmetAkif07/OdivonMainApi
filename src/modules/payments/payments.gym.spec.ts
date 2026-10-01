@@ -2,16 +2,19 @@ import { AppException } from '../../shared/errors/app.exception';
 import { ErrorCode } from '../../shared/errors/error-codes';
 import { TenantContext } from '../../shared/tenancy/tenant.context';
 import { FakeFirestore } from '../../shared/testing/fake-firestore';
+import { GymPaymentCredentialsService } from './gym-payment-credentials.service';
 import { IyzicoProvider } from './iyzico.provider';
+import { encryptSecret } from './key-vault';
 import { PaymentsService } from './payments.service';
 
 const NOW = new Date('2026-10-01T09:00:00Z');
 const T = 'tenants/t1';
+const ENC_KEY = Buffer.alloc(32, 7).toString('base64');
 
 describe('PaymentsService member card payments', () => {
   let db: FakeFirestore;
   let service: PaymentsService;
-  let provider: { id: 'iyzico'; mode: jest.Mock; configured: jest.Mock; createCheckout: jest.Mock; verifyCheckout: jest.Mock };
+  let provider: { id: 'iyzico'; mode: jest.Mock; configured: jest.Mock; createCheckout: jest.Mock; verifyCheckout: jest.Mock; testCredentials: jest.Mock };
   let accessSync: { syncMemberSafely: jest.Mock };
   let context: TenantContext;
   const as = <R>(userId: string, fn: () => Promise<R>) =>
@@ -23,6 +26,7 @@ describe('PaymentsService member card payments', () => {
 
   beforeEach(() => {
     jest.useFakeTimers({ now: NOW, doNotFake: ['nextTick', 'setImmediate'] });
+    process.env.PAYMENT_KEYS_ENC_KEY = ENC_KEY;
     db = new FakeFirestore();
     context = new TenantContext();
     let n = 0;
@@ -32,10 +36,18 @@ describe('PaymentsService member card payments', () => {
       configured: jest.fn(() => true),
       createCheckout: jest.fn(async () => ({ token: `tok-${++n}`, paymentPageUrl: `https://sandbox-cpp.iyzipay.com/form/${n}` })),
       verifyCheckout: jest.fn(async () => ({ status: 'succeeded', providerPaymentId: 'pay-1' })),
+      testCredentials: jest.fn(async () => ({ ok: true, message: null })),
     };
     accessSync = { syncMemberSafely: jest.fn(async () => undefined) };
-    service = new PaymentsService({ db } as never, context, provider as unknown as IyzicoProvider, accessSync as never);
-    db.docs.set(`${T}/paymentSettings/default`, { provider: 'iyzico' });
+    const credentials = new GymPaymentCredentialsService({ db } as never, context, provider as unknown as IyzicoProvider);
+    service = new PaymentsService({ db } as never, context, provider as unknown as IyzicoProvider, credentials, accessSync as never);
+    // The gym's own iyzico keys (encrypted at rest); the platform keys are not used for members.
+    db.docs.set(`${T}/paymentSettings/iyzico`, {
+      provider: 'iyzico', enabled: true, mode: 'sandbox',
+      apiKeyEnc: encryptSecret('gym-api-key', Buffer.from(ENC_KEY, 'base64')),
+      secretKeyEnc: encryptSecret('gym-secret-key', Buffer.from(ENC_KEY, 'base64')),
+      apiKeyHint: '••••-key', secretKeyHint: '••••-key', lastTest: null,
+    });
     db.docs.set(`${T}/gymMembers/m1`, {
       uid: 'm1', displayName: 'Ayşe Yılmaz', email: 'ayse@example.com', phone: '+905551112233', walletBalance: -100,
       membershipStatus: 'active', membershipEndsAt: '2026-10-10T00:00:00.000Z', deletedAt: null,
@@ -46,7 +58,10 @@ describe('PaymentsService member card payments', () => {
     });
     db.docs.set(`${T}/gymInfo/t1`, { city: 'Ankara', address: 'Kızılay 1' });
   });
-  afterEach(() => jest.useRealTimers());
+  afterEach(() => {
+    jest.useRealTimers();
+    delete process.env.PAYMENT_KEYS_ENC_KEY;
+  });
 
   async function expectCode(promise: Promise<unknown>, code: string) {
     await expect(promise).rejects.toBeInstanceOf(AppException);
@@ -57,13 +72,17 @@ describe('PaymentsService member card payments', () => {
     const session = await as('m1', () => service.createMemberCheckout({ purpose: 'wallet_topup', amount: 250 }, '1.2.3.4', 'https://odivon-panel.dogangns-98.workers.dev'));
     expect(session).toMatchObject({ status: 'pending', amountKurus: 25000, source: 'gym_wallet_topup', paymentPageUrl: 'https://sandbox-cpp.iyzipay.com/form/1' });
     expect(session).not.toHaveProperty('token');
-    expect(provider.createCheckout).toHaveBeenCalledWith(expect.objectContaining({
-      amountKurus: 25000,
-      buyer: expect.objectContaining({ name: 'Ayşe', surname: 'Yılmaz', identityNumber: '11111111111', city: 'Ankara', ip: '1.2.3.4' }),
-    }));
+    expect(provider.createCheckout).toHaveBeenCalledWith(
+      expect.objectContaining({
+        amountKurus: 25000,
+        buyer: expect.objectContaining({ name: 'Ayşe', surname: 'Yılmaz', identityNumber: '11111111111', city: 'Ankara', ip: '1.2.3.4' }),
+      }),
+      { apiKey: 'gym-api-key', secretKey: 'gym-secret-key', mode: 'sandbox' },
+    );
 
     const token = tokenOf(session.id);
     await Promise.all([service.handleCallback(session.id, token), service.handleCallback(session.id, token)]);
+    expect(provider.verifyCheckout).toHaveBeenCalledWith(token, { id: session.id, amountKurus: 25000 }, expect.objectContaining({ apiKey: 'gym-api-key' }));
     await service.handleCallback(session.id, token);
     expect(doc(`${T}/gymMembers/m1`)['walletBalance']).toBe(150);
     expect(rows('gymWalletTx')).toEqual([expect.objectContaining({ type: 'deposit', amount: 250, paymentMethod: 'card', userId: 'm1' })]);
@@ -146,11 +165,15 @@ describe('PaymentsService member card payments', () => {
     expect(rows('gymAccountingEntries')).toHaveLength(1);
   });
 
-  it('refuses hidden packages, out-of-range top-ups and gyms without a provider', async () => {
+  it('refuses hidden packages, out-of-range top-ups and gyms without their own keys', async () => {
     db.docs.set(`${T}/gymPackages/hidden`, { id: 'hidden', name: 'Gizli', price: 1, status: 'active', isHidden: true, deletedAt: null });
     await expectCode(as('m1', () => service.createMemberCheckout({ purpose: 'package', packageId: 'hidden' }, 'ip')), ErrorCode.GYM_PACKAGE_NOT_FOUND);
     await expectCode(as('m1', () => service.createMemberCheckout({ purpose: 'wallet_topup', amount: 10 }, 'ip')), ErrorCode.VALIDATION_ERROR);
-    db.docs.set(`${T}/paymentSettings/default`, { provider: 'none' });
+    expect(await as('m1', () => service.memberCardAvailability())).toEqual({ card: true });
+    db.docs.set(`${T}/paymentSettings/iyzico`, { ...doc(`${T}/paymentSettings/iyzico`), enabled: false });
+    expect(await as('m1', () => service.memberCardAvailability())).toEqual({ card: false });
+    await expectCode(as('m1', () => service.createMemberCheckout({ purpose: 'wallet_topup', amount: 100 }, 'ip')), ErrorCode.INVALID_STATUS);
+    db.docs.delete(`${T}/paymentSettings/iyzico`);
     await expectCode(as('m1', () => service.createMemberCheckout({ purpose: 'wallet_topup', amount: 100 }, 'ip')), ErrorCode.INVALID_STATUS);
     expect(provider.createCheckout).not.toHaveBeenCalled();
   });

@@ -10,9 +10,10 @@ import { AccessSyncService } from '../gym/access/access-sync.service';
 import type { GymMember } from '../gym/members/member.entity';
 import type { GymPackage } from '../gym/packages/package.entity';
 import { fulfillGymPayment, isGymSource } from './gym-fulfillment';
+import { GymPaymentCredentialsService } from './gym-payment-credentials.service';
 import { IyzicoProvider } from './iyzico.provider';
 import { CreateCheckoutDto, CreateSaasOrderDto, MemberCheckoutDto } from './payments.dto';
-import { CheckoutInput, PaymentProvider, PaymentProviderId, PaymentSession, PaymentSource } from './payment-provider';
+import { CheckoutInput, IyzicoCredentials, PaymentProvider, PaymentProviderId, PaymentSession, PaymentSource } from './payment-provider';
 import { SAAS_SANDBOX_PRICES } from './saas-prices';
 
 /** iyzico checkout form tokens live ~30 minutes; an older pending session is treated as abandoned. */
@@ -47,6 +48,7 @@ export class PaymentsService {
     private readonly firebase: FirebaseService,
     private readonly tenant: TenantContext,
     iyzico: IyzicoProvider,
+    @Optional() private readonly gymCredentials?: GymPaymentCredentialsService,
     @Optional() private readonly accessSync?: AccessSyncService,
   ) {
     this.providers = new Map([[iyzico.id, iyzico]]);
@@ -88,6 +90,11 @@ export class PaymentsService {
   }
 
   saasPlans() { return SAAS_SANDBOX_PRICES; }
+
+  /** Member panel: whether "pay by card" is offered (the gym has its own keys switched on). */
+  async memberCardAvailability() {
+    return { card: (await this.gymCredentials?.isAvailable()) ?? false };
+  }
 
   async createSaasOrder(dto: CreateSaasOrderDto) {
     if (this.tenant.getStore().role !== 'owner') {
@@ -235,7 +242,13 @@ export class PaymentsService {
     }
     if (session.status === 'succeeded' || session.status === 'failed') return { status: session.status };
     const provider = this.providers.get(session.provider)!;
-    const verified = await provider.verifyCheckout(token, { id, amountKurus: session.amountKurus });
+    let credentials: IyzicoCredentials | undefined;
+    // Older sessions (no scope) were created with the platform keys.
+    if (session.credentialScope === 'tenant') {
+      credentials = (await this.gymCredentials?.resolve(session.tenantId)) ?? undefined;
+      if (!credentials) throw new AppException(ErrorCode.INVALID_STATUS, 'The gym payment keys are no longer available');
+    }
+    const verified = await provider.verifyCheckout(token, { id, amountKurus: session.amountKurus }, credentials);
     let renewedMember: GymMember | null = null;
     await this.firebase.db.runTransaction(async (tx) => {
       const lock = this.firebase.db.doc(`tenants/${session.tenantId}/paymentReservations/${session.source}_${session.sourceId}`);
@@ -285,8 +298,16 @@ export class PaymentsService {
     origin?: string;
   }) {
     const tenantId = this.tenant.getTenantId();
-    const selected = await this.getSelected();
-    if (selected === 'none') throw new AppException(ErrorCode.INVALID_STATUS, 'Choose a payment provider first');
+    // SaaS subscription payments go to the platform account; everything else to the gym's own.
+    const platform = input.source === 'saas_subscription';
+    let credentials: IyzicoCredentials | undefined;
+    if (platform) {
+      if ((await this.getSelected()) === 'none') throw new AppException(ErrorCode.INVALID_STATUS, 'Choose a payment provider first');
+    } else {
+      credentials = (await this.gymCredentials?.resolve(tenantId)) ?? undefined;
+      if (!credentials) throw new AppException(ErrorCode.INVALID_STATUS, 'Card payments are not set up for this gym');
+    }
+    const selected = 'iyzico' as const;
     const provider = this.providers.get(selected)!;
     const now = new Date();
     const id = randomUUID();
@@ -295,6 +316,7 @@ export class PaymentsService {
       amountKurus: input.amountKurus, currency: 'TRY', status: 'initializing', token: null, paymentPageUrl: null,
       providerPaymentId: null, createdBy: this.tenant.getUserId(), createdAt: now.toISOString(), updatedAt: now.toISOString(),
       userId: input.userId, returnOrigin: this.returnOrigin(input.origin), fulfilledAt: null,
+      credentialScope: platform ? 'platform' : 'tenant',
     };
     const ref = this.sessions().doc(id);
     const lock = this.firebase.db.doc(`tenants/${tenantId}/paymentReservations/${input.source}_${input.sourceId}`);
@@ -327,7 +349,7 @@ export class PaymentsService {
       buyer: { id: input.buyerId, ...input.buyer, ip: input.ip },
     };
     try {
-      const checkout = await provider.createCheckout(checkoutInput);
+      const checkout = await provider.createCheckout(checkoutInput, credentials);
       await this.firebase.db.runTransaction(async (tx) => {
         tx.update(ref, { token: checkout.token, paymentPageUrl: checkout.paymentPageUrl,
           status: 'pending', updatedAt: new Date().toISOString() });

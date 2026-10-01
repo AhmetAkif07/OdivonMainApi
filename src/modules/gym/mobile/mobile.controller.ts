@@ -225,6 +225,12 @@ export class GymMobileController {
    * Card payment (iyzico checkout form, 3D Secure on iyzico's page): package, wallet top-up or the
    * member's own debt. Returns the payment page URL; the result is applied by the callback.
    */
+  /** Whether card payment is offered (the gym has its own iyzico keys switched on). */
+  @Get('payments/availability')
+  paymentAvailability() {
+    return this.onlinePayments.memberCardAvailability();
+  }
+
   @Post('payments/checkout')
   checkoutPayment(@Body() dto: MemberCheckoutDto, @Req() request: Request) {
     return this.onlinePayments.createMemberCheckout(dto, request.header('cf-connecting-ip') ?? request.ip ?? '127.0.0.1', request.header('origin'));

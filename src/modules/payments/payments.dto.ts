@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsEmail, IsIn, IsNotEmpty, IsNumber, IsOptional, IsString, Matches, Max, MaxLength, Min, ValidateIf } from 'class-validator';
+import { IsBoolean, IsEmail, IsIn, IsNotEmpty, IsNumber, IsOptional, IsString, Matches, Max, MaxLength, Min, ValidateIf } from 'class-validator';
 import { PaymentSource } from './payment-provider';
 
 export class SelectProviderDto {
@@ -63,4 +63,18 @@ export class MemberCheckoutDto {
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(20) gsmNumber?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(500) address?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(100) city?: string;
+}
+
+/** Gym's own iyzico keys. Keys are write-only: they are never returned, only masked hints. */
+export class SaveGymPaymentCredentialsDto {
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(200) apiKey?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(200) secretKey?: string;
+  @ApiPropertyOptional({ enum: ['sandbox', 'live'] }) @IsOptional() @IsIn(['sandbox', 'live']) mode?: 'sandbox' | 'live';
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() enabled?: boolean;
+}
+
+export class TestGymPaymentCredentialsDto {
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(200) apiKey?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(200) secretKey?: string;
+  @ApiPropertyOptional({ enum: ['sandbox', 'live'] }) @IsOptional() @IsIn(['sandbox', 'live']) mode?: 'sandbox' | 'live';
 }

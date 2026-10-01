@@ -2,7 +2,7 @@ import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
 import { AppException } from '../../shared/errors/app.exception';
 import { ErrorCode } from '../../shared/errors/error-codes';
-import { CheckoutInput, CheckoutResult, PaymentProvider, PaymentSource, VerifiedPayment } from './payment-provider';
+import { CheckoutInput, CheckoutResult, IyzicoCredentials, PaymentProvider, PaymentSource, VerifiedPayment } from './payment-provider';
 
 const BASKET_NAMES: Record<PaymentSource, string> = {
   saas_subscription: 'Odivon GYM SaaS abonelik',
@@ -18,6 +18,7 @@ const LIVE_URL = 'https://api.iyzipay.com';
 const PAGE_HOSTS = ['sandbox-api.iyzipay.com', 'sandbox-cpp.iyzipay.com', 'api.iyzipay.com', 'cpp.iyzipay.com'];
 const INITIALIZE = '/payment/iyzipos/checkoutform/initialize/auth/ecom';
 const RETRIEVE = '/payment/iyzipos/checkoutform/auth/ecom/detail';
+const BIN_CHECK = '/payment/bin/check';
 
 interface IyzicoResponse {
   status?: string;
@@ -53,31 +54,37 @@ export class IyzicoProvider implements PaymentProvider {
   readonly id = 'iyzico' as const;
 
   /**
-   * Keys come from Worker secrets: IYZICO_API_KEY / IYZICO_SECRET_KEY (or the older
-   * IYZICO_SANDBOX_* names). IYZICO_BASE_URL selects live (https://api.iyzipay.com); sandbox by default.
+   * Platform keys (SaaS subscription payments only) come from Worker secrets: IYZICO_API_KEY /
+   * IYZICO_SECRET_KEY (or the older IYZICO_SANDBOX_* names); IYZICO_BASE_URL=https://api.iyzipay.com
+   * selects live. Gym member payments pass the gym's own keys instead.
    */
-  private credentials() {
+  private platformCredentials(): IyzicoCredentials {
     const apiKey = process.env.IYZICO_API_KEY ?? process.env.IYZICO_SANDBOX_API_KEY;
     const secretKey = process.env.IYZICO_SECRET_KEY ?? process.env.IYZICO_SANDBOX_SECRET_KEY;
     if (!apiKey || !secretKey) {
       throw new AppException(ErrorCode.INVALID_STATUS, 'iyzico credentials are not configured');
     }
-    return { apiKey, secretKey };
-  }
-
-  private baseUrl(): string {
-    return process.env.IYZICO_BASE_URL === LIVE_URL ? LIVE_URL : SANDBOX_URL;
+    return { apiKey, secretKey, mode: this.mode() };
   }
 
   mode(): 'sandbox' | 'live' {
-    return this.baseUrl() === LIVE_URL ? 'live' : 'sandbox';
+    return process.env.IYZICO_BASE_URL === LIVE_URL ? 'live' : 'sandbox';
   }
 
   configured(): boolean {
     return Boolean((process.env.IYZICO_API_KEY ?? process.env.IYZICO_SANDBOX_API_KEY) && (process.env.IYZICO_SECRET_KEY ?? process.env.IYZICO_SANDBOX_SECRET_KEY));
   }
 
-  async createCheckout(input: CheckoutInput): Promise<CheckoutResult> {
+  /**
+   * Checks keys with a harmless authenticated call (card BIN lookup): no payment, no charge.
+   * Returns iyzico's error message when the keys are rejected.
+   */
+  async testCredentials(credentials: IyzicoCredentials): Promise<{ ok: boolean; message: string | null }> {
+    const response = await this.post(BIN_CHECK, { locale: 'tr', conversationId: randomUUID(), binNumber: '554960' }, credentials);
+    return response.status === 'success' ? { ok: true, message: null } : { ok: false, message: response.errorMessage ?? 'iyzico anahtarları reddetti' };
+  }
+
+  async createCheckout(input: CheckoutInput, credentials = this.platformCredentials()): Promise<CheckoutResult> {
     const price = (input.amountKurus / 100).toFixed(2);
     const body = {
       locale: 'tr', conversationId: input.id, price, paidPrice: price, currency: 'TRY',
@@ -95,8 +102,8 @@ export class IyzicoProvider implements PaymentProvider {
       basketItems: [{ id: input.id, name: BASKET_NAMES[input.source],
         category1: 'Service', itemType: 'VIRTUAL', price }],
     };
-    const response = await this.post(INITIALIZE, body);
-    const { secretKey } = this.credentials();
+    const response = await this.post(INITIALIZE, body, credentials);
+    const { secretKey } = credentials;
     if (response.status !== 'success' || !response.token || !response.paymentPageUrl ||
       response.conversationId !== input.id ||
       !verifyIyzicoSignature(secretKey, [response.conversationId, response.token], response.signature)) {
@@ -111,9 +118,9 @@ export class IyzicoProvider implements PaymentProvider {
     return { token: response.token, paymentPageUrl: page.toString() };
   }
 
-  async verifyCheckout(token: string, input: Pick<CheckoutInput, 'id' | 'amountKurus'>): Promise<VerifiedPayment> {
-    const response = await this.post(RETRIEVE, { locale: 'tr', conversationId: input.id, token });
-    const { secretKey } = this.credentials();
+  async verifyCheckout(token: string, input: Pick<CheckoutInput, 'id' | 'amountKurus'>, credentials = this.platformCredentials()): Promise<VerifiedPayment> {
+    const response = await this.post(RETRIEVE, { locale: 'tr', conversationId: input.id, token }, credentials);
+    const { secretKey } = credentials;
     if (response.status !== 'success' || response.conversationId !== input.id || response.token !== token ||
       response.basketId !== input.id || response.currency !== 'TRY' ||
       Math.round(Number(response.paidPrice) * 100) !== input.amountKurus ||
@@ -130,13 +137,13 @@ export class IyzicoProvider implements PaymentProvider {
     };
   }
 
-  private async post(path: string, payload: object): Promise<IyzicoResponse> {
-    const { apiKey, secretKey } = this.credentials();
+  private async post(path: string, payload: object, credentials: IyzicoCredentials): Promise<IyzicoResponse> {
+    const { apiKey, secretKey } = credentials;
     const body = JSON.stringify(payload);
     const nonce = randomUUID();
     let response: Response;
     try {
-      response = await fetch(`${this.baseUrl()}${path}`, {
+      response = await fetch(`${credentials.mode === 'live' ? LIVE_URL : SANDBOX_URL}${path}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

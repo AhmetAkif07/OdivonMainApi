@@ -119,6 +119,10 @@ export class FakeDocRef {
     this.applyUpdate(data);
   }
 
+  async delete() {
+    this.db.docs.delete(this.path);
+  }
+
   applyUpdate(data: Data) {
     const current = this.db.docs.get(this.path);
     if (!current) throw firestoreError(5, '5 NOT_FOUND');

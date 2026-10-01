@@ -77,4 +77,18 @@ describe('IyzicoProvider sandbox checkout', () => {
       '10.5', '10.50', 'token-1'], sign('SUCCESS', 'payment-1', 'TRY', 'basket-1', 'conversation-1',
       '10.5', '10.5', 'token-1'))).toBe(true);
   });
+it('uses the gym keys and live host when given, and tests keys with a BIN lookup only', async () => {
+    const calls: string[] = [];
+    global.fetch = jest.fn(async (url, request) => {
+      calls.push(String(url));
+      const headers = (request as RequestInit).headers as Record<string, string>;
+      const body = String((request as RequestInit).body);
+      const ok = headers.Authorization === iyzicoAuthorization('gym-api', 'gym-secret', headers['x-iyzi-rnd'], '/payment/bin/check', body);
+      return Response.json(ok ? { status: 'success' } : { status: 'failure', errorMessage: 'Geçersiz imza' });
+    }) as typeof fetch;
+    const provider = new IyzicoProvider();
+    await expect(provider.testCredentials({ apiKey: 'gym-api', secretKey: 'gym-secret', mode: 'live' })).resolves.toEqual({ ok: true, message: null });
+    await expect(provider.testCredentials({ apiKey: 'gym-api', secretKey: 'wrong', mode: 'sandbox' })).resolves.toEqual({ ok: false, message: 'Geçersiz imza' });
+    expect(calls).toEqual(['https://api.iyzipay.com/payment/bin/check', 'https://sandbox-api.iyzipay.com/payment/bin/check']);
+  });
 });
