@@ -25,6 +25,7 @@ export const WALLET_TOPUP_MAX_KURUS = 20_000_00;
 const DEFAULT_RETURN_ORIGINS = [
   'https://odivon-main-api-a2095.web.app',
   'https://odivon-main-api-a2095.firebaseapp.com',
+  'https://odivon-gym-client.dogangns-98.workers.dev',
   'https://odivon-panel.dogangns-98.workers.dev',
   'http://localhost:4200',
 ];
