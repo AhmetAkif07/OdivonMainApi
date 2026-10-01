@@ -14,6 +14,8 @@
     "@nestjs/websockets/socket-module": "./worker/unsupported.cjs",
     "@nestjs/microservices/microservices-module": "./worker/unsupported.cjs",
     "@nestjs/microservices": "./worker/unsupported.cjs",
+    // OpenAPI is generated at build time; skip the @Api* decorators at isolate startup.
+    "@nestjs/swagger": "./worker/swagger.cjs",
     "class-transformer/storage": "class-transformer/cjs/storage.js"
   },
   "build": { "command": "npm run build && node scripts/worker-assets.mjs && node scripts/generate-openapi.mjs", "watch_dir": ["src", "worker", "scripts"] },
