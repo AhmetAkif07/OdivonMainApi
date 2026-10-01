@@ -1020,7 +1020,10 @@ export class GymMobileService {
 
   async renewMembership(dto: RenewMembershipDto) {
     const member = await this.currentMember();
-    const pkg = (await this.packages.list({})).find((item) => item.id === dto.packageId);
+    // Same rule as the member's package list: inactive or hidden packages cannot be bought by id.
+    const pkg = (await this.packages.list({})).find(
+      (item) => item.id === dto.packageId && item.status === 'active' && !item.isHidden,
+    );
     if (!pkg) {
       throw new AppException(ErrorCode.GYM_PACKAGE_NOT_FOUND, 'Package not found');
     }

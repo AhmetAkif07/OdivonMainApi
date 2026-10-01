@@ -198,4 +198,38 @@ describe('GymMobileService', () => {
     });
     expect(store.softDelete).not.toHaveBeenCalled();
   });
+
+  describe('renewMembership', () => {
+    const pkg = { id: 'p1', name: '3 Aylık', price: 3000, durationDays: 90, status: 'active', isHidden: false };
+
+    it('pays from the wallet and extends the membership from its current end', async () => {
+      members.getByIdOrThrow.mockResolvedValue({ ...member, walletBalance: 5000 });
+      packages.list.mockResolvedValue([pkg]);
+      members.save.mockImplementation(async (value: object) => value);
+      await service.renewMembership({ packageId: 'p1' });
+      const saved = members.save.mock.calls[0][0];
+      expect(saved.walletBalance).toBe(2000);
+      expect(saved.packageLabel).toBe('3 Aylık');
+      const days = (Date.parse(saved.membershipEndsAt) - Date.parse(member.membershipEndsAt)) / 86400000;
+      expect(Math.round(days)).toBe(90);
+      expect(store.create).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ type: 'debit', amount: 3000, paymentMethod: 'wallet' }));
+    });
+
+    it('refuses when the wallet does not cover the price', async () => {
+      members.getByIdOrThrow.mockResolvedValue({ ...member, walletBalance: 100 });
+      packages.list.mockResolvedValue([pkg]);
+      await expect(service.renewMembership({ packageId: 'p1' })).rejects.toMatchObject({ code: ErrorCode.GYM_WALLET_INSUFFICIENT });
+      expect(members.save).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      [{ ...pkg, status: 'inactive' }],
+      [{ ...pkg, isHidden: true }],
+    ])('refuses packages that are not on sale to members (%o)', async (unavailable) => {
+      members.getByIdOrThrow.mockResolvedValue({ ...member, walletBalance: 5000 });
+      packages.list.mockResolvedValue([unavailable]);
+      await expect(service.renewMembership({ packageId: 'p1' })).rejects.toMatchObject({ code: ErrorCode.GYM_PACKAGE_NOT_FOUND });
+      expect(members.save).not.toHaveBeenCalled();
+    });
+  });
 });
