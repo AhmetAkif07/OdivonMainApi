@@ -6,6 +6,7 @@ import { AppModule } from './app.module';
 import { loadConfiguration } from './config/configuration';
 import { GymClassBookingService } from './modules/gym/ops/class-booking.service';
 import { GymRemindersService } from './modules/gym/reminders/reminders.service';
+import { SaasBillingService } from './modules/payments/saas-billing.service';
 
 let application: INestApplication | null = null;
 
@@ -60,4 +61,8 @@ export async function runScheduledJobs(): Promise<void> {
   // Unmarked bookings of past class sessions become no-shows, then the day's reminders go out.
   await reminders.forEachGymTenant('class-sessions', () => classBookings.closePastSessions());
   await reminders.runAllTenants();
+  // Owners: "your Odivon subscription ends in 7/3/1 days" and the start of the grace period.
+  const billing = application.get(SaasBillingService);
+  const created = await reminders.forEachGymTenant('saas-reminders', () => billing.runReminders());
+  billing.logRun(created.reduce((sum, n) => sum + n, 0), created.length);
 }

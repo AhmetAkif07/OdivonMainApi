@@ -11,5 +11,7 @@ export interface TenantDocument extends BaseDocument {
   onboardingCompleted?: boolean;
   membershipStatus?: TenantMembershipStatus;
   trialEndsAt?: string | null;
+  /** End of the paid Odivon subscription period (written by billing after a verified payment). */
+  subscriptionEndsAt?: string | null;
   logoUrl?: string | null;
 }

@@ -14,6 +14,7 @@ import { GymPaymentCredentialsService } from './gym-payment-credentials.service'
 import { IyzicoProvider } from './iyzico.provider';
 import { CreateCheckoutDto, CreateSaasOrderDto, MemberCheckoutDto } from './payments.dto';
 import { CheckoutInput, IyzicoCredentials, PaymentProvider, PaymentProviderId, PaymentSession, PaymentSource } from './payment-provider';
+import { nextPeriod, receiptNo, SaasCycle } from './saas-billing';
 import { SAAS_SANDBOX_PRICES } from './saas-prices';
 
 /** iyzico checkout form tokens live ~30 minutes; an older pending session is treated as abandoned. */
@@ -198,9 +199,10 @@ export class PaymentsService {
     const session = snapshot.data() as PaymentSession | undefined;
     if (!session) return null;
     if (session.source === 'saas_subscription') {
-      const url = new URL(process.env.PAYMENT_GYM_RETURN_URL ?? `${session.returnOrigin ?? DEFAULT_RETURN_ORIGINS[0]}/admin/subscription`);
-      if (url.protocol !== 'https:' && url.hostname !== 'localhost') throw new AppException(ErrorCode.FINANCE_INVALID, 'Invalid GYM payment return URL');
+      // Outside the subscription guard: an expired gym must be able to see its payment result.
+      const url = new URL(`${session.returnOrigin ?? DEFAULT_RETURN_ORIGINS[0]}/subscription-result`);
       url.searchParams.set('paymentSession', id);
+      url.searchParams.set('status', outcome);
       return url.toString();
     }
     if (!isGymSource(session.source)) return null;
@@ -255,6 +257,11 @@ export class PaymentsService {
       const orderRef = session.source === 'saas_subscription'
         ? this.firebase.db.doc(`tenants/${session.tenantId}/paymentSaasOrders/${session.sourceId}`) : null;
       const orderSnapshot = orderRef ? await tx.get(orderRef) : null;
+      const tenantRef = orderRef ? this.firebase.db.doc(`tenants/${session.tenantId}`) : null;
+      const subscriptionRef = orderRef
+        ? this.firebase.db.doc(`${tenantCollectionPath(session.tenantId, TENANT_COLLECTION.gymSaasSubscription)}/${session.tenantId}`)
+        : null;
+      const subscriptionSnapshot = subscriptionRef ? await tx.get(subscriptionRef) : null;
       const [latest, reservation] = await Promise.all([tx.get(ref), tx.get(lock)]);
       const current = latest.data() as PaymentSession;
       // An abandoned (superseded or expired) session can still be paid on an old tab: honour it.
@@ -269,7 +276,46 @@ export class PaymentsService {
         if (!order || order.status !== 'open' || order.amountKurus !== current.amountKurus) {
           throw new AppException(ErrorCode.FINANCE_INVALID, 'SaaS order cannot be verified');
         }
-        tx.update(orderRef, { status: 'sandbox_succeeded', sessionId: id, updatedAt: new Date().toISOString() });
+        // Test (sandbox) payments only activate when explicitly allowed, so a test card cannot buy
+        // a real subscription while the platform keys are still sandbox keys.
+        const activates = current.mode === 'live' || process.env.SAAS_ACTIVATE_ON_SANDBOX === 'true';
+        const paidAt = new Date().toISOString();
+        if (!activates) {
+          tx.update(orderRef, { status: 'sandbox_succeeded', sessionId: id, updatedAt: paidAt });
+        } else {
+          const subscription = subscriptionSnapshot?.data() as { currentPeriodEndsAt?: string; status?: string } | undefined;
+          const currentEnd = subscription?.status === 'active' ? subscription.currentPeriodEndsAt : null;
+          const period = nextPeriod(currentEnd, order.billingCycle as SaasCycle, new Date(paidAt));
+          tx.set(subscriptionRef!, {
+            ...(subscription ?? { id: session.tenantId, tenantId: session.tenantId, createdAt: paidAt, deletedAt: null }),
+            planId: order.planId,
+            billingCycle: order.billingCycle,
+            status: 'active',
+            currentPeriodStartsAt: period.startsAt,
+            currentPeriodEndsAt: period.endsAt,
+            lastPaymentAt: paidAt,
+            lastPaymentSessionId: id,
+            updatedAt: paidAt,
+            updatedBy: 'system:billing',
+          });
+          tx.update(tenantRef!, { membershipStatus: 'active', subscriptionEndsAt: period.endsAt, updatedAt: paidAt });
+          tx.set(this.firebase.db.doc(`tenants/${session.tenantId}/saasPayments/${id}`), {
+            id,
+            receiptNo: receiptNo(id, paidAt),
+            planId: order.planId,
+            billingCycle: order.billingCycle,
+            amountKurus: current.amountKurus,
+            currency: 'TRY',
+            provider: current.provider,
+            providerPaymentId: verified.providerPaymentId,
+            mode: current.mode ?? 'sandbox',
+            periodStartsAt: period.startsAt,
+            periodEndsAt: period.endsAt,
+            paidAt,
+            paidBy: current.createdBy,
+          });
+          tx.update(orderRef, { status: 'paid', sessionId: id, updatedAt: paidAt });
+        }
       }
       const at = new Date().toISOString();
       tx.update(ref, {
@@ -318,6 +364,7 @@ export class PaymentsService {
       providerPaymentId: null, createdBy: this.tenant.getUserId(), createdAt: now.toISOString(), updatedAt: now.toISOString(),
       userId: input.userId, returnOrigin: this.returnOrigin(input.origin), fulfilledAt: null,
       credentialScope: platform ? 'platform' : 'tenant',
+      mode: platform ? provider.mode() : credentials!.mode,
     };
     const ref = this.sessions().doc(id);
     const lock = this.firebase.db.doc(`tenants/${tenantId}/paymentReservations/${input.source}_${input.sourceId}`);

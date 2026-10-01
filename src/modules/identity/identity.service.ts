@@ -15,6 +15,7 @@ import {
   resourcesForModules,
 } from '../../shared/authorization/permissions';
 import { ProductModule } from '../../shared/authorization/constants';
+import { effectiveSubscription, TenantBillingState } from '../payments/saas-billing';
 import { RolesService } from './roles/roles.service';
 
 const GYM_TRIAL_DAYS = 14;
@@ -113,6 +114,8 @@ export class IdentityService {
       throw new AppException(ErrorCode.USER_NOT_FOUND, 'User profile was not found');
     }
     const tenant = await this.tenants.getById(profile.tenantId);
+    // A paid gym stays active through the grace period after its end date (see saas-billing).
+    const billing = effectiveSubscription(tenant as TenantBillingState);
     return {
       uid: profile.uid,
       email: profile.email,
@@ -123,7 +126,7 @@ export class IdentityService {
       accountType: profile.accountType ?? null,
       modules: profile.modules,
       roleIds: profile.roleIds ?? [],
-      membershipStatus: tenant.membershipStatus ?? profile.membershipStatus ?? 'active',
+      membershipStatus: tenant.membershipStatus ? billing.membershipStatus : (profile.membershipStatus ?? 'active'),
       trialEndsAt: tenant.trialEndsAt ?? profile.trialEndsAt ?? null,
       onboardingCompleted: tenant.onboardingCompleted ?? true,
       permissions: profile.role === 'owner' ? fullPermissionMap(profile.modules ?? []) : (store.permissions ?? {}),
@@ -132,8 +135,11 @@ export class IdentityService {
         name: tenant.name,
         status: tenant.status,
         onboardingCompleted: tenant.onboardingCompleted ?? true,
-        membershipStatus: tenant.membershipStatus ?? 'active',
+        membershipStatus: tenant.membershipStatus ? billing.membershipStatus : 'active',
         trialEndsAt: tenant.trialEndsAt ?? null,
+        subscriptionEndsAt: billing.subscriptionEndsAt,
+        graceEndsAt: billing.graceEndsAt,
+        inGrace: billing.inGrace,
       },
     };
   }

@@ -20,6 +20,7 @@ export const GYM_AUDIT_ENTITIES: Record<string, { label: string; collection?: st
   leads: { label: 'Aday hunisi', collection: TENANT_COLLECTION.gymGuestMembers },
   referrals: { label: 'Tavsiye programı' },
   'payment-settings': { label: 'Ödeme ayarları (iyzico)' },
+  'saas-billing': { label: 'Odivon aboneliği' },
   disciplines: { label: 'Branşlar', collection: TENANT_COLLECTION.gymDisciplines },
   facilities: { label: 'Alanlar', collection: TENANT_COLLECTION.gymFacilities },
   equipment: { label: 'Ekipman', collection: TENANT_COLLECTION.gymEquipment },

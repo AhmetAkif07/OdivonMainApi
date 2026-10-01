@@ -73,4 +73,6 @@ export interface PaymentSession {
   reviewPending?: boolean;
   /** Whose iyzico keys created the checkout: the gym's own or the platform's (SaaS). */
   credentialScope?: 'tenant' | 'platform';
+  /** iyzico environment the checkout ran in; only live SaaS payments activate a subscription. */
+  mode?: 'sandbox' | 'live';
 }
