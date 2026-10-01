@@ -11,7 +11,7 @@ import { MembersRepository } from '../members/members.repository';
 import { isWithinCheckInWindow } from '../mobile/check-in-window';
 import { PackagesRepository } from '../packages/packages.repository';
 import { GymStore } from '../shared/gym-store';
-import { GymListQueryDto, GymRecordDto } from '../shared/ops.dto';
+import { AccessSettingsDto, GymListQueryDto, GymRecordDto } from '../shared/ops.dto';
 
 type Doc = BaseDocument & Record<string, unknown>;
 
@@ -315,6 +315,20 @@ export class GymOpsService {
       batchId,
       message: 'SMS simüle edildi (gerçek operatör yok).',
     };
+  }
+
+  /**
+   * Live refresh of the access logs in the panel: off by default, so panels load the logs once
+   * (plus a manual refresh) instead of polling Firestore all day.
+   */
+  async getAccessSettings(): Promise<{ liveRefresh: boolean }> {
+    const stored = await this.store.getSingleton<BaseDocument & { liveRefresh?: boolean }>(TENANT_COLLECTION.gymAccessSettings);
+    return { liveRefresh: stored?.liveRefresh === true };
+  }
+
+  async saveAccessSettings(dto: AccessSettingsDto): Promise<{ liveRefresh: boolean }> {
+    await this.store.upsertSingleton(TENANT_COLLECTION.gymAccessSettings, { liveRefresh: dto.liveRefresh });
+    return { liveRefresh: dto.liveRefresh };
   }
 
   getSaas() {

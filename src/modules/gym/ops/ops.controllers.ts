@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { FirebaseAuthGuard } from '../../../shared/auth/firebase-auth.guard';
 import { RequireModule } from '../../../shared/authorization/module.decorator';
@@ -8,7 +8,7 @@ import { RoleGuard } from '../../../shared/authorization/role.guard';
 import { Roles } from '../../../shared/authorization/roles.decorator';
 import { RequirePermission } from '../../../shared/authorization/require-permission.decorator';
 import { TenantGuard } from '../../../shared/tenancy/tenant.guard';
-import { GymListQueryDto, GymRecordDto } from '../shared/ops.dto';
+import { AccessSettingsDto, GymListQueryDto, GymRecordDto } from '../shared/ops.dto';
 import { GymOpsService } from './ops.service';
 
 const Guards = [FirebaseAuthGuard, TenantGuard, ModuleGuard, RoleGuard, PermissionGuard] as const;
@@ -20,6 +20,20 @@ const Guards = [FirebaseAuthGuard, TenantGuard, ModuleGuard, RoleGuard, Permissi
 @Controller('gym/access')
 export class GymAccessController {
   constructor(private readonly ops: GymOpsService) {}
+
+  /** Panel behaviour of the turnstile screens, shared by every staff browser of the gym. */
+  @Get('settings')
+  @RequirePermission('accessControl', 'view')
+  settings() {
+    return this.ops.getAccessSettings();
+  }
+
+  @Put('settings')
+  @Roles('owner', 'admin')
+  @RequirePermission('accessControl', 'update')
+  saveSettings(@Body() dto: AccessSettingsDto) {
+    return this.ops.saveAccessSettings(dto);
+  }
 
   @Get('gates')
   @RequirePermission('accessControl', 'view')

@@ -84,3 +84,17 @@ describe('GymOpsService.saveSaas', () => {
     await expect(service.saveSaas({} as never)).resolves.toEqual({ memberCount: 2 });
   });
 });
+
+describe('GymOpsService access settings', () => {
+  it('keeps live log refresh off unless the gym switches it on', async () => {
+    let stored: Record<string, unknown> | null = null;
+    const store = {
+      getSingleton: jest.fn(async () => stored),
+      upsertSingleton: jest.fn(async (_name: string, fields: Record<string, unknown>) => (stored = { ...fields })),
+    };
+    const service = new GymOpsService(store as never, {} as never, {} as never, {} as never);
+    expect(await service.getAccessSettings()).toEqual({ liveRefresh: false });
+    expect(await service.saveAccessSettings({ liveRefresh: true })).toEqual({ liveRefresh: true });
+    expect(await service.getAccessSettings()).toEqual({ liveRefresh: true });
+  });
+});

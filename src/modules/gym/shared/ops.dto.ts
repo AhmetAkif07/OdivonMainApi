@@ -778,3 +778,9 @@ export class GymRecordDto {
   @Allow()
   extras?: unknown;
 }
+
+/** Turnstile screens: poll the access logs while the Edge Agent and the device are online. */
+export class AccessSettingsDto {
+  @IsBoolean()
+  liveRefresh!: boolean;
+}
