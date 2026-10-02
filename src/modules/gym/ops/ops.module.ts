@@ -1,3 +1,5 @@
+import { GymDailyCloseController } from './daily-close/daily-close.controller';
+import { GymDailyCloseService } from './daily-close/daily-close.service';
 import { Module } from '@nestjs/common';
 import { GymAccessModule } from '../access/access.module';
 import { GymMembersModule } from '../members/members.module';
@@ -50,6 +52,7 @@ import { GymSportService } from './sport.service';
     GymShopController,
     GymSuppliersController,
     GymAccountingController,
+    GymDailyCloseController,
     GymEinvoiceController,
     GymAccessController,
     GymCampaignsController,
@@ -57,7 +60,7 @@ import { GymSportService } from './sport.service';
     GymSaasController,
     GymReceivablesController,
   ],
-  providers: [GymStore, GymSportService, GymCommerceService, GymOpsService, GymReceivablesService, GymClassBookingService],
-  exports: [GymStore, GymSportService, GymCommerceService, GymOpsService, GymReceivablesService, GymClassBookingService],
+  providers: [GymStore, GymDailyCloseService, GymSportService, GymCommerceService, GymOpsService, GymReceivablesService, GymClassBookingService],
+  exports: [GymStore, GymDailyCloseService, GymSportService, GymCommerceService, GymOpsService, GymReceivablesService, GymClassBookingService],
 })
 export class GymOpsModule {}

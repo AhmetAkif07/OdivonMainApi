@@ -218,7 +218,7 @@ describe('MembersService.create with a package', () => {
 
 describe('member DTOs', () => {
   const pipe = new ValidationPipe({ whitelist: true, transform: true, forbidNonWhitelisted: true });
-  const base = { displayName: 'Ayşe', email: 'a@b.com', password: 'secret123' };
+  const base = { displayName: 'Ayşe', email: 'a@b.com', password: 'secret123', nationalId: '12345678901' };
 
   it('accepts the sale fields on create only', async () => {
     await expect(

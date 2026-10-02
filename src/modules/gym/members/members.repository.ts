@@ -26,6 +26,20 @@ export class MembersRepository {
   }
 
   async create(dto: CreateMemberDto): Promise<GymMember> {
+    const trimmedId = dto.nationalId?.trim();
+    if (!trimmedId || !/^[1-9]\d{10}$/.test(trimmedId)) {
+      throw new AppException(ErrorCode.VALIDATION_ERROR, "Geçerli bir 11 haneli T.C. Kimlik Numarası zorunludur.");
+    }
+
+    const existingMembers = await listUndeleted<GymMember>(this.collection());
+    const duplicate = existingMembers.find((m) => m.nationalId && m.nationalId.trim() === trimmedId);
+    if (duplicate) {
+      throw new AppException(
+        ErrorCode.VALIDATION_ERROR,
+        `Bu T.C. Kimlik Numarası (${trimmedId}) ile kayıtlı bir üye (${duplicate.displayName}) zaten mevcuttur.`,
+      );
+    }
+
     const store = this.tenantContext.getStore();
     let uid: string | undefined;
     try {
@@ -95,6 +109,22 @@ export class MembersRepository {
 
   async update(id: string, dto: UpdateMemberDto): Promise<GymMember> {
     const current = await this.getByIdOrThrow(id);
+    if (dto.nationalId) {
+      const trimmed = dto.nationalId.trim();
+      if (!/^[1-9]\d{10}$/.test(trimmed)) {
+        throw new AppException(ErrorCode.VALIDATION_ERROR, "Geçerli bir 11 haneli T.C. Kimlik Numarası giriniz.");
+      }
+      const existingMembers = await listUndeleted<GymMember>(this.collection());
+      const duplicate = existingMembers.find(
+        (m) => m.uid !== id && (m as any).id !== id && m.nationalId && m.nationalId.trim() === trimmed,
+      );
+      if (duplicate) {
+        throw new AppException(
+          ErrorCode.VALIDATION_ERROR,
+          `Bu T.C. Kimlik Numarası (${trimmed}) ile kayıtlı başka bir üye (${duplicate.displayName}) mevcuttur.`,
+        );
+      }
+    }
     const now = new Date().toISOString();
     const updated: GymMember = {
       ...current,
@@ -196,6 +226,12 @@ export class MembersRepository {
       rfidCardNumber: dto.rfidCardNumber?.trim() || null,
       cardDepositFee: dto.cardDepositFee ?? 0,
       cardDepositPaid: dto.cardDepositPaid ?? false,
+        kvkkConsent: dto.kvkkConsent ?? null,
+        kvkkConsentAt: dto.kvkkConsent ? (dto.kvkkConsentAt ?? now) : null,
+        commercialConsent: dto.commercialConsent ?? null,
+        commercialConsentAt: dto.commercialConsent ? (dto.commercialConsentAt ?? now) : null,
+        healthConsent: dto.healthConsent ?? null,
+        healthConsentAt: dto.healthConsent ? (dto.healthConsentAt ?? now) : null,
       isArchived: false,
       archivedAt: null,
     };

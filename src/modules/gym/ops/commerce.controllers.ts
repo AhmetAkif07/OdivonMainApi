@@ -81,6 +81,17 @@ export class GymWalletController {
 export class GymShopController {
   constructor(private readonly commerce: GymCommerceService) {}
 
+
+  @Get('expenses/analytics')
+  @RequirePermission('accounting', 'view')
+  getExpenseAnalytics(
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('branchId') branchId?: string,
+  ) {
+    return this.commerce.getExpenseAnalytics({ startDate, endDate, branchId });
+  }
+
   @Get('categories')
   @RequirePermission('shop', 'view')
   categories(@Query() query: GymListQueryDto) {

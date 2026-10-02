@@ -52,4 +52,10 @@ export interface GymMember extends BaseDocument {
   /** Member who referred this one (referral programme). */
   referredByMemberId?: string | null;
   referredByName?: string | null;
+  kvkkConsent?: boolean | null;
+  kvkkConsentAt?: string | null;
+  commercialConsent?: boolean | null;
+  commercialConsentAt?: string | null;
+  healthConsent?: boolean | null;
+  healthConsentAt?: string | null;
 }

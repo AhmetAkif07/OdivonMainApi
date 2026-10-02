@@ -461,6 +461,117 @@ export class GymCommerceService {
     );
   }
 
+
+  async getExpenseAnalytics(query: { startDate?: string; endDate?: string; branchId?: string }) {
+    const entries = await this.store.list<Doc>(TENANT_COLLECTION.gymAccountingEntries);
+    const categories = await this.store.list<Doc>(TENANT_COLLECTION.gymAccountingCategories);
+
+    const now = new Date();
+    const startStr = query.startDate || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+    const endStr = query.endDate || now.toISOString().slice(0, 10);
+
+    const categoryMap = new Map<string, string>();
+    for (const cat of categories) {
+      if (cat.id && cat['name']) categoryMap.set(cat.id, String(cat['name']));
+    }
+
+    let totalIncome = 0;
+    let totalExpense = 0;
+    const categoryTotals = new Map<string, { name: string; amount: number; count: number }>();
+    const methodTotals = new Map<string, number>();
+
+    const monthlyMap = new Map<string, { month: string; income: number; expense: number; net: number }>();
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const mKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      monthlyMap.set(mKey, { month: mKey, income: 0, expense: 0, net: 0 });
+    }
+
+    const toDateKey = (val: unknown): string => {
+      if (!val) return '';
+      if (typeof val === 'string') return val.slice(0, 10);
+      if (val instanceof Date) return val.toISOString().slice(0, 10);
+      if (typeof val === 'object') {
+        const anyVal = val as Record<string, unknown>;
+        if (typeof anyVal.toDate === 'function') {
+          return (anyVal.toDate() as Date).toISOString().slice(0, 10);
+        }
+        if (typeof anyVal._seconds === 'number') {
+          return new Date((anyVal._seconds as number) * 1000).toISOString().slice(0, 10);
+        }
+      }
+      return '';
+    };
+
+    for (const entry of entries) {
+      if (query.branchId && entry['branchId'] && entry['branchId'] !== query.branchId) continue;
+      const amount = Number(entry['amount'] ?? 0);
+      if (isNaN(amount) || amount <= 0) continue;
+
+      const rawDate = toDateKey(entry['entryDate'] || entry['createdAt']);
+      const monthKey = rawDate ? rawDate.slice(0, 7) : '';
+      const type = String(entry['type'] ?? 'income').toLowerCase();
+      const method = String(entry['paymentMethod'] ?? 'cash');
+
+      if (monthKey && monthlyMap.has(monthKey)) {
+        const trend = monthlyMap.get(monthKey)!;
+        if (type === 'expense') {
+          trend.expense += amount;
+        } else {
+          trend.income += amount;
+        }
+        trend.net = trend.income - trend.expense;
+      }
+
+      if (rawDate && (rawDate < startStr || rawDate > endStr)) continue;
+
+      if (type === 'expense') {
+        totalExpense += amount;
+        const rawCat = String(entry['category'] || 'Diğer Gider');
+        const catName = categoryMap.get(rawCat) || rawCat;
+        const currentCat = categoryTotals.get(catName) || { name: catName, amount: 0, count: 0 };
+        currentCat.amount += amount;
+        currentCat.count++;
+        categoryTotals.set(catName, currentCat);
+
+        const currentMethod = methodTotals.get(method) || 0;
+        methodTotals.set(method, currentMethod + amount);
+      } else {
+        totalIncome += amount;
+      }
+    }
+
+    const netProfit = totalIncome - totalExpense;
+    const expenseMargin = totalIncome > 0 ? (totalExpense / totalIncome) * 100 : 0;
+
+    const categoryBreakdown = Array.from(categoryTotals.values())
+      .map((c) => ({
+        ...c,
+        amount: Math.round(c.amount * 100) / 100,
+        percentage: totalExpense > 0 ? Math.round((c.amount / totalExpense) * 1000) / 10 : 0,
+      }))
+      .sort((a, b) => b.amount - a.amount);
+
+    const monthlyTrend = Array.from(monthlyMap.values()).map((m) => ({
+      ...m,
+      income: Math.round(m.income * 100) / 100,
+      expense: Math.round(m.expense * 100) / 100,
+      net: Math.round(m.net * 100) / 100,
+    }));
+
+    return {
+      startDate: startStr,
+      endDate: endStr,
+      totalIncome: Math.round(totalIncome * 100) / 100,
+      totalExpense: Math.round(totalExpense * 100) / 100,
+      netProfit: Math.round(netProfit * 100) / 100,
+      expenseMarginPercentage: Math.round(expenseMargin * 10) / 10,
+      topCategory: categoryBreakdown[0] || null,
+      categoryBreakdown,
+      monthlyTrend,
+    };
+  }
+
   getEinvoiceConfig() {
     return this.store.getSingleton(TENANT_COLLECTION.gymEinvoiceConfig);
   }
@@ -477,16 +588,33 @@ export class GymCommerceService {
     const kdvRate = dto.kdvRate ?? 20;
     const amount = dto.amount ?? 0;
     const kdvAmount = dto.kdvAmount ?? (amount * kdvRate) / 100;
+    const now = new Date();
+    const year = now.getFullYear();
+    const defaultPrefix = dto.direction === 'inbound' ? 'GEL' : 'GIB';
+    const prefix = (dto.prefix || (dto.invoiceNumber ? dto.invoiceNumber.slice(0, 3) : defaultPrefix)).toUpperCase();
+    const generatedNo = `${prefix}${year}${String(Date.now()).slice(-9)}`;
+    const gibUuid = dto.gibUuid || (typeof crypto !== 'undefined' && (crypto as any).randomUUID ? (crypto as any).randomUUID() : `uuid-${Date.now()}`);
     return this.store.create(TENANT_COLLECTION.gymEinvoiceItems, {
       ...dto,
-      invoiceNumber: dto.invoiceNumber || `FAT-${Date.now()}`,
+      invoiceNumber: dto.invoiceNumber || generatedNo,
+      gibUuid,
       direction: dto.direction ?? 'outbound',
       kdvRate,
       kdvAmount,
       totalAmount: dto.totalAmount ?? amount + kdvAmount,
       status: dto.status ?? 'draft',
-      issueDate: dto.issueDate || new Date().toISOString(),
+      issueDate: dto.issueDate || now.toISOString(),
     });
+  }
+
+  updateInvoice(id: string, dto: GymRecordDto) {
+    return this.store.update(
+      TENANT_COLLECTION.gymEinvoiceItems,
+      id,
+      ErrorCode.GYM_EINVOICE_NOT_FOUND,
+      'Invoice not found',
+      dto,
+    );
   }
 
   removeInvoice(id: string) {

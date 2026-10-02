@@ -34,10 +34,10 @@ export class CreateMemberDto {
   @IsString()
   phone?: string;
 
-  @ApiPropertyOptional({ description: 'T.C. kimlik no: 11 hane, 0 ile başlamaz', nullable: true })
-  @IsOptional()
+    @ApiProperty({ description: 'T.C. kimlik no: 11 hane, 0 ile başlamaz' })
+  @IsString()
   @Matches(/^[1-9]\d{10}$/, { message: 'nationalId must be an 11-digit T.C. identity number' })
-  nationalId?: string | null;
+  nationalId!: string;
 
   @ApiPropertyOptional({ enum: ['female', 'male', 'unspecified'] })
   @IsOptional()
@@ -63,6 +63,36 @@ export class CreateMemberDto {
   @IsOptional()
   @IsNumber()
   packagePrice?: number;
+
+  @ApiPropertyOptional({ description: 'KVKK aydınlatma ve açık rıza onayı' })
+  @IsOptional()
+  @IsBoolean()
+  kvkkConsent?: boolean | null;
+
+  @ApiPropertyOptional({ description: 'KVKK onay zaman damgası' })
+  @IsOptional()
+  @IsString()
+  kvkkConsentAt?: string | null;
+
+  @ApiPropertyOptional({ description: 'Ticari elektronik ileti onayı (SMS/E-posta)' })
+  @IsOptional()
+  @IsBoolean()
+  commercialConsent?: boolean | null;
+
+  @ApiPropertyOptional({ description: 'Ticari ileti onay zaman damgası' })
+  @IsOptional()
+  @IsString()
+  commercialConsentAt?: string | null;
+
+  @ApiPropertyOptional({ description: 'Özel nitelikli sağlık/biyometrik veri onayı' })
+  @IsOptional()
+  @IsBoolean()
+  healthConsent?: boolean | null;
+
+  @ApiPropertyOptional({ description: 'Sağlık verisi onay zaman damgası' })
+  @IsOptional()
+  @IsString()
+  healthConsentAt?: string | null;
 
   @ApiPropertyOptional({ description: 'Kayıtla birlikte satılan paket; fiyat paket kaydından alınır' })
   @IsOptional()

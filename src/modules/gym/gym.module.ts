@@ -11,6 +11,7 @@ import { GymOpsModule } from './ops/ops.module';
 import { GymPackagesModule } from './packages/packages.module';
 import { GymRemindersModule } from './reminders/reminders.module';
 import { GymReportsModule } from './reports/reports.module';
+import { GymConsentModule } from './consent/consent.module';
 import { GymStaffModule } from './staff/staff.module';
 
 @Module({
@@ -27,6 +28,7 @@ import { GymStaffModule } from './staff/staff.module';
     GymRemindersModule,
     GymLeadsModule,
     GymReportsModule,
+    GymConsentModule,
   ],
   controllers: [GymController],
 })
