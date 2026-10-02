@@ -13,6 +13,7 @@ import { GymLeadsService } from '../leads/leads.service';
 import { GymClassBookingService } from '../ops/class-booking.service';
 import { GymReceivablesService } from '../ops/receivables.service';
 import { GymMemberGuard } from './gym-member.guard';
+import { GymMemberRecordsService } from './member-records.service';
 import {
   CancelMobileAppointmentDto,
   CreateMealLogDto,
@@ -20,6 +21,9 @@ import {
   CreateMobileAppointmentDto,
   CreateProgressPhotoDto,
   CreateWaterLogDto,
+  MemberWorkoutPlanDto,
+  UpdateMobileAppointmentDto,
+  UpdateWaterLogDto,
   CompleteWorkoutSessionDto,
   CreateWorkoutLogDto,
   PatchMobileMeDto,
@@ -45,6 +49,7 @@ export class GymMobileController {
     private readonly classBooking: GymClassBookingService,
     private readonly leads: GymLeadsService,
     private readonly onlinePayments: PaymentsService,
+    private readonly records: GymMemberRecordsService,
   ) {}
 
   @Get('home')
@@ -97,6 +102,28 @@ export class GymMobileController {
     return this.mobile.getWorkout(id);
   }
 
+  /** Full plans (with exercises) for the web panel; members may also write their own plans. */
+  @Get('workout-plans')
+  workoutPlans() {
+    return this.records.listWorkoutPlans();
+  }
+
+  @Post('workout-plans')
+  createWorkoutPlan(@Body() dto: MemberWorkoutPlanDto) {
+    return this.records.createWorkoutPlan(dto);
+  }
+
+  /** Own plans only; a trainer-assigned plan accepts a status change alone. */
+  @Patch('workout-plans/:id')
+  updateWorkoutPlan(@Param('id') id: string, @Body() dto: MemberWorkoutPlanDto) {
+    return this.records.updateWorkoutPlan(id, dto);
+  }
+
+  @Delete('workout-plans/:id')
+  removeWorkoutPlan(@Param('id') id: string) {
+    return this.records.removeWorkoutPlan(id);
+  }
+
   @Get('workout-logs')
   workoutLogs() {
     return this.mobile.listWorkoutLogs();
@@ -137,6 +164,11 @@ export class GymMobileController {
     return this.mobile.createAppointment(dto);
   }
 
+  @Patch('appointments/:id')
+  rescheduleAppointment(@Param('id') id: string, @Body() dto: UpdateMobileAppointmentDto) {
+    return this.records.rescheduleAppointment(id, dto);
+  }
+
   @Post('appointments/:id/cancel')
   cancelAppointment(@Param('id') id: string, @Body() dto: CancelMobileAppointmentDto) {
     return this.mobile.cancelAppointment(id, dto);
@@ -170,6 +202,16 @@ export class GymMobileController {
   @Post('measurements')
   createMeasurement(@Body() dto: CreateMeasurementDto) {
     return this.mobile.createMeasurement(dto);
+  }
+
+  @Patch('measurements/:id')
+  updateMeasurement(@Param('id') id: string, @Body() dto: CreateMeasurementDto) {
+    return this.records.updateMeasurement(id, dto);
+  }
+
+  @Delete('measurements/:id')
+  removeMeasurement(@Param('id') id: string) {
+    return this.records.removeMeasurement(id);
   }
 
   @Get('progress-photos')
@@ -253,6 +295,12 @@ export class GymMobileController {
     return this.leads.memberSummary(user.userId);
   }
 
+  /** Own e-wallet movements (newest first, last 100). */
+  @Get('wallet')
+  wallet() {
+    return this.records.listWallet();
+  }
+
   @Get('payments')
   payments() {
     return this.mobile.listPayments();
@@ -287,6 +335,22 @@ export class GymMobileController {
   @Post('water')
   addWater(@Body() dto: CreateWaterLogDto) {
     return this.mobile.addWater(dto);
+  }
+
+  /** Water history across days (newest first, last 100); `GET water` stays the one-day summary. */
+  @Get('water/logs')
+  waterLogs() {
+    return this.records.listWaterLogs();
+  }
+
+  @Patch('water/:id')
+  updateWater(@Param('id') id: string, @Body() dto: UpdateWaterLogDto) {
+    return this.records.updateWater(id, dto);
+  }
+
+  @Delete('water/:id')
+  removeWater(@Param('id') id: string) {
+    return this.records.removeWater(id);
   }
 
   @Get('stats')

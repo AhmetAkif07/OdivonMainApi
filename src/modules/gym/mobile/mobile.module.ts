@@ -8,11 +8,12 @@ import { GymOpsModule } from '../ops/ops.module';
 import { GymStaffModule } from '../staff/staff.module';
 import { GymMemberGuard } from './gym-member.guard';
 import { GymMobileController } from './mobile.controller';
+import { GymMemberRecordsService } from './member-records.service';
 import { GymMobileService } from './mobile.service';
 
 @Module({
   imports: [GymMembersModule, GymPackagesModule, GymOpsModule, GymStaffModule, GymAccessModule, GymLeadsModule, PaymentsModule],
   controllers: [GymMobileController],
-  providers: [GymMemberGuard, GymMobileService],
+  providers: [GymMemberGuard, GymMobileService, GymMemberRecordsService],
 })
 export class GymMobileModule {}

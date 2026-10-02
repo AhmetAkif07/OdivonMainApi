@@ -570,6 +570,12 @@ export class GymMobileService {
       calf: dto.calf ?? null,
       bodyFatPercentage: dto.bodyFatPercentage ?? null,
       muscleMassKg: dto.muscleMassKg ?? null,
+      rightBicep: dto.rightBicep ?? null,
+      leftBicep: dto.leftBicep ?? null,
+      rightThigh: dto.rightThigh ?? null,
+      leftThigh: dto.leftThigh ?? null,
+      rightCalf: dto.rightCalf ?? null,
+      leftCalf: dto.leftCalf ?? null,
       notes: dto.notes ?? null,
       bmi: computeBmi(dto.weight ?? null, dto.height ?? null),
     });
@@ -856,6 +862,7 @@ export class GymMobileService {
       amountMl: dto.amountMl,
       unit: 'ml',
       date: dto.date || new Date().toISOString(),
+      notes: dto.notes,
     });
     return this.listWater(String(created['date'] ?? created.createdAt).slice(0, 10));
   }
@@ -1294,7 +1301,7 @@ function toWorkoutLog(item: Doc) {
   };
 }
 
-function toAppointment(item: Doc) {
+export function toAppointment(item: Doc) {
   return {
     id: item.id,
     at: String(item['appointmentTime'] ?? item.createdAt),
@@ -1334,7 +1341,7 @@ function monthPrefix(now = new Date()): string {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 }
 
-function toMeasurement(item: Doc) {
+export function toMeasurement(item: Doc) {
   const weight = numberOrNull(item['weight']);
   const height = numberOrNull(item['height']);
   return {
@@ -1350,6 +1357,12 @@ function toMeasurement(item: Doc) {
     calf: numberOrNull(item['calf']),
     bodyFatPercentage: numberOrNull(item['bodyFatPercentage']),
     muscleMassKg: numberOrNull(item['muscleMassKg']),
+    rightBicep: numberOrNull(item['rightBicep']),
+    leftBicep: numberOrNull(item['leftBicep']),
+    rightThigh: numberOrNull(item['rightThigh']),
+    leftThigh: numberOrNull(item['leftThigh']),
+    rightCalf: numberOrNull(item['rightCalf']),
+    leftCalf: numberOrNull(item['leftCalf']),
     bmi: numberOrNull(item['bmi']) ?? computeBmi(weight, height),
     notes: (item['notes'] as string | null) ?? null,
   };

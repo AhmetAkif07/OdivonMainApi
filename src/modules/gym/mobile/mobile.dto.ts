@@ -1,5 +1,6 @@
 import { Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
   ArrayMinSize,
   IsArray,
   IsBoolean,
@@ -165,6 +166,59 @@ export class CreateMobileAppointmentDto {
   notes?: string;
 }
 
+/** Reschedule of the member's own booked appointment; the trainer stays the same. */
+export class UpdateMobileAppointmentDto {
+  @IsOptional()
+  @IsString()
+  appointmentTime?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(15)
+  duration?: number;
+
+  @IsOptional()
+  @IsString()
+  notes?: string;
+}
+
+/** A plan the member writes for themselves (`/gym/mobile/workout-plans`). */
+export class MemberWorkoutPlanDto {
+  @IsOptional()
+  @IsString()
+  title?: string;
+
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @IsOptional()
+  @IsString()
+  notes?: string;
+
+  @IsOptional()
+  @IsString()
+  startDate?: string;
+
+  @IsOptional()
+  @IsString()
+  endDate?: string | null;
+
+  @IsOptional()
+  @IsIn(['active', 'paused', 'completed', 'archived'])
+  status?: 'active' | 'paused' | 'completed' | 'archived';
+
+  @IsOptional()
+  @IsString()
+  disciplineId?: string | null;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(200)
+  exercises?: Record<string, unknown>[];
+}
+
+/** Also the PATCH body of `/gym/mobile/measurements/:id`: every field is optional. */
 export class CreateMeasurementDto {
   @IsOptional()
   @IsString()
@@ -211,6 +265,30 @@ export class CreateMeasurementDto {
   muscleMassKg?: number;
 
   @IsOptional()
+  @IsNumber()
+  rightBicep?: number;
+
+  @IsOptional()
+  @IsNumber()
+  leftBicep?: number;
+
+  @IsOptional()
+  @IsNumber()
+  rightThigh?: number;
+
+  @IsOptional()
+  @IsNumber()
+  leftThigh?: number;
+
+  @IsOptional()
+  @IsNumber()
+  rightCalf?: number;
+
+  @IsOptional()
+  @IsNumber()
+  leftCalf?: number;
+
+  @IsOptional()
   @IsString()
   notes?: string;
 }
@@ -239,6 +317,25 @@ export class CreateWaterLogDto {
   @IsOptional()
   @IsString()
   date?: string;
+
+  @IsOptional()
+  @IsString()
+  notes?: string;
+}
+
+export class UpdateWaterLogDto {
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  amountMl?: number;
+
+  @IsOptional()
+  @IsString()
+  date?: string;
+
+  @IsOptional()
+  @IsString()
+  notes?: string;
 }
 
 export class WaterQueryDto {
