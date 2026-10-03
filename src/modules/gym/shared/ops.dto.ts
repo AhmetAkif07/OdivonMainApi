@@ -9,6 +9,7 @@ import {
   IsObject,
   IsOptional,
   IsString,
+  Min,
 } from 'class-validator';
 import { PagingQueryDto } from '../../../shared/http/paging.dto';
 import { GATE_PROTOCOLS, GateProtocol } from '../access/access-rules';
@@ -420,6 +421,23 @@ export class GymRecordDto {
   @IsOptional()
   @IsString()
   supplier?: string;
+
+  /** Product: supplier record the product is bought from (purchase orders). */
+  @IsOptional()
+  @IsString()
+  supplierId?: string;
+
+  /** Product: stock at or below this is "low" (default 5 when unset). */
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  minStock?: number;
+
+  /** Product: usual purchase quantity suggested when the stock is low. */
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  reorderQty?: number;
 
   @IsOptional()
   @IsString()

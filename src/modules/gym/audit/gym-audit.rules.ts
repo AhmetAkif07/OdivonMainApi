@@ -35,6 +35,7 @@ export const GYM_AUDIT_ENTITIES: Record<string, { label: string; collection?: st
   sms: { label: 'SMS' },
   saas: { label: 'SaaS abonelik' },
   receivables: { label: 'Taksit / borç', collection: TENANT_COLLECTION.gymReceivables },
+  stock: { label: 'Stok' },
   mobile: { label: 'Üye uygulaması' },
 };
 
@@ -49,6 +50,13 @@ const SUB_COLLECTIONS: Record<string, string> = {
   'einvoice/items/:id': TENANT_COLLECTION.gymEinvoiceItems,
   'access/gates/:id': TENANT_COLLECTION.gymTurnstileGates,
   'classes/:id/bookings/:bookingId': TENANT_COLLECTION.gymClassBookings,
+  'stock/counts/:id': TENANT_COLLECTION.gymStockCounts,
+  'stock/counts/:id/complete': TENANT_COLLECTION.gymStockCounts,
+  'stock/counts/:id/cancel': TENANT_COLLECTION.gymStockCounts,
+  'stock/purchase-orders/:id': TENANT_COLLECTION.gymPurchaseOrders,
+  'stock/purchase-orders/:id/order': TENANT_COLLECTION.gymPurchaseOrders,
+  'stock/purchase-orders/:id/receive': TENANT_COLLECTION.gymPurchaseOrders,
+  'stock/purchase-orders/:id/cancel': TENANT_COLLECTION.gymPurchaseOrders,
 };
 
 /** Human-readable descriptions for the routes that matter most; the rest get a generic one. */
@@ -62,6 +70,12 @@ const LABELS: Record<string, string> = {
   'POST wallet': 'Cüzdan hareketi',
   'POST wallet/purchase': 'Paket satışı',
   'POST shop/checkout': 'Mağaza satışı',
+  'POST stock/counts': 'Stok sayımı başlatıldı',
+  'POST stock/counts/:id/complete': 'Stok sayımı tamamlandı (stoklar güncellendi)',
+  'POST stock/purchase-orders': 'Tedarikçi siparişi oluşturuldu',
+  'POST stock/purchase-orders/:id/order': 'Tedarikçi siparişi gönderildi',
+  'POST stock/purchase-orders/:id/receive': 'Tedarikçi siparişi teslim alındı (stok arttı)',
+  'POST stock/purchase-orders/:id/cancel': 'Tedarikçi siparişi iptal edildi',
   'POST shop/sales/:id/refund': 'Satış iadesi',
   'DELETE shop/sales/:id': 'Satış kaydı silindi',
   'POST receivables': 'Taksitli satış',
@@ -129,7 +143,7 @@ export function describeRoute(route: GymAuditRoute) {
 
 /** Sub-resource nouns: `POST shop/products` creates a product, `POST shop/checkout` is an action. */
 const CREATABLE = new Set([
-  'categories', 'products', 'gates', 'items', 'bookings', 'logs', 'disciplines', 'facilities', 'equipment',
+  'categories', 'products', 'gates', 'counts', 'purchase-orders', 'items', 'bookings', 'logs', 'disciplines', 'facilities', 'equipment',
 ]);
 
 function verbOf(method: string, segments: string[]): GymAuditVerb {

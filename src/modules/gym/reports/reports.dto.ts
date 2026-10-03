@@ -25,3 +25,15 @@ export class ChurnQueryDto {
   @Max(24)
   months?: number;
 }
+
+export class BranchReportQueryDto {
+  @ApiPropertyOptional({ description: 'YYYY-MM-DD; varsayılan ayın ilk günü' })
+  @IsOptional()
+  @Matches(DAY)
+  from?: string;
+
+  @ApiPropertyOptional({ description: 'YYYY-MM-DD; varsayılan bugün' })
+  @IsOptional()
+  @Matches(DAY)
+  to?: string;
+}

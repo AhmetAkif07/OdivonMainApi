@@ -35,6 +35,8 @@ import {
   GymWorkoutsController,
 } from './sport.controllers';
 import { GymSportService } from './sport.service';
+import { GymStockController } from './stock/stock.controller';
+import { GymStockService } from './stock/stock.service';
 
 @Module({
   imports: [GymMembersModule, GymPackagesModule, GymAccessModule],
@@ -59,8 +61,9 @@ import { GymSportService } from './sport.service';
     GymSmsController,
     GymSaasController,
     GymReceivablesController,
+    GymStockController,
   ],
-  providers: [GymStore, GymDailyCloseService, GymSportService, GymCommerceService, GymOpsService, GymReceivablesService, GymClassBookingService],
+  providers: [GymStore, GymDailyCloseService, GymSportService, GymCommerceService, GymOpsService, GymReceivablesService, GymClassBookingService, GymStockService],
   exports: [GymStore, GymDailyCloseService, GymSportService, GymCommerceService, GymOpsService, GymReceivablesService, GymClassBookingService],
 })
 export class GymOpsModule {}

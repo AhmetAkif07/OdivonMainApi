@@ -6,7 +6,7 @@ import { ModuleGuard } from '../../../shared/authorization/module.guard';
 import { PermissionGuard } from '../../../shared/authorization/permission.guard';
 import { RequirePermission } from '../../../shared/authorization/require-permission.decorator';
 import { TenantGuard } from '../../../shared/tenancy/tenant.guard';
-import { ChurnQueryDto, HourlyOccupancyQueryDto } from './reports.dto';
+import { BranchReportQueryDto, ChurnQueryDto, HourlyOccupancyQueryDto } from './reports.dto';
 import { GymReportsService } from './reports.service';
 
 @ApiTags('gym-reports')
@@ -29,6 +29,13 @@ export class GymReportsController {
   @ApiOperation({ summary: 'Gün × saat ortalama giriş (varsayılan son 28 gün)' })
   hourly(@Query() query: HourlyOccupancyQueryDto) {
     return this.reports.hourly(query.from, query.to);
+  }
+
+  @Get('branches')
+  @RequirePermission('reports', 'view')
+  @ApiOperation({ summary: 'Çok şubeli konsolide rapor: şube başına üye, gelir/gider, giriş ve aylık gelir' })
+  branches(@Query() query: BranchReportQueryDto) {
+    return this.reports.branchReport(query.from, query.to);
   }
 
   @Get('churn')

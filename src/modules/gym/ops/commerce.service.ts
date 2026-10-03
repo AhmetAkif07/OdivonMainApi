@@ -300,6 +300,9 @@ export class GymCommerceService {
         type: 'income',
         amount: totalAmount,
         category: 'product-sale',
+        // Who bought and at which branch: the branch report attributes the revenue with these.
+        userId: dto.userId ?? null,
+        branchId: dto.branchId ?? null,
         description: dto.description ?? 'POS satışı',
         referenceId: sales[0]?.id,
         referenceType: 'product-sale',

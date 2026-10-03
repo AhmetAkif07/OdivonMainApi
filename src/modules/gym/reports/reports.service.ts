@@ -7,9 +7,12 @@ import { MembersRepository } from '../members/members.repository';
 import { gymToday } from '../ops/receivables.math';
 import { GymStore } from '../shared/gym-store';
 import { AccessEvent, ChurnMember, churnByMonth, hourlyOccupancy, lastMonths, occupancyNow } from './reports.math';
+import { buildBranchReport, ReportBranch, ReportEntry, ReportMember } from './branch-report.math';
 
 const DAY_MS = 86_400_000;
 const MAX_RANGE_DAYS = 92;
+const MAX_BRANCH_REPORT_DAYS = 366;
+const TREND_MONTHS = 6;
 /** Istanbul has no DST since 2016: a gym-local day starts at 21:00 UTC the previous day. */
 const dayStart = (day: string) => new Date(`${day}T00:00:00+03:00`).toISOString();
 const addDays = (day: string, n: number) => new Date(Date.parse(`${day}T12:00:00Z`) + n * DAY_MS).toISOString().slice(0, 10);
@@ -48,6 +51,36 @@ export class GymReportsService {
   async churn(months = 6) {
     const members = (await this.members.list({})) as unknown as ChurnMember[];
     return churnByMonth(members, lastMonths(gymToday(), months), new Date());
+  }
+
+  /**
+   * Consolidated report across branches for `from`..`to` (default: this month so far), with the
+   * revenue of the last 6 months per branch.
+   */
+  async branchReport(from?: string, to?: string, now = new Date()) {
+    const today = gymToday(now);
+    const end = to ?? today;
+    const start = from ?? `${end.slice(0, 7)}-01`;
+    const span = (Date.parse(`${end}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`)) / DAY_MS;
+    if (span < 0 || span >= MAX_BRANCH_REPORT_DAYS) {
+      throw new AppException(ErrorCode.VALIDATION_ERROR, `Date range must be 1-${MAX_BRANCH_REPORT_DAYS} days`);
+    }
+    const [branches, members, entries, events] = await Promise.all([
+      this.branches.list(),
+      this.members.list({}),
+      this.store.list(TENANT_COLLECTION.gymAccountingEntries),
+      this.events(dayStart(start), dayStart(addDays(end, 1))),
+    ]);
+    return buildBranchReport({
+      branches: branches as unknown as ReportBranch[],
+      members: members as unknown as ReportMember[],
+      entries: entries as unknown as ReportEntry[],
+      events,
+      from: start,
+      to: end,
+      months: lastMonths(today, TREND_MONTHS),
+      now,
+    });
   }
 
   private async events(fromIso: string, toIso: string): Promise<AccessEvent[]> {
