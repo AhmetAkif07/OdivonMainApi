@@ -201,7 +201,7 @@ export class GymClassBookingService {
   /** Staff view of one session: bookings with attendance, the waitlist and the free places. */
   async roster(scheduleId: string, sessionDate?: string) {
     const schedule = await this.schedule(scheduleId);
-    const date = sessionDate ?? nextSessionDate(Number(schedule['dayOfWeek'] ?? 1), String(schedule['startTime'] ?? ''));
+    const date = sessionDate ?? nextSessionDate(this.scheduleDays(schedule), String(schedule['startTime'] ?? ''));
     const all = (await this.sessionQuery(scheduleId, date).get()).docs
       .map((doc) => doc.data() as ClassBooking)
       .filter((b) => !isDeleted(b));
@@ -373,7 +373,7 @@ export class GymClassBookingService {
 
   /** Keeps `currentBookings` on the schedule meaning "booked for the next session" (shown in lists). */
   private writeCount(tx: Transaction, session: Session) {
-    const next = nextSessionDate(Number(session.schedule['dayOfWeek'] ?? 1), String(session.schedule['startTime'] ?? ''));
+    const next = nextSessionDate(this.scheduleDays(session.schedule), String(session.schedule['startTime'] ?? ''));
     if (session.sessionDate !== next) return;
     tx.update(this.ref(TENANT_COLLECTION.gymClassSchedules, session.schedule.id), {
       currentBookings: session.bookings.length,
@@ -389,11 +389,19 @@ export class GymClassBookingService {
     await this.members.save({ ...member, noShowCount: Math.max(0, (member.noShowCount ?? 0) + delta) });
   }
 
+  private scheduleDays(schedule: Doc): number[] {
+    const rawDays = schedule['daysOfWeek'] ?? (schedule['extras'] as any)?.['daysOfWeek'];
+    if (Array.isArray(rawDays) && rawDays.length > 0) {
+      return rawDays.map(Number);
+    }
+    return [Number(schedule['dayOfWeek'] ?? 1)];
+  }
+
   private resolveDate(schedule: Doc, requested?: string): string {
-    const dayOfWeek = Number(schedule['dayOfWeek'] ?? 1);
+    const days = this.scheduleDays(schedule);
     const startTime = String(schedule['startTime'] ?? '');
-    if (!requested) return nextSessionDate(dayOfWeek, startTime);
-    if (weekdayOf(requested) !== dayOfWeek) {
+    if (!requested) return nextSessionDate(days, startTime);
+    if (!days.includes(weekdayOf(requested))) {
       throw new AppException(ErrorCode.VALIDATION_ERROR, 'sessionDate is not a day this class runs');
     }
     if (requested < gymToday()) {

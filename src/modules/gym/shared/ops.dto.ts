@@ -90,6 +90,14 @@ export class GymRecordDto {
 
   @IsOptional()
   @IsString()
+  memberName?: string;
+
+  @IsOptional()
+  @IsString()
+  sessionType?: string;
+
+  @IsOptional()
+  @IsString()
   instructorId?: string;
 
   @IsOptional()
@@ -143,6 +151,14 @@ export class GymRecordDto {
   @IsOptional()
   @IsNumber()
   dayOfWeek?: number;
+
+  @IsOptional()
+  @IsArray()
+  daysOfWeek?: number[];
+
+  @IsOptional()
+  @IsString()
+  ageGroup?: string;
 
   @IsOptional()
   @IsNumber()

@@ -25,11 +25,12 @@ function localDate(instant: Date): string {
 }
 
 /** The next occurrence of the slot that has not started yet. */
-export function nextSessionDate(dayOfWeek: number, startTime: string, now = new Date()): string {
+export function nextSessionDate(dayOfWeek: number | number[], startTime: string, now = new Date()): string {
+  const days = Array.isArray(dayOfWeek) ? dayOfWeek : [dayOfWeek];
   const today = localDate(now);
   for (let i = 0; i <= 7; i++) {
     const date = localDate(new Date(Date.parse(`${today}T12:00:00${OFFSET}`) + i * DAY_MS));
-    if (weekdayOf(date) === dayOfWeek && sessionStart(date, startTime).getTime() > now.getTime()) return date;
+    if (days.includes(weekdayOf(date)) && sessionStart(date, startTime).getTime() > now.getTime()) return date;
   }
   return localDate(new Date(Date.parse(`${today}T12:00:00${OFFSET}`) + 7 * DAY_MS));
 }

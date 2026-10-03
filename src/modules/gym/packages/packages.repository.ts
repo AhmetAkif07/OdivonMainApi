@@ -48,6 +48,7 @@ export class PackagesRepository {
       barcode: dto.barcode ?? '',
       isHidden: dto.isHidden ?? false,
       status: dto.status ?? 'active',
+      requiredDocuments: dto.requiredDocuments ?? [],
       branchId: null,
       branchName: null,
     };

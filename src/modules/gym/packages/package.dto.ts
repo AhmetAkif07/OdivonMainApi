@@ -104,6 +104,12 @@ export class CreatePackageDto {
   @IsBoolean()
   isHidden?: boolean;
 
+  @ApiPropertyOptional({ type: [String] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  requiredDocuments?: string[];
+
   @ApiPropertyOptional({ enum: ['active', 'inactive', 'archived'] })
   @IsOptional()
   @IsIn(['active', 'inactive', 'archived'])

@@ -21,6 +21,7 @@ export interface GymPackage extends BaseDocument {
   barcode: string;
   isHidden: boolean;
   status: 'active' | 'inactive' | 'archived';
+  requiredDocuments?: string[];
   branchId: string | null;
   branchName: string | null;
 }
