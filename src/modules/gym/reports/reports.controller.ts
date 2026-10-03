@@ -5,6 +5,8 @@ import { RequireModule } from '../../../shared/authorization/module.decorator';
 import { ModuleGuard } from '../../../shared/authorization/module.guard';
 import { PermissionGuard } from '../../../shared/authorization/permission.guard';
 import { RequirePermission } from '../../../shared/authorization/require-permission.decorator';
+import { CurrentUser } from '../../../shared/auth/current-user.decorator';
+import { TenantStore } from '../../../shared/tenancy/tenant.context';
 import { TenantGuard } from '../../../shared/tenancy/tenant.guard';
 import { BranchReportQueryDto, ChurnQueryDto, HourlyOccupancyQueryDto } from './reports.dto';
 import { GymReportsService } from './reports.service';
@@ -29,6 +31,13 @@ export class GymReportsController {
   @ApiOperation({ summary: 'Gün × saat ortalama giriş (varsayılan son 28 gün)' })
   hourly(@Query() query: HourlyOccupancyQueryDto) {
     return this.reports.hourly(query.from, query.to);
+  }
+
+  /** Staff home charts; every section follows its own view permission (null when not allowed). */
+  @Get('dashboard')
+  @ApiOperation({ summary: 'Ana sayfa grafikleri: son 7 gün giriş/satış, üye durumu, 6 ay gelir-gider' })
+  dashboard(@CurrentUser() user: TenantStore) {
+    return this.reports.dashboard(user);
   }
 
   @Get('branches')

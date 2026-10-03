@@ -8,6 +8,18 @@ import { gymToday } from '../ops/receivables.math';
 import { GymStore } from '../shared/gym-store';
 import { AccessEvent, ChurnMember, churnByMonth, hourlyOccupancy, lastMonths, occupancyNow } from './reports.math';
 import { buildBranchReport, ReportBranch, ReportEntry, ReportMember } from './branch-report.math';
+import {
+  checkInsByDay,
+  financeByMonth,
+  lastDays,
+  memberStatus,
+  salesByDay,
+  SummaryEntry,
+  SummaryMember,
+  SummarySale,
+} from './dashboard-summary.math';
+import { hasPermission, PermissionResource } from '../../../shared/authorization/permissions';
+import { TenantStore } from '../../../shared/tenancy/tenant.context';
 
 const DAY_MS = 86_400_000;
 const MAX_RANGE_DAYS = 92;
@@ -81,6 +93,31 @@ export class GymReportsService {
       months: lastMonths(today, TREND_MONTHS),
       now,
     });
+  }
+
+  /**
+   * Home-page charts for staff. Each section is filled only when the caller may view that data
+   * (the same permission as its list endpoint), otherwise it is null; nothing here needs reports.
+   */
+  async dashboard(user: TenantStore, now = new Date()) {
+    const can = (resource: PermissionResource) => user.role === 'owner' || hasPermission(user.permissions, resource, 'view');
+    const today = gymToday(now);
+    const days = lastDays(today, 7);
+    const months = lastMonths(today, 6);
+    const [events, sales, members, entries] = await Promise.all([
+      can('accessControl') ? this.events(dayStart(days[0]), now.toISOString()) : null,
+      can('shop') ? this.store.list(TENANT_COLLECTION.gymShopSales) : null,
+      can('members') ? this.members.list({}) : null,
+      can('accounting') ? this.store.list(TENANT_COLLECTION.gymAccountingEntries) : null,
+    ]);
+    return {
+      days,
+      months,
+      checkIns: events ? checkInsByDay(events, days) : null,
+      sales: sales ? salesByDay(sales as unknown as SummarySale[], days) : null,
+      members: members ? memberStatus(members as unknown as SummaryMember[], now) : null,
+      finance: entries ? financeByMonth(entries as unknown as SummaryEntry[], months) : null,
+    };
   }
 
   private async events(fromIso: string, toIso: string): Promise<AccessEvent[]> {

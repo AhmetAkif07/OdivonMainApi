@@ -1,4 +1,5 @@
-import { AccessEvent, eventTime, localParts } from './reports.math';
+import { safeDay } from './dashboard-summary.math';
+import { AccessEvent, eventTime } from './reports.math';
 
 /** Row key for records that cannot be tied to a branch (no branch on the record or its member). */
 export const UNASSIGNED = 'unassigned';
@@ -60,8 +61,6 @@ const amountOf = (entry: ReportEntry) => {
   const value = Number(entry.amount ?? 0);
   return Number.isFinite(value) && value > 0 ? value : 0;
 };
-/** Gym-local day of an ISO time; empty for a missing or broken value. */
-const safeDay = (iso: unknown) => (iso && !Number.isNaN(Date.parse(String(iso))) ? localParts(String(iso)).day : '');
 const dayOf = (entry: ReportEntry) => safeDay(entry.entryDate || entry.createdAt);
 const passedIn = (event: AccessEvent) => (event.status === 'granted' || event.status === 'unknown') && event.direction !== 'out';
 
