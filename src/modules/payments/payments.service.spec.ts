@@ -2,6 +2,9 @@ import { FirebaseService } from '../../shared/firebase/firebase.service';
 import { TenantContext } from '../../shared/tenancy/tenant.context';
 import { IyzicoProvider } from './iyzico.provider';
 import { PaymentsService } from './payments.service';
+import { SAAS_SANDBOX_PRICES } from './saas-prices';
+
+const PRO_YEARLY_KURUS = SAAS_SANDBOX_PRICES.pro.yearly * 100;
 
 describe('PaymentsService tenant and source boundaries', () => {
   const documents = new Map<string, Record<string, unknown>>();
@@ -68,13 +71,13 @@ describe('PaymentsService tenant and source boundaries', () => {
 
   it('uses server prices for SaaS orders and records sandbox success without activating the license', async () => {
     const order = await service.createSaasOrder({ planId: 'pro', billingCycle: 'yearly' });
-    expect(order.amountKurus).toBe(2990000);
+    expect(order.amountKurus).toBe(PRO_YEARLY_KURUS);
     await expect(service['resolveSource']('tenant-a', 'saas_subscription', order.id)).resolves.toEqual({
-      amountKurus: 2990000, buyerId: 'tenant-a',
+      amountKurus: PRO_YEARLY_KURUS, buyerId: 'tenant-a',
     });
     documents.set('paymentSessions/saas-session', {
       id: 'saas-session', tenantId: 'tenant-a', provider: 'iyzico', source: 'saas_subscription',
-      sourceId: order.id, amountKurus: 2990000, token: 'valid-token', status: 'pending',
+      sourceId: order.id, amountKurus: PRO_YEARLY_KURUS, token: 'valid-token', status: 'pending',
     });
     documents.set(`tenants/tenant-a/paymentReservations/saas_subscription_${order.id}`, {
       sessionId: 'saas-session', status: 'pending',

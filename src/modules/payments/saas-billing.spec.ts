@@ -2,8 +2,11 @@ import { TenantContext } from '../../shared/tenancy/tenant.context';
 import { FakeFirestore } from '../../shared/testing/fake-firestore';
 import { IyzicoProvider } from './iyzico.provider';
 import { PaymentsService } from './payments.service';
+import { SAAS_SANDBOX_PRICES } from './saas-prices';
 import { addMonths, daysUntil, effectiveSubscription, nextPeriod, receiptNo } from './saas-billing';
 import { SaasBillingService } from './saas-billing.service';
+
+const PRO_YEARLY_KURUS = SAAS_SANDBOX_PRICES.pro.yearly * 100;
 
 const NOW = new Date('2026-10-01T09:00:00Z');
 
@@ -86,7 +89,7 @@ describe('SaaS payment activation and reminders', () => {
 
   it('activates the plan once after a verified live payment and records a receipt', async () => {
     const { session, token } = await pay('pro', 'yearly');
-    expect(provider.createCheckout).toHaveBeenCalledWith(expect.objectContaining({ amountKurus: 2990000 }), undefined); // platform keys
+    expect(provider.createCheckout).toHaveBeenCalledWith(expect.objectContaining({ amountKurus: PRO_YEARLY_KURUS }), undefined); // platform keys
     await Promise.all([service.handleCallback(session.id, token), service.handleCallback(session.id, token)]);
 
     expect(doc('tenants/t1')).toMatchObject({ membershipStatus: 'active', subscriptionEndsAt: '2027-10-01T09:00:00.000Z' });
@@ -95,7 +98,7 @@ describe('SaaS payment activation and reminders', () => {
       currentPeriodStartsAt: NOW.toISOString(), currentPeriodEndsAt: '2027-10-01T09:00:00.000Z',
     });
     const history = await asOwner(() => billing.history());
-    expect(history).toEqual([expect.objectContaining({ amountKurus: 2990000, mode: 'live', providerPaymentId: 'pay-9', receiptNo: expect.stringMatching(/^ODV-20261001-/) })]);
+    expect(history).toEqual([expect.objectContaining({ amountKurus: PRO_YEARLY_KURUS, mode: 'live', providerPaymentId: 'pay-9', receiptNo: expect.stringMatching(/^ODV-20261001-/) })]);
     expect(rows('tenants/t1/paymentSaasOrders/')).toEqual([expect.objectContaining({ status: 'paid' })]);
     expect(await service.returnUrl(session.id, 'succeeded')).toContain('/subscription-result?paymentSession=');
   });
