@@ -18,6 +18,10 @@ export interface Examination extends BaseDocument {
   symptoms: string[];
   complaint: string | null;
   treatment: string | null;
+  diagnosis?: string | null;
+  systemFindings?: Record<string, string> | null;
+  treatmentItems?: Array<{ name: string; quantity: number; unit?: string; notes?: string; price?: number }> | null;
+  appointmentId?: string | null;
   status: ExaminationStatus;
 }
 

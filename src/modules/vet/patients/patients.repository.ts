@@ -49,6 +49,20 @@ export class PatientsRepository {
       sterilization: dto.sterilization ?? false,
       notes: dto.notes ?? null,
       active: dto.active ?? true,
+      pedigreeNo: dto.pedigreeNo ?? null,
+      registrationClub: dto.registrationClub ?? null,
+      originCountry: dto.originCountry ?? null,
+      titles: dto.titles ?? null,
+      motherId: dto.motherId ?? null,
+      motherName: dto.motherName ?? null,
+      motherPedigreeNo: dto.motherPedigreeNo ?? null,
+      fatherId: dto.fatherId ?? null,
+      fatherName: dto.fatherName ?? null,
+      fatherPedigreeNo: dto.fatherPedigreeNo ?? null,
+      paternalGrandfatherName: dto.paternalGrandfatherName ?? null,
+      paternalGrandmotherName: dto.paternalGrandmotherName ?? null,
+      maternalGrandfatherName: dto.maternalGrandfatherName ?? null,
+      maternalGrandmotherName: dto.maternalGrandmotherName ?? null,
     };
   }
 

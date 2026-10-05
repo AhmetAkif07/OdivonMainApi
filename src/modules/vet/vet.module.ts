@@ -7,6 +7,10 @@ import { FinanceModule } from './finance/finance.module';
 import { PatientsModule } from './patients/patients.module';
 import { ClinicModule } from './clinic/clinic.module';
 import { StockModule } from './stock/stock.module';
+import { HospitalizationModule } from './hospitalization/hospitalization.module';
+import { ConsentsModule } from './consents/consents.module';
+import { CrmModule } from './crm/crm.module';
+import { PetHotelModule } from './pet-hotel/pet-hotel.module';
 
 @Module({
   imports: [
@@ -18,6 +22,10 @@ import { StockModule } from './stock/stock.module';
     FinanceModule,
     StockModule,
     ClinicModule,
+    HospitalizationModule,
+    ConsentsModule,
+    CrmModule,
+    PetHotelModule,
   ],
 })
 export class VetModule {}

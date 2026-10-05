@@ -14,6 +14,10 @@ export interface PermissionResourceDefinition {
 
 export const PERMISSION_RESOURCES = [
   { key: 'customers', label: 'Müşteriler', group: 'clinic', modules: ['vet'] },
+  { key: 'consentForms', label: 'Onam Formları', group: 'clinic', modules: ['vet'] },
+  { key: 'crm', label: 'CRM & Bildirimler', group: 'clinic', modules: ['vet'] },
+  { key: 'petHotel', label: 'Pet Otel & Pansiyon', group: 'clinic', modules: ['vet'] },
+  { key: 'hotelRooms', label: 'Otel Odaları', group: 'clinic', modules: ['vet'] },
   { key: 'patients', label: 'Hastalar', group: 'clinic', modules: ['vet'] },
   { key: 'appointments', label: 'Randevular', group: 'clinic', modules: ['vet'] },
   { key: 'examinations', label: 'Muayeneler', group: 'clinic', modules: ['vet'] },

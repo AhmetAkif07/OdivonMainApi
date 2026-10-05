@@ -14,6 +14,20 @@ export interface Patient extends BaseDocument {
   sterilization: boolean;
   notes: string | null;
   active: boolean;
+  pedigreeNo?: string | null;
+  registrationClub?: string | null;
+  originCountry?: string | null;
+  titles?: string | null;
+  motherId?: string | null;
+  motherName?: string | null;
+  motherPedigreeNo?: string | null;
+  fatherId?: string | null;
+  fatherName?: string | null;
+  fatherPedigreeNo?: string | null;
+  paternalGrandfatherName?: string | null;
+  paternalGrandmotherName?: string | null;
+  maternalGrandfatherName?: string | null;
+  maternalGrandmotherName?: string | null;
 }
 
 export interface PatientListItem extends Patient {
