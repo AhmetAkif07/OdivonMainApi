@@ -59,6 +59,32 @@ export class HairListQueryDto {
   @IsOptional()
   @IsString()
   q?: string;
+
+  @ApiPropertyOptional({ description: 'Free-text search (name / phone / barcode) where supported' })
+  @IsOptional()
+  @IsString()
+  search?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  categoryId?: string;
+
+  @ApiPropertyOptional({ description: 'Type filter (inventory transactions, notifications)' })
+  @IsOptional()
+  @IsString()
+  type?: string;
+
+  @ApiPropertyOptional({ description: 'Single local day (YYYY-MM-DD) where supported' })
+  @IsOptional()
+  @IsString()
+  date?: string;
+}
+
+/** `search` wins over the legacy `q`; trimmed and lower-cased for in-memory matching. */
+export function searchTerm(query: { search?: string; q?: string }): string | undefined {
+  const term = (query.search ?? query.q)?.trim().toLocaleLowerCase('tr');
+  return term ? term : undefined;
 }
 
 export interface HairPage<T> {

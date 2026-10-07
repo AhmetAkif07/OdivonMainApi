@@ -28,9 +28,17 @@ export interface HairListOptions {
   equals?: Record<string, string | boolean | undefined>;
   /** Restrict rows to those whose `field` is one of `values` (branch scoping). */
   anyOf?: { field: string; values: string[] };
+  /** Extra in-memory predicate (free-text search, own-row scoping on nested fields). */
+  match?: (item: HairDoc) => boolean;
   orderBy: { field: string; dir: 'asc' | 'desc' };
   limit?: number;
   cursor?: string;
+}
+
+/** Branch filter for a list: one branch (after an access check) or every branch the caller works in. */
+export interface HairBranchFilter {
+  equals?: string;
+  anyOf?: string[];
 }
 
 export interface HairSettingsDoc extends BaseDocument {
@@ -166,6 +174,7 @@ export class HairStore {
       .filter((item) => !isDeleted(item))
       .filter((item) => equals.every(([key, value]) => item[key] === value))
       .filter((item) => !anyOf || anyOf.values.includes(String(item[anyOf.field])))
+      .filter((item) => !options.match || options.match(item))
       .sort(
         (left, right) =>
           sign * compareValues(left[field], right[field]) || left.id.localeCompare(right.id),
@@ -176,6 +185,25 @@ export class HairStore {
     const items = sorted.slice(start, start + limit);
     const hasMore = start + limit < sorted.length;
     return { items, nextCursor: hasMore ? encodeCursor(items[items.length - 1].id) : null };
+  }
+
+  /**
+   * Every live row of a collection, optionally narrowed by ONE Firestore filter (no composite
+   * index needed); callers filter the rest in memory. For internal reads (reports, checks), not paging.
+   */
+  async rows<T extends HairDoc>(
+    name: string,
+    filter?: { field: string; op: '==' | '>=' | '<' | 'in'; value: unknown },
+    range?: { field: string; from?: string; to?: string },
+  ): Promise<T[]> {
+    let query: Query = this.collection(name);
+    if (filter) query = query.where(filter.field, filter.op, filter.value);
+    if (range?.from) query = query.where(range.field, '>=', range.from);
+    if (range?.to) query = query.where(range.field, '<', range.to);
+    const snapshot = await query.get();
+    return snapshot.docs
+      .map((doc) => ({ ...(doc.data() as T), id: doc.id }))
+      .filter((item) => !isDeleted(item));
   }
 
   async find<T extends HairDoc>(name: string, id: string): Promise<T | null> {
@@ -321,6 +349,32 @@ export class HairStore {
   /** How far `resource` reaches for the caller (`own` rows, `limited` fields, or `all`). */
   scope(actor: HairActor, resource: PermissionResource): HairScope {
     return scopeFor(actor.role, resource);
+  }
+
+  /** List filter for `branchId`: checks access to a requested branch, else limits to the caller's. */
+  branchFilter(actor: HairActor, branchId: string | undefined): HairBranchFilter {
+    if (branchId) {
+      this.assertBranchAccess(actor, branchId);
+      return { equals: branchId };
+    }
+    return actor.branchIds === null ? {} : { anyOf: actor.branchIds };
+  }
+
+  /**
+   * Staff id a list must be limited to: the caller's own id when their scope on `resource` is `own`
+   * (a request for someone else's rows is refused), otherwise the requested filter as-is.
+   */
+  staffFilter(
+    actor: HairActor,
+    resource: PermissionResource,
+    requested: string | undefined,
+  ): string | undefined {
+    if (this.scope(actor, resource) !== 'own') return requested;
+    if (!actor.staffId) throw hairForbidden('Personel kartınız bulunamadı.');
+    if (requested && requested !== actor.staffId) {
+      throw hairForbidden('Yalnızca kendi kayıtlarınızı görebilirsiniz.');
+    }
+    return actor.staffId;
   }
 
   private async staffCard(userId: string): Promise<HairDoc | null> {
