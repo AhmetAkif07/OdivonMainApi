@@ -355,6 +355,282 @@ export class GymCommerceService {
     });
   }
 
+  
+  listExitPayments(query: GymListQueryDto) {
+    return this.store.page<Doc>(TENANT_COLLECTION.gymExitPayments, query, (item) => {
+      if (query.status && item['status'] !== query.status) return false;
+      return true;
+    });
+  }
+
+  async createExitPayment(dto: GymRecordDto) {
+    const lines = (Array.isArray(dto.items) && dto.items.length
+      ? dto.items
+      : [
+          {
+            productId: dto.productId,
+            quantity: dto.quantity ?? 1,
+            unitPrice: dto.unitPrice,
+            productName: dto.productName,
+          },
+        ]) as Array<{
+      productId?: string;
+      quantity?: number;
+      unitPrice?: number;
+      productName?: string;
+    }>;
+
+    const items: Array<{
+      productId?: string;
+      productName: string;
+      quantity: number;
+      unitPrice: number;
+      totalAmount: number;
+    }> = [];
+
+    let computedTotal = 0;
+
+    for (const line of lines) {
+      const productId = String(line.productId || '');
+      let productName = line.productName || 'Ürün';
+      let unitPrice = Number(line.unitPrice ?? 0);
+      const quantity = Number(line.quantity ?? 1);
+
+      if (productId) {
+        const product = (await this.store.getOrThrow(
+          TENANT_COLLECTION.gymShopProducts,
+          productId,
+          ErrorCode.GYM_PRODUCT_NOT_FOUND,
+          'Product not found',
+        )) as Doc;
+
+        const currentStock = Number(product['stock'] ?? 0);
+        if (currentStock < quantity) {
+          throw new AppException(ErrorCode.STOCK_INSUFFICIENT, `Yetersiz stok: ${product['name']}`);
+        }
+
+        // Deduct stock immediately since items are given to customer
+        await this.store.save(TENANT_COLLECTION.gymShopProducts, {
+          ...product,
+          stock: currentStock - quantity,
+        } as Doc);
+
+        productName = String(product['name'] || productName);
+        if (!unitPrice) {
+          unitPrice = Number(product['price'] ?? 0);
+        }
+      }
+
+      const lineTotal = unitPrice * quantity;
+      computedTotal += lineTotal;
+      items.push({
+        productId,
+        productName,
+        quantity,
+        unitPrice,
+        totalAmount: lineTotal,
+      });
+    }
+
+    const totalAmount = dto.totalAmount != null ? Number(dto.totalAmount) : computedTotal;
+
+    const record = (await this.store.create(TENANT_COLLECTION.gymExitPayments, {
+      note: String((dto as any).note || dto.notes || 'Çıkışta Ödeyecek Misafir'),
+      customerName: String((dto as any).customerName || dto.displayName || 'Misafir / Anonim'),
+      userId: dto.userId ? String(dto.userId) : null,
+      items,
+      totalAmount,
+      status: 'open',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    })) as Doc;
+
+    return record;
+  }
+
+  async updateExitPayment(id: string, dto: GymRecordDto) {
+    const existing = (await this.store.getOrThrow(
+      TENANT_COLLECTION.gymExitPayments,
+      id,
+      ErrorCode.GYM_EXIT_PAYMENT_NOT_FOUND,
+      'Exit payment not found',
+    )) as Doc;
+
+    if (existing['status'] !== 'open') {
+      throw new AppException(ErrorCode.VALIDATION_ERROR, 'Yalnızca açık fişler düzenlenebilir.');
+    }
+
+    const updates: Record<string, unknown> = {
+      updatedAt: new Date().toISOString(),
+    };
+    if ((dto as any).note !== undefined) updates['note'] = (dto as any).note;
+    if ((dto as any).customerName !== undefined) updates['customerName'] = (dto as any).customerName;
+    if (dto.totalAmount !== undefined) updates['totalAmount'] = Number(dto.totalAmount);
+    if (dto.userId !== undefined) updates['userId'] = dto.userId;
+
+    return this.store.update(
+      TENANT_COLLECTION.gymExitPayments,
+      id,
+      ErrorCode.GYM_EXIT_PAYMENT_NOT_FOUND,
+      'Exit payment not found',
+      updates,
+    );
+  }
+
+  async collectExitPayment(id: string, dto: GymRecordDto) {
+    const tab = (await this.store.getOrThrow(
+      TENANT_COLLECTION.gymExitPayments,
+      id,
+      ErrorCode.GYM_EXIT_PAYMENT_NOT_FOUND,
+      'Exit payment not found',
+    )) as Doc;
+
+    if (tab['status'] !== 'open') {
+      throw new AppException(ErrorCode.VALIDATION_ERROR, 'Bu fiş zaten kapatılmış veya iptal edilmiş.');
+    }
+
+    const method = String(dto.paymentMethod || 'cash');
+    const totalAmount = Number(dto.totalAmount ?? tab['totalAmount'] ?? 0);
+    const userId = dto.userId ? String(dto.userId) : (tab['userId'] ? String(tab['userId']) : null);
+    const items = (Array.isArray(tab['items']) ? tab['items'] : []) as Array<{
+      productId?: string;
+      productName: string;
+      quantity: number;
+      unitPrice: number;
+      totalAmount: number;
+    }>;
+
+    // Create completed shop sale
+    const sales: Doc[] = [];
+    for (const item of items) {
+      const sale = (await this.store.create(TENANT_COLLECTION.gymShopSales, {
+        userId,
+        productId: item.productId || '',
+        productName: item.productName,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        totalAmount: item.totalAmount,
+        paymentMethod: method,
+        discount: 0,
+        notes: `Çıkışta Tahsilat Fişi: ${tab['note'] || ''}`,
+        saleDate: new Date().toISOString(),
+        status: 'completed',
+      })) as Doc;
+      sales.push(sale);
+    }
+
+    // Debit wallet if payment method is wallet
+    if (method === 'wallet' && userId && totalAmount > 0) {
+      await this.adjustWallet({
+        userId,
+        walletType: 'debit',
+        amount: totalAmount,
+        description: `Çıkışta Tahsilat (Fiş: ${tab['note'] || ''})`,
+        referenceType: 'product',
+        paymentMethod: 'promotion',
+      });
+    }
+
+    // Accounting income entry
+    if (totalAmount > 0) {
+      await this.store.create(TENANT_COLLECTION.gymAccountingEntries, {
+        type: 'income',
+        amount: totalAmount,
+        category: 'product-sale',
+        userId,
+        branchId: dto.branchId ?? null,
+        description: `Çıkışta Tahsilat: ${tab['note'] || tab['customerName'] || 'Açık Fiş'}`,
+        referenceId: String(tab['id'] || ''),
+        referenceType: 'exit-payment-sale',
+        paymentMethod: method,
+        entryDate: new Date().toISOString(),
+        items: items.map((i) => ({
+          productId: i.productId,
+          productName: i.productName,
+          quantity: i.quantity,
+          unitPrice: i.unitPrice,
+          totalAmount: i.totalAmount,
+        })),
+      });
+    }
+
+    // Mark tab as collected
+    const updatedTab = await this.store.update(
+      TENANT_COLLECTION.gymExitPayments,
+      id,
+      ErrorCode.GYM_EXIT_PAYMENT_NOT_FOUND,
+      'Exit payment not found',
+      {
+        status: 'collected',
+        collectedAt: new Date().toISOString(),
+        paymentMethod: method,
+        collectedAmount: totalAmount,
+        userId,
+        updatedAt: new Date().toISOString(),
+      },
+    );
+
+    return { tab: updatedTab, sales };
+  }
+
+  async cancelExitPayment(id: string) {
+    const tab = (await this.store.getOrThrow(
+      TENANT_COLLECTION.gymExitPayments,
+      id,
+      ErrorCode.GYM_EXIT_PAYMENT_NOT_FOUND,
+      'Exit payment not found',
+    )) as Doc;
+
+    if (tab['status'] !== 'open') {
+      throw new AppException(ErrorCode.VALIDATION_ERROR, 'Yalnızca açık fişler iptal edilebilir.');
+    }
+
+    // Restore stock
+    const items = (Array.isArray(tab['items']) ? tab['items'] : []) as Array<{
+      productId?: string;
+      quantity?: number;
+    }>;
+    for (const item of items) {
+      if (item.productId) {
+        try {
+          const product = (await this.store.getOrThrow(
+            TENANT_COLLECTION.gymShopProducts,
+            item.productId,
+            ErrorCode.GYM_PRODUCT_NOT_FOUND,
+            'Product not found',
+          )) as Doc;
+          await this.store.save(TENANT_COLLECTION.gymShopProducts, {
+            ...product,
+            stock: Number(product['stock'] ?? 0) + Number(item.quantity ?? 1),
+          } as Doc);
+        } catch {
+          // ignore if product deleted
+        }
+      }
+    }
+
+    return this.store.update(
+      TENANT_COLLECTION.gymExitPayments,
+      id,
+      ErrorCode.GYM_EXIT_PAYMENT_NOT_FOUND,
+      'Exit payment not found',
+      {
+        status: 'cancelled',
+        cancelledAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+    );
+  }
+
+  removeExitPayment(id: string) {
+    return this.store.softDelete(
+      TENANT_COLLECTION.gymExitPayments,
+      id,
+      ErrorCode.GYM_EXIT_PAYMENT_NOT_FOUND,
+      'Exit payment not found',
+    );
+  }
+
   removeSale(id: string) {
     return this.store.softDelete(TENANT_COLLECTION.gymShopSales, id, ErrorCode.GYM_SALE_NOT_FOUND, 'Sale not found');
   }

@@ -51,6 +51,7 @@ export const TENANT_COLLECTION = {
   gymShopCategories: 'gymShopCategories',
   gymShopProducts: 'gymShopProducts',
   gymShopSales: 'gymShopSales',
+  gymExitPayments: 'gymExitPayments',
   gymAccountingEntries: 'gymAccountingEntries',
   gymAccountingCategories: 'gymAccountingCategories',
   gymTurnstileGates: 'gymTurnstileGates',

@@ -160,6 +160,43 @@ export class GymShopController {
 
   @Delete('sales/:id')
   @RequirePermission('shop', 'delete')
+  
+  @Get('exit-payments')
+  @RequirePermission('shop', 'view')
+  listExitPayments(@Query() query: GymListQueryDto) {
+    return this.commerce.listExitPayments(query);
+  }
+
+  @Post('exit-payments')
+  @RequirePermission('shop', 'create')
+  createExitPayment(@Body() dto: GymRecordDto) {
+    return this.commerce.createExitPayment(dto);
+  }
+
+  @Patch('exit-payments/:id')
+  @RequirePermission('shop', 'update')
+  updateExitPayment(@Param('id') id: string, @Body() dto: GymRecordDto) {
+    return this.commerce.updateExitPayment(id, dto);
+  }
+
+  @Post('exit-payments/:id/collect')
+  @RequirePermission('shop', 'create')
+  collectExitPayment(@Param('id') id: string, @Body() dto: GymRecordDto) {
+    return this.commerce.collectExitPayment(id, dto);
+  }
+
+  @Post('exit-payments/:id/cancel')
+  @RequirePermission('shop', 'update')
+  cancelExitPayment(@Param('id') id: string) {
+    return this.commerce.cancelExitPayment(id);
+  }
+
+  @Delete('exit-payments/:id')
+  @RequirePermission('shop', 'delete')
+  removeExitPayment(@Param('id') id: string) {
+    return this.commerce.removeExitPayment(id);
+  }
+
   removeSale(@Param('id') id: string) {
     return this.commerce.removeSale(id);
   }
