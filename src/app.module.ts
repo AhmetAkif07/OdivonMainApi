@@ -39,7 +39,7 @@ import { PaymentsModule } from './modules/payments/payments.module';
     PaymentsModule,
     ThrottlerModule.forRoot({
       // Per client IP: a front desk behind one NAT runs several panels plus the edge agent.
-      throttlers: [{ ttl: 60_000, limit: 600 }],
+      throttlers: [{ ttl: 60_000, limit: 1200 }],
     }),
   ],
   providers: [
