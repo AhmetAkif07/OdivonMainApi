@@ -234,7 +234,7 @@ export class HairAppointmentsService {
         pending: {},
       };
       const stamp = stamps[dto.status];
-      const after = { ...current, status: dto.status, ...stamp, updatedAt: now, updatedBy: userId };
+      const after = { ...current, status: dto.status, ...stamp, updatedAt: now, updatedBy: userId } as HairDoc;
       tx.set(ref, after);
       if (customer) {
         tx.update(customerRef, { noShowCount: num(customer['noShowCount']) + 1, updatedAt: now });

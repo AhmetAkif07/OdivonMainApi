@@ -91,3 +91,11 @@ export interface HairPage<T> {
   items: T[];
   nextCursor: string | null;
 }
+
+/** Lists over a `YYYY-MM-DD` field take an inclusive `to`; the store's window end is exclusive. */
+export function inclusiveTo(to: string | undefined): string | undefined {
+  if (!to) return undefined;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(to)) return to;
+  const [y, m, d] = to.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10);
+}
