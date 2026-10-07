@@ -160,7 +160,10 @@ export class GymShopController {
 
   @Delete('sales/:id')
   @RequirePermission('shop', 'delete')
-  
+  removeSale(@Param('id') id: string) {
+    return this.commerce.removeSale(id);
+  }
+
   @Get('exit-payments')
   @RequirePermission('shop', 'view')
   listExitPayments(@Query() query: GymListQueryDto) {
@@ -195,10 +198,6 @@ export class GymShopController {
   @RequirePermission('shop', 'delete')
   removeExitPayment(@Param('id') id: string) {
     return this.commerce.removeExitPayment(id);
-  }
-
-  removeSale(@Param('id') id: string) {
-    return this.commerce.removeSale(id);
   }
 }
 
