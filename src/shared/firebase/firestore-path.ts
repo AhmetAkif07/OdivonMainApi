@@ -177,6 +177,7 @@ export const TENANT_COLLECTION = {
   farmSubscription: 'farmSubscription',
   farmLoginLogs: 'farmLoginLogs',
   farmMailQueue: 'farmMailQueue',
+  apmAppointments: 'apmAppointments',
 } as const;
 
 export const ROOT_COLLECTION = {

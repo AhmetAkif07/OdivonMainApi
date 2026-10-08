@@ -3,7 +3,7 @@ import { PRODUCT_MODULES, ProductModule } from './constants';
 export const PERMISSION_ACTIONS = ['view', 'create', 'update', 'delete'] as const;
 export type PermissionAction = (typeof PERMISSION_ACTIONS)[number];
 
-export type PermissionGroup = 'clinic' | 'finance' | 'stock' | 'definitions' | 'admin' | 'gym' | 'spa' | 'hair';
+export type PermissionGroup = 'clinic' | 'finance' | 'stock' | 'definitions' | 'admin' | 'gym' | 'spa' | 'hair' | 'apm';
 
 export interface PermissionResourceDefinition {
   key: string;
@@ -103,6 +103,8 @@ export const PERMISSION_RESOURCES = [
   { key: 'hairBranches', label: 'Şubeler', group: 'hair', modules: ['hair'] },
   { key: 'hairDashboard', label: 'Gösterge paneli', group: 'hair', modules: ['hair'] },
   { key: 'hairAudit', label: 'İşlem geçmişi', group: 'hair', modules: ['hair'] },
+  { key: 'apmDashboard', label: 'APM gösterge paneli', group: 'apm', modules: ['apm'] },
+  { key: 'apmAppointments', label: 'APM randevuları', group: 'apm', modules: ['apm'] },
 ] as const satisfies readonly PermissionResourceDefinition[];
 
 export type PermissionResource = (typeof PERMISSION_RESOURCES)[number]['key'];
@@ -118,6 +120,7 @@ export const PERMISSION_GROUP_LABELS: Record<PermissionGroup, string> = {
   gym: 'Salon',
   spa: 'Spa',
   hair: 'Kuaför',
+  apm: 'Randevu Yönetimi',
 };
 
 export function resourcesForModules(
