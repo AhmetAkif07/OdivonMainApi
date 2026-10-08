@@ -1,4 +1,4 @@
-export const TENANT_COLLECTION = {
+﻿export const TENANT_COLLECTION = {
   customers: 'customers',
   patients: 'patients',
   appointments: 'appointments',
@@ -9,6 +9,8 @@ export const TENANT_COLLECTION = {
   hotelRooms: 'hotelRooms',
   hotelStays: 'hotelStays',
   hotelDailyLogs: 'hotelDailyLogs',
+  groomingAppointments: 'groomingAppointments',
+  groomingStaff: 'groomingStaff',
   communicationLogs: 'communicationLogs',
   auditLogs: 'auditLogs',
   appointmentReservations: 'appointmentReservations',
@@ -34,6 +36,7 @@ export const TENANT_COLLECTION = {
   labDocuments: 'labDocuments',
   files: 'files',
   clinicParameters: 'clinicParameters',
+  vetBranches: 'vetBranches',
   gymInfo: 'gymInfo',
   gymBranches: 'gymBranches',
   gymStaff: 'gymStaff',

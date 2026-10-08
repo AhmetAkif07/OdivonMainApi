@@ -1,4 +1,4 @@
-import { PRODUCT_MODULES, ProductModule } from './constants';
+﻿import { PRODUCT_MODULES, ProductModule } from './constants';
 
 export const PERMISSION_ACTIONS = ['view', 'create', 'update', 'delete'] as const;
 export type PermissionAction = (typeof PERMISSION_ACTIONS)[number];
@@ -18,6 +18,7 @@ export const PERMISSION_RESOURCES = [
   { key: 'crm', label: 'CRM & Bildirimler', group: 'clinic', modules: ['vet'] },
   { key: 'petHotel', label: 'Pet Otel & Pansiyon', group: 'clinic', modules: ['vet'] },
   { key: 'hotelRooms', label: 'Otel Odaları', group: 'clinic', modules: ['vet'] },
+  { key: 'grooming', label: 'Pet Kuaför & Bakım', group: 'clinic', modules: ['vet'] },
   { key: 'patients', label: 'Hastalar', group: 'clinic', modules: ['vet'] },
   { key: 'appointments', label: 'Randevular', group: 'clinic', modules: ['vet'] },
   { key: 'examinations', label: 'Muayeneler', group: 'clinic', modules: ['vet'] },

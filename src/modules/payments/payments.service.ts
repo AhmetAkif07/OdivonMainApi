@@ -15,7 +15,7 @@ import { IyzicoProvider } from './iyzico.provider';
 import { CreateCheckoutDto, CreateSaasOrderDto, MemberCheckoutDto } from './payments.dto';
 import { CheckoutInput, IyzicoCredentials, PaymentProvider, PaymentProviderId, PaymentSession, PaymentSource } from './payment-provider';
 import { nextPeriod, receiptNo, SaasCycle } from './saas-billing';
-import { SAAS_SANDBOX_PRICES } from './saas-prices';
+import { SAAS_PLAN_MODULE, SAAS_SANDBOX_PRICES, saasPlanPrice } from './saas-prices';
 
 /** iyzico checkout form tokens live ~30 minutes; an older pending session is treated as abandoned. */
 export const CHECKOUT_TTL_MS = 30 * 60_000;
@@ -27,6 +27,7 @@ const DEFAULT_RETURN_ORIGINS = [
   'https://odivon-main-api-a2095.firebaseapp.com',
   'https://odivon-gym-client.dogangns-98.workers.dev',
   'https://odivon-panel.dogangns-98.workers.dev',
+  'https://odivonapm.dogangns-98.workers.dev',
   'http://localhost:4200',
 ];
 
@@ -91,7 +92,19 @@ export class PaymentsService {
     return { provider, mode };
   }
 
-  saasPlans() { return SAAS_SANDBOX_PRICES; }
+  /** Plans this tenant can buy: an APM-only tenant sees the APM packages, everyone else the shared set. */
+  saasPlans() {
+    return Object.fromEntries(
+      Object.entries(SAAS_SANDBOX_PRICES).filter(([planId]) => this.planAvailable(planId)),
+    );
+  }
+
+  private planAvailable(planId: string): boolean {
+    const planModule = SAAS_PLAN_MODULE[planId];
+    const tenantModules = this.tenant.getStore().modules ?? [];
+    const isApmOnly = tenantModules.length > 0 && tenantModules.every((module) => module === 'apm');
+    return planModule ? tenantModules.includes(planModule) : !isApmOnly;
+  }
 
   /** Member panel: whether "pay by card" is offered (the gym has its own keys switched on). */
   async memberCardAvailability() {
@@ -102,16 +115,21 @@ export class PaymentsService {
     if (this.tenant.getStore().role !== 'owner') {
       throw new AppException(ErrorCode.FORBIDDEN_ROLE, 'Only the tenant owner can create a SaaS order');
     }
-    const amount = SAAS_SANDBOX_PRICES[dto.planId]?.[dto.billingCycle];
+    const amount = saasPlanPrice(dto.planId, dto.billingCycle);
     if (!amount) throw new AppException(ErrorCode.FINANCE_INVALID, 'Invalid SaaS plan or billing cycle');
+    // A module's own packages (APM) are only sold to tenants of that module, and vice versa.
+    if (!this.planAvailable(dto.planId)) {
+      throw new AppException(ErrorCode.FINANCE_INVALID, 'This plan is not available for this product');
+    }
     const tenantId = this.tenant.getTenantId();
     const id = randomUUID();
     const now = new Date().toISOString();
+    const amountKurus = Math.round(amount * 100);
     await this.firebase.db.doc(`tenants/${tenantId}/paymentSaasOrders/${id}`).set({
-      id, planId: dto.planId, billingCycle: dto.billingCycle, amountKurus: amount * 100,
+      id, planId: dto.planId, billingCycle: dto.billingCycle, amountKurus,
       status: 'open', createdAt: now, createdBy: this.tenant.getUserId(),
     });
-    return { id, planId: dto.planId, billingCycle: dto.billingCycle, amountKurus: amount * 100 };
+    return { id, planId: dto.planId, billingCycle: dto.billingCycle, amountKurus };
   }
 
   /** Staff checkout (owner/admin): a vet sale, a gym receivable or the SaaS order. */

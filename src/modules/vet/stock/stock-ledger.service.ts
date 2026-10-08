@@ -52,6 +52,113 @@ export class StockLedgerService {
     }
   }
 
+  async getExpiryReport() {
+    const movements = await this.movements.collect();
+    const products = await this.products.collect();
+    const productMap = new Map(products.map((p) => [p.id, p]));
+    const stores = await this.stores.collect();
+    const storeMap = new Map(stores.map((s) => [s.id, s]));
+
+    const expiryMovements = movements.filter(
+      (m) => m.direction === 'in' && Boolean(m.expirationDate),
+    );
+
+    const now = new Date();
+    const report = expiryMovements.map((m) => {
+      const expDate = new Date(m.expirationDate || '');
+      const diffTime = expDate.getTime() - now.getTime();
+      const daysLeft = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+      let status: 'expired' | 'critical' | 'warning' | 'normal' = 'normal';
+      if (daysLeft <= 0) {
+        status = 'expired';
+      } else if (daysLeft <= 30) {
+        status = 'critical';
+      } else if (daysLeft <= 90) {
+        status = 'warning';
+      }
+
+      const product = productMap.get(m.productId);
+      const store = storeMap.get(m.storeId);
+
+      return {
+        id: m.id,
+        productId: m.productId,
+        productName: product ? product.name : 'İlaç/Ürün',
+        productCode: product && (product as any).code ? (product as any).code : '',
+        category: 'Ecza/Aşı',
+        storeId: m.storeId,
+        storeName: store ? store.name : 'Ana Depo',
+        batchNo: m.batchNo || 'B-GEN',
+        expirationDate: m.expirationDate,
+        quantity: m.quantity,
+        daysLeft,
+        status,
+      };
+    });
+
+    report.sort((a, b) => (a.expirationDate || '').localeCompare(b.expirationDate || ''));
+
+    const summary = {
+      total: report.length,
+      expired: report.filter((r) => r.status === 'expired').length,
+      critical: report.filter((r) => r.status === 'critical').length,
+      warning: report.filter((r) => r.status === 'warning').length,
+      normal: report.filter((r) => r.status === 'normal').length,
+    };
+
+    return { summary, items: report };
+  }
+
+  async importInvoice(payload: any) {
+    const products = await this.products.collect();
+    const defaultStore = (await this.stores.collect())[0];
+    const storeId = defaultStore ? defaultStore.id : 'default-store';
+
+    const imported = [];
+    const items = payload && payload.items ? payload.items : [];
+    for (const item of items) {
+      let product = products.find(
+        (p) =>
+          p.name.toLowerCase() === item.productName.toLowerCase() ||
+          ((p as any).code && (p as any).code === item.productCode),
+      );
+
+      if (!product) {
+        product = await this.products.create({
+          name: item.productName,
+          productType: 'product',
+          buyingPrice: item.unitPrice,
+          sellingPrice: Math.round(item.unitPrice * 1.35),
+          storeId: storeId,
+          active: true,
+        });
+      }
+
+      const movement = await this.movements.create({
+        date: payload.invoiceDate || new Date().toISOString().slice(0, 10),
+        productId: product.id,
+        storeId: product.storeId || storeId,
+        direction: 'in',
+        reason: 'purchase',
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        remark: 'e-Fatura Aktarımı ' + (payload.invoiceNo || 'XML'),
+        batchNo: item.batchNo || null,
+        expirationDate: item.expirationDate || null,
+      });
+
+      imported.push(movement);
+    }
+
+    return {
+      success: true,
+      invoiceNo: payload.invoiceNo,
+      itemCount: imported.length,
+      movements: imported,
+    };
+  }
+
   async listBalances(query: PagingQueryDto): Promise<PaginatedResult<StockBalance>> {
     const items = (await this.balances()).filter((item) => matchesColumnFilters(item, query.filters));
     return paginateInMemory(items, query.limit, query.cursor);

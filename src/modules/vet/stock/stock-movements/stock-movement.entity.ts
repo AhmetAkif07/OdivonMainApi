@@ -1,4 +1,4 @@
-import { BaseDocument } from '../../../../shared/firestore/base-document';
+﻿import { BaseDocument } from '../../../../shared/firestore/base-document';
 
 export const STOCK_DIRECTIONS = ['in', 'out'] as const;
 export type StockDirection = (typeof STOCK_DIRECTIONS)[number];
@@ -35,6 +35,8 @@ export interface StockMovement extends BaseDocument {
   unitPrice: number | null;
   remark: string | null;
   source: StockSource;
+  batchNo?: string | null;
+  expirationDate?: string | null;
 }
 
 export interface StockMovementListItem extends StockMovement {

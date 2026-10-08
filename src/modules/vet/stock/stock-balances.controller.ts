@@ -1,5 +1,5 @@
-import { Controller, Get, Query, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+﻿import { Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { FirebaseAuthGuard } from '../../../shared/auth/firebase-auth.guard';
 import { RequireModule } from '../../../shared/authorization/module.decorator';
 import { ModuleGuard } from '../../../shared/authorization/module.guard';
@@ -17,8 +17,23 @@ import { StockLedgerService } from './stock-ledger.service';
 export class StockBalancesController {
   constructor(private readonly ledger: StockLedgerService) {}
 
+  @Get('expiry-report')
+  @RequirePermission('stockMovements', 'view')
+  @ApiOperation({ summary: 'Get expiration date / SKT tracking report' })
+  getExpiryReport() {
+    return this.ledger.getExpiryReport();
+  }
+
+  @Post('import-invoice')
+  @RequirePermission('stockMovements', 'create')
+  @ApiOperation({ summary: 'Import warehouse XML e-invoice and update stock' })
+  importInvoice(@Body() payload: any) {
+    return this.ledger.importInvoice(payload);
+  }
+
   @Get()
   @RequirePermission('stockMovements', 'view')
+  @ApiOperation({ summary: 'List stock balances across stores' })
   list(@Query() query: PagingQueryDto) {
     return this.ledger.listBalances(query);
   }

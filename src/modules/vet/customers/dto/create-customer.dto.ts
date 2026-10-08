@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
+  IsBoolean,
   IsEmail,
   IsNumber,
   IsOptional,
@@ -45,6 +46,31 @@ export class CreateCustomerDto {
   @Min(0)
   @Max(100)
   discountRate?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  branchId?: string;
+
+  @ApiPropertyOptional({ default: false })
+  @IsOptional()
+  @IsBoolean()
+  portalAccess?: boolean;
+
+  @ApiPropertyOptional({ enum: ['active', 'invited', 'disabled'] })
+  @IsOptional()
+  @IsString()
+  portalStatus?: 'active' | 'invited' | 'disabled';
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  password?: string;
+
+  @ApiPropertyOptional({ default: false })
+  @IsOptional()
+  @IsBoolean()
+  sendPortalInvite?: boolean;
 
   @ApiPropertyOptional({ type: () => InitialPatientDto })
   @IsOptional()

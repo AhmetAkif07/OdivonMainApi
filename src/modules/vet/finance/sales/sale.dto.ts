@@ -1,4 +1,4 @@
-import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
+﻿import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
   ArrayMinSize,
@@ -102,6 +102,11 @@ export class CreateSaleDto {
   @IsOptional()
   @IsString()
   appointmentId?: string | null;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  isQuickSale?: boolean;
 
   @ApiProperty({ type: [SaleLineDto] })
   @IsArray()

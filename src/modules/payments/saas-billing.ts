@@ -42,6 +42,16 @@ export interface TenantBillingState {
  */
 export function effectiveSubscription(tenant: TenantBillingState, now = new Date()) {
   const status = tenant.membershipStatus ?? 'active';
+  if (status === 'trial') {
+    const trialEnd = Date.parse(tenant.trialEndsAt ?? '');
+    const isExpired = Number.isFinite(trialEnd) && now.getTime() > trialEnd;
+    return {
+      membershipStatus: isExpired ? 'expired' : 'trial',
+      subscriptionEndsAt: tenant.trialEndsAt ?? null,
+      graceEndsAt: null,
+      inGrace: false,
+    };
+  }
   const end = Date.parse(tenant.subscriptionEndsAt ?? '');
   if (status !== 'active' || !Number.isFinite(end)) {
     return { membershipStatus: status, subscriptionEndsAt: tenant.subscriptionEndsAt ?? null, graceEndsAt: null, inGrace: false };

@@ -27,8 +27,9 @@ export class CreateCheckoutDto extends CheckoutBuyerDto {
 }
 
 export class CreateSaasOrderDto {
-  @ApiProperty({ enum: ['starter', 'pro', 'enterprise'] })
-  @IsIn(['starter', 'pro', 'enterprise']) planId!: 'starter' | 'pro' | 'enterprise';
+  @ApiProperty({ enum: ['starter', 'pro', 'enterprise', 'apm_limited', 'apm_premium'] })
+  @IsIn(['starter', 'pro', 'enterprise', 'apm_limited', 'apm_premium'])
+  planId!: 'starter' | 'pro' | 'enterprise' | 'apm_limited' | 'apm_premium';
   @ApiProperty({ enum: ['monthly', 'yearly'] })
   @IsIn(['monthly', 'yearly']) billingCycle!: 'monthly' | 'yearly';
 }

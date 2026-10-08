@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+﻿import { Injectable } from '@nestjs/common';
 import { AuditService } from '../../../../shared/audit/audit.service';
 import { AuditAction } from '../../../../shared/audit/audit.types';
 import { AppException } from '../../../../shared/errors/app.exception';
@@ -36,6 +36,8 @@ export class StockMovementsRepository {
       quantity: dto.quantity,
       unitPrice: dto.unitPrice ?? null,
       remark: dto.remark || null,
+      batchNo: dto.batchNo ?? null,
+      expirationDate: dto.expirationDate ?? null,
       source: source ?? { type: 'manual', id: ref.id },
     };
     await ref.set(item);

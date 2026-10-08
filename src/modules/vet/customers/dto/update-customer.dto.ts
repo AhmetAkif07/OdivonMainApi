@@ -43,4 +43,29 @@ export class UpdateCustomerDto {
   @IsOptional()
   @IsBoolean()
   isArchive?: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  branchId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  portalAccess?: boolean;
+
+  @ApiPropertyOptional({ enum: ['active', 'invited', 'disabled'] })
+  @IsOptional()
+  @IsString()
+  portalStatus?: 'active' | 'invited' | 'disabled';
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  password?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  sendPortalInvite?: boolean;
 }

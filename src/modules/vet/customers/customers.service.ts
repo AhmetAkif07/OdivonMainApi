@@ -29,6 +29,9 @@ export class CustomersService {
   async create(dto: CreateCustomerDto): Promise<{ customer: Customer; patient?: Patient }> {
     if (!dto.initialPatient) {
       const customer = await this.customers.create(dto);
+      if (dto.portalAccess && dto.password) {
+        await this.syncAuthCredentials(customer, dto.password);
+      }
       return { customer };
     }
 
@@ -51,6 +54,11 @@ export class CustomersService {
       note: dto.note ?? null,
       discountRate: dto.discountRate ?? 0,
       isArchive: false,
+      branchId: dto.branchId ?? null,
+      portalAccess: Boolean(dto.portalAccess),
+      portalStatus: dto.portalAccess ? (dto.portalStatus ?? 'active') : 'disabled',
+      portalUid: null,
+      lastMobileLoginAt: null,
     };
     const patient = this.patients.toPatient(patientRef.id, {
       ...dto.initialPatient,
@@ -61,6 +69,10 @@ export class CustomersService {
     batch.set(customerRef, customer);
     batch.set(patientRef, patient);
     await batch.commit();
+
+    if (dto.portalAccess && dto.password) {
+      await this.syncAuthCredentials(customer, dto.password);
+    }
 
     await this.audit.record({
       action: AuditAction.CUSTOMER_CREATED,
@@ -107,12 +119,82 @@ export class CustomersService {
     }));
   }
 
-  update(id: string, dto: UpdateCustomerDto) {
-    return this.customers.update(id, dto);
+  async update(id: string, dto: UpdateCustomerDto) {
+    const updated = await this.customers.update(id, dto);
+    if (dto.portalAccess !== undefined || dto.password) {
+      if (dto.portalAccess && dto.password) {
+        await this.syncAuthCredentials(updated, dto.password);
+      } else if (dto.portalAccess === false && updated.portalUid) {
+        await this.firebase.auth.updateUser(updated.portalUid, { disabled: true }).catch(() => {});
+      }
+    }
+    return updated;
   }
 
   softDelete(id: string) {
     return this.customers.softDelete(id);
+  }
+
+  async setPortalAccess(
+    id: string,
+    body: { portalAccess: boolean; password?: string; sendPortalInvite?: boolean },
+  ): Promise<Customer> {
+    const customer = await this.customers.getByIdOrThrow(id);
+    let portalUid = customer.portalUid ?? null;
+
+    if (body.portalAccess && body.password) {
+      portalUid = await this.syncAuthCredentials(customer, body.password);
+    } else if (!body.portalAccess && portalUid) {
+      await this.firebase.auth.updateUser(portalUid, { disabled: true }).catch(() => {});
+    }
+
+    const updated = await this.customers.update(id, {
+      portalAccess: body.portalAccess,
+      portalStatus: body.portalAccess ? 'active' : 'disabled',
+    });
+    if (portalUid && portalUid !== customer.portalUid) {
+      await this.firebase.db
+        .collection(tenantCollectionPath(this.tenantContext.getTenantId(), TENANT_COLLECTION.customers))
+        .doc(id)
+        .set({ portalUid }, { merge: true });
+      updated.portalUid = portalUid;
+    }
+    return updated;
+  }
+
+  private async syncAuthCredentials(customer: Customer, password: string): Promise<string | null> {
+    const tenantId = this.tenantContext.getTenantId();
+    const email = customer.email?.trim() || `${customer.phone.replace(/\D/g, '')}@odivonmobile.internal`;
+    let uid = customer.portalUid;
+    try {
+      if (!uid) {
+        const userRecord = await this.firebase.auth.createUser({
+          email,
+          password,
+          displayName: `${customer.firstName} ${customer.lastName}`.trim(),
+        });
+        uid = userRecord.uid;
+        await this.firebase.auth.setCustomUserClaims(uid, {
+          tenantId,
+          role: 'customer',
+          accountType: 'pet_owner',
+          customerId: customer.id,
+          branchId: customer.branchId ?? null,
+        });
+        await this.firebase.db
+          .collection(tenantCollectionPath(tenantId, TENANT_COLLECTION.customers))
+          .doc(customer.id)
+          .set({ portalUid: uid }, { merge: true });
+      } else {
+        await this.firebase.auth.updateUser(uid, {
+          password,
+          disabled: false,
+        });
+      }
+      return uid;
+    } catch {
+      return uid ?? null;
+    }
   }
 }
 
