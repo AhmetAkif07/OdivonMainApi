@@ -22,6 +22,7 @@ import { HairModule } from './modules/hair/hair.module';
 import { PaymentsModule } from './modules/payments/payments.module';
 import { ApmModule } from './modules/apm/apm.module';
 import { PlatformModule } from './modules/platform/platform.module';
+import { BeautyModule } from './modules/beauty/beauty.module';
 
 @Module({
   imports: [
@@ -38,6 +39,7 @@ import { PlatformModule } from './modules/platform/platform.module';
     GymModule,
     SpaModule,
     HairModule,
+    BeautyModule,
     PaymentsModule,
     ApmModule,
     PlatformModule,

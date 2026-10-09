@@ -3,7 +3,7 @@
 export const PERMISSION_ACTIONS = ['view', 'create', 'update', 'delete'] as const;
 export type PermissionAction = (typeof PERMISSION_ACTIONS)[number];
 
-export type PermissionGroup = 'clinic' | 'finance' | 'stock' | 'definitions' | 'admin' | 'gym' | 'spa' | 'hair' | 'apm';
+export type PermissionGroup = 'clinic' | 'finance' | 'stock' | 'definitions' | 'admin' | 'gym' | 'spa' | 'hair' | 'beauty' | 'apm';
 
 export interface PermissionResourceDefinition {
   key: string;
@@ -104,6 +104,22 @@ export const PERMISSION_RESOURCES = [
   { key: 'hairBranches', label: 'Şubeler', group: 'hair', modules: ['hair'] },
   { key: 'hairDashboard', label: 'Gösterge paneli', group: 'hair', modules: ['hair'] },
   { key: 'hairAudit', label: 'İşlem geçmişi', group: 'hair', modules: ['hair'] },
+  { key: 'beautyDashboard', label: 'Beauty gösterge paneli', group: 'beauty', modules: ['beauty'] },
+  { key: 'beautyBranches', label: 'Şubeler', group: 'beauty', modules: ['beauty'] },
+  { key: 'beautyCustomers', label: 'Müşteriler', group: 'beauty', modules: ['beauty'] },
+  { key: 'beautyHealth', label: 'Sağlık / cilt verisi', group: 'beauty', modules: ['beauty'] },
+  { key: 'beautyAppointments', label: 'Randevular', group: 'beauty', modules: ['beauty'] },
+  { key: 'beautySessions', label: 'Paket ve seanslar', group: 'beauty', modules: ['beauty'] },
+  { key: 'beautyCatalog', label: 'Hizmet ve fiyatlar', group: 'beauty', modules: ['beauty'] },
+  { key: 'beautyResources', label: 'Cihaz ve odalar', group: 'beauty', modules: ['beauty'] },
+  { key: 'beautyStaff', label: 'Personel ve vardiya', group: 'beauty', modules: ['beauty'] },
+  { key: 'beautyFinance', label: 'Kasa ve ödemeler', group: 'beauty', modules: ['beauty'] },
+  { key: 'beautyInventory', label: 'Stok ve ürün', group: 'beauty', modules: ['beauty'] },
+  { key: 'beautyCommissions', label: 'Komisyonlar', group: 'beauty', modules: ['beauty'] },
+  { key: 'beautyCampaigns', label: 'Kampanya ve bildirimler', group: 'beauty', modules: ['beauty'] },
+  { key: 'beautyReports', label: 'Raporlar', group: 'beauty', modules: ['beauty'] },
+  { key: 'beautySettings', label: 'Beauty ayarları', group: 'beauty', modules: ['beauty'] },
+  { key: 'beautyAudit', label: 'Beauty işlem geçmişi', group: 'beauty', modules: ['beauty'] },
   { key: 'apmDashboard', label: 'APM gösterge paneli', group: 'apm', modules: ['apm'] },
   { key: 'apmAppointments', label: 'APM randevuları', group: 'apm', modules: ['apm'] },
 ] as const satisfies readonly PermissionResourceDefinition[];
@@ -121,6 +137,7 @@ export const PERMISSION_GROUP_LABELS: Record<PermissionGroup, string> = {
   gym: 'Salon',
   spa: 'Spa',
   hair: 'Kuaför',
+  beauty: 'Güzellik Merkezi',
   apm: 'Randevu Yönetimi',
 };
 
