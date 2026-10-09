@@ -216,6 +216,35 @@ describe('GymMobileService', () => {
       expect(members.save).not.toHaveBeenCalled();
     });
 
+    it('refuses a program request when the member has no trainer', async () => {
+      await expect(service.createProgramRequest({ goal: 'Kuvvet', daysPerWeek: 3 })).rejects.toMatchObject({
+        code: ErrorCode.VALIDATION_ERROR,
+      });
+      expect(store.create).not.toHaveBeenCalled();
+    });
+
+    it('refuses a second pending program request', async () => {
+      members.getByIdOrThrow.mockResolvedValue({ ...member, trainerId: 't1', trainerName: 'Ali' });
+      store.list.mockResolvedValue([{ userId: 'u1', status: 'pending' }]);
+      await expect(service.createProgramRequest({ goal: 'Kuvvet', daysPerWeek: 4 })).rejects.toMatchObject({
+        code: ErrorCode.VALIDATION_ERROR,
+      });
+    });
+
+    it('creates a program request for the assigned trainer', async () => {
+      members.getByIdOrThrow.mockResolvedValue({ ...member, trainerId: 't1', trainerName: 'Ali' });
+      const created = await service.createProgramRequest({ goal: ' Kuvvet ', daysPerWeek: 4, notes: 'akşam' });
+      expect(created).toMatchObject({
+        goal: 'Kuvvet',
+        trainerId: 't1',
+        trainerName: 'Ali',
+        status: 'pending',
+        daysPerWeek: 4,
+        userId: 'u1',
+        notes: 'akşam',
+      });
+    });
+
     it.each([
       [{ ...pkg, status: 'inactive' }],
       [{ ...pkg, isHidden: true }],

@@ -3,15 +3,20 @@ import { AppException } from '../../../shared/errors/app.exception';
 import { ErrorCode } from '../../../shared/errors/error-codes';
 import { TENANT_COLLECTION } from '../../../shared/firebase/firestore-path';
 import { BaseDocument } from '../../../shared/firestore/base-document';
+import { TenantContext } from '../../../shared/tenancy/tenant.context';
 import { isLeadStage, LeadRecord, stageChange } from '../leads/leads.rules';
 import { GymStore } from '../shared/gym-store';
 import { GymListQueryDto, GymRecordDto } from '../shared/ops.dto';
+import { ResolveProgramRequestDto, toProgramRequest } from './program-request.dto';
 
 type Doc = BaseDocument & Record<string, unknown>;
 
 @Injectable()
 export class GymSportService {
-  constructor(private readonly store: GymStore) {}
+  constructor(
+    private readonly store: GymStore,
+    private readonly tenant: TenantContext,
+  ) {}
 
   listClasses(query: GymListQueryDto) {
     return this.store.page<Doc>(TENANT_COLLECTION.gymClassSchedules, query);
@@ -135,7 +140,93 @@ export class GymSportService {
       body: `${String(dto.title ?? 'Yeni program')} atandı.`,
       readAt: null,
     });
+    await this.fulfillPendingProgramRequests(userId, created.id);
     return created;
+  }
+
+  async listProgramRequests() {
+    const trainerId = await this.scopedTrainerId();
+    const items = await this.store.list<Doc>(TENANT_COLLECTION.gymProgramRequests);
+    return items
+      .filter((item) => !trainerId || item['trainerId'] === trainerId)
+      .map(toProgramRequest)
+      .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+  }
+
+  async resolveProgramRequest(id: string, dto: ResolveProgramRequestDto) {
+    const current = await this.ownProgramRequest(id);
+    if (current['status'] !== 'pending') {
+      throw new AppException(ErrorCode.VALIDATION_ERROR, 'Bu talep zaten sonuçlanmış.');
+    }
+    if (dto.status === 'fulfilled' && !dto.planId) {
+      throw new AppException(ErrorCode.VALIDATION_ERROR, 'Program gerekli.');
+    }
+    const updated = await this.store.update<Doc>(
+      TENANT_COLLECTION.gymProgramRequests,
+      id,
+      ErrorCode.GYM_WORKOUT_NOT_FOUND,
+      'Program request not found',
+      {
+        status: dto.status,
+        planId: dto.planId ?? null,
+        notes: dto.notes !== undefined ? dto.notes : current['notes'],
+        resolvedAt: new Date().toISOString(),
+      },
+    );
+    if (dto.status === 'rejected') {
+      await this.store.create(TENANT_COLLECTION.gymMemberNotifications, {
+        userId: current['userId'],
+        type: 'program_request_rejected',
+        title: 'Program talebi',
+        body: dto.notes?.trim() || 'Antrenörün program talebini şimdilik karşılayamadı.',
+        readAt: null,
+      });
+    }
+    return toProgramRequest(updated);
+  }
+
+  private async fulfillPendingProgramRequests(userId: string, planId: string) {
+    const items = await this.store.list<Doc>(TENANT_COLLECTION.gymProgramRequests);
+    const pending = items.filter((item) => item['userId'] === userId && item['status'] === 'pending');
+    await Promise.all(
+      pending.map((item) =>
+        this.store.update(
+          TENANT_COLLECTION.gymProgramRequests,
+          item.id,
+          ErrorCode.GYM_WORKOUT_NOT_FOUND,
+          'Program request not found',
+          { status: 'fulfilled', planId, resolvedAt: new Date().toISOString() },
+        ),
+      ),
+    );
+  }
+
+  /** Antrenör yalnız kendi üyelerinin talebini görür; yönetici ve resepsiyon hepsini. */
+  private async scopedTrainerId(): Promise<string | null> {
+    const ctx = this.tenant.getStore();
+    if (ctx.role === 'owner') return null;
+    const members = ctx.permissions?.members ?? [];
+    const workouts = ctx.permissions?.workouts ?? [];
+    const trainerOnly = workouts.includes('create') && !members.includes('update') && !members.includes('create');
+    if (!trainerOnly) return null;
+    const staff = await this.store.list<Doc>(TENANT_COLLECTION.gymStaff);
+    const email = ctx.email.trim().toLowerCase();
+    const mine = staff.find((item) => String(item['email'] ?? '').trim().toLowerCase() === email);
+    return mine?.id ?? ctx.userId;
+  }
+
+  private async ownProgramRequest(id: string) {
+    const current = await this.store.getOrThrow<Doc>(
+      TENANT_COLLECTION.gymProgramRequests,
+      id,
+      ErrorCode.GYM_WORKOUT_NOT_FOUND,
+      'Program request not found',
+    );
+    const trainerId = await this.scopedTrainerId();
+    if (trainerId && current['trainerId'] !== trainerId) {
+      throw new AppException(ErrorCode.GYM_WORKOUT_NOT_FOUND, 'Program request not found');
+    }
+    return current;
   }
 
   updateWorkout(id: string, dto: GymRecordDto) {

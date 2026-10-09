@@ -10,6 +10,7 @@ import { MembersRepository } from '../members/members.repository';
 import { GymPackage } from '../packages/package.entity';
 import { PackagesRepository } from '../packages/packages.repository';
 import { StaffRepository } from '../staff/staff.repository';
+import { CreateProgramRequestDto, toProgramRequest } from '../ops/program-request.dto';
 import { GymStore } from '../shared/gym-store';
 import { packageCredits } from '../shared/membership';
 import { creditsLeft, nextSessionDate } from '../ops/class-booking.math';
@@ -612,6 +613,43 @@ export class GymMobileService {
       throw new AppException(ErrorCode.GYM_PHOTO_NOT_FOUND, 'Photo not found');
     }
     return this.store.softDelete(TENANT_COLLECTION.gymBodyPhotos, id, ErrorCode.GYM_PHOTO_NOT_FOUND, 'Photo not found');
+  }
+
+  async listProgramRequests() {
+    const items = await this.store.list<Doc>(TENANT_COLLECTION.gymProgramRequests);
+    return items
+      .filter((item) => item['userId'] === this.store.userId())
+      .map(toProgramRequest)
+      .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+  }
+
+  async createProgramRequest(dto: CreateProgramRequestDto) {
+    const member = await this.currentMember();
+    if (!member.trainerId) {
+      throw new AppException(ErrorCode.VALIDATION_ERROR, 'Sana atanmış bir antrenör yok.');
+    }
+    const goal = dto.goal.trim();
+    if (!goal) {
+      throw new AppException(ErrorCode.VALIDATION_ERROR, 'Hedef gerekli.');
+    }
+    const existing = await this.store.list<Doc>(TENANT_COLLECTION.gymProgramRequests);
+    const pending = existing.some((item) => item['userId'] === member.uid && item['status'] === 'pending');
+    if (pending) {
+      throw new AppException(ErrorCode.VALIDATION_ERROR, 'Bekleyen bir program talebin var.');
+    }
+    const created = await this.store.create<Doc>(TENANT_COLLECTION.gymProgramRequests, {
+      userId: member.uid,
+      memberName: member.displayName,
+      trainerId: member.trainerId,
+      trainerName: member.trainerName,
+      goal,
+      daysPerWeek: dto.daysPerWeek,
+      notes: dto.notes?.trim() ?? '',
+      status: 'pending',
+      planId: null,
+      resolvedAt: null,
+    });
+    return toProgramRequest(created);
   }
 
   async trainer() {
@@ -1253,6 +1291,7 @@ function toWorkoutSummary(item: Doc) {
     startDate: (item['startDate'] as string | undefined) ?? item.createdAt,
     endDate: (item['endDate'] as string | null | undefined) ?? null,
     exerciseCount: Array.isArray(item['exercises']) ? item['exercises'].length : 0,
+    createdByMember: item['createdByMember'] === true,
   };
 }
 

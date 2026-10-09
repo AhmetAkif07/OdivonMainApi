@@ -11,6 +11,7 @@ import { MemberCheckoutDto } from '../../payments/payments.dto';
 import { PaymentsService } from '../../payments/payments.service';
 import { GymLeadsService } from '../leads/leads.service';
 import { GymClassBookingService } from '../ops/class-booking.service';
+import { CreateProgramRequestDto } from '../ops/program-request.dto';
 import { GymReceivablesService } from '../ops/receivables.service';
 import { GymMemberGuard } from './gym-member.guard';
 import { GymMemberRecordsService } from './member-records.service';
@@ -122,6 +123,16 @@ export class GymMobileController {
   @Delete('workout-plans/:id')
   removeWorkoutPlan(@Param('id') id: string) {
     return this.records.removeWorkoutPlan(id);
+  }
+
+  @Get('program-requests')
+  programRequests() {
+    return this.mobile.listProgramRequests();
+  }
+
+  @Post('program-requests')
+  createProgramRequest(@Body() dto: CreateProgramRequestDto) {
+    return this.mobile.createProgramRequest(dto);
   }
 
   @Get('workout-logs')

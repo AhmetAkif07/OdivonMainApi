@@ -6,6 +6,7 @@ import { ModuleGuard } from '../../../shared/authorization/module.guard';
 import { PermissionGuard } from '../../../shared/authorization/permission.guard';
 import { RequirePermission } from '../../../shared/authorization/require-permission.decorator';
 import { TenantGuard } from '../../../shared/tenancy/tenant.guard';
+import { ResolveProgramRequestDto } from './program-request.dto';
 import { GymListQueryDto, GymRecordDto } from '../shared/ops.dto';
 import { AttendanceDto, PromoteDto, SessionQueryDto, StaffBookingDto, StaffWaitlistDto } from './class-booking.dto';
 import { GymClassBookingService } from './class-booking.service';
@@ -183,6 +184,27 @@ export class GymWorkoutsController {
   @RequirePermission('workouts', 'delete')
   remove(@Param('id') id: string) {
     return this.sport.removeWorkout(id);
+  }
+}
+
+@ApiTags('gym-program-requests')
+@ApiBearerAuth()
+@RequireModule('gym')
+@UseGuards(...Guards)
+@Controller('gym/program-requests')
+export class GymProgramRequestsController {
+  constructor(private readonly sport: GymSportService) {}
+
+  @Get()
+  @RequirePermission('workouts', 'view')
+  list() {
+    return this.sport.listProgramRequests();
+  }
+
+  @Patch(':id')
+  @RequirePermission('workouts', 'update')
+  resolve(@Param('id') id: string, @Body() dto: ResolveProgramRequestDto) {
+    return this.sport.resolveProgramRequest(id, dto);
   }
 }
 

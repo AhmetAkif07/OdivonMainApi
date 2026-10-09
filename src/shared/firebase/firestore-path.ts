@@ -45,6 +45,7 @@ export const TENANT_COLLECTION = {
   gymClassBookings: 'gymClassBookings',
   gymPtAppointments: 'gymPtAppointments',
   gymWorkoutPlans: 'gymWorkoutPlans',
+  gymProgramRequests: 'gymProgramRequests',
   gymWalletTx: 'gymWalletTx',
   gymMeasurements: 'gymMeasurements',
   gymWaterLogs: 'gymWaterLogs',

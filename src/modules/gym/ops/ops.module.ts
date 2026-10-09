@@ -31,6 +31,7 @@ import {
   GymGuestsController,
   GymMeasurementsController,
   GymWaterController,
+  GymProgramRequestsController,
   GymWorkoutTemplatesController,
   GymWorkoutsController,
 } from './sport.controllers';
@@ -44,6 +45,7 @@ import { GymStockService } from './stock/stock.service';
     GymClassesController,
     GymAppointmentsController,
     GymWorkoutsController,
+    GymProgramRequestsController,
     GymWorkoutTemplatesController,
     GymMeasurementsController,
     GymWaterController,
