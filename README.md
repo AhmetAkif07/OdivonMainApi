@@ -173,3 +173,20 @@ A signed-in Firebase user without a profile (client sign-up, Google) creates a s
 - Project: [odivon-main-api-a2095](https://console.firebase.google.com/project/odivon-main-api-a2095/overview)
 - Firestore location: `eur3` (Europe)
 - Enable Email/Password under [Authentication → Sign-in method](https://console.firebase.google.com/project/odivon-main-api-a2095/authentication/providers) if client login is needed. Admin SDK user creation works from the API regardless.
+
+## Platform Administration (`/api/v1/platform/*`)
+
+Cross-tenant management API for Odivon platform administrators:
+- Secured by `FirebaseAuthGuard` and `PlatformAdminGuard` (verifies `platformAdmins/{uid}` in Firestore).
+- Endpoints operate across tenants without `TenantGuard`.
+- Manage tenant lifetimes, demo accounts, manual payments, and view API error logs and audit trails.
+
+### Grant / Revoke Platform Admin
+```bash
+# Grant access
+node scripts/grant-platform-admin.mjs admin@odivon.com
+
+# Revoke access
+node scripts/grant-platform-admin.mjs admin@odivon.com --revoke
+```
+

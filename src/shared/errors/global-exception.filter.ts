@@ -9,15 +9,19 @@ import {
 import { Request, Response } from 'express';
 import { AppException } from './app.exception';
 import { ErrorCode } from './error-codes';
+import { ErrorLogService } from './error-log.service';
+import { RequestWithTenant } from '../tenancy/tenant.context';
 
 @Catch()
 export class GlobalExceptionFilter implements ExceptionFilter {
   private readonly logger = new Logger(GlobalExceptionFilter.name);
 
+  constructor(private readonly errorLog?: ErrorLogService) {}
+
   catch(exception: unknown, host: ArgumentsHost): void {
     const ctx = host.switchToHttp();
     const response = ctx.getResponse<Response>();
-    const request = ctx.getRequest<Request & { id?: string }>();
+    const request = ctx.getRequest<Request & RequestWithTenant & { id?: string; clientVersion?: string }>();
     const requestId = request.id ?? request.header('x-request-id') ?? 'unknown';
 
     if (exception instanceof AppException) {
@@ -62,6 +66,24 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     }
 
     this.logger.error(exception);
+
+    const stack = exception instanceof Error ? exception.stack : undefined;
+    const message = exception instanceof Error ? exception.message : String(exception);
+    this.errorLog?.record({
+      requestId,
+      method: request.method,
+      path: request.originalUrl || request.url,
+      status: isQuotaExceeded(exception) ? HttpStatus.SERVICE_UNAVAILABLE : HttpStatus.INTERNAL_SERVER_ERROR,
+      code: isQuotaExceeded(exception) ? 'FIRESTORE_QUOTA_EXCEEDED' : 'INTERNAL_ERROR',
+      message,
+      stack,
+      uid: request.currentUser?.userId,
+      tenantId: request.currentUser?.tenantId,
+      module: request.currentUser?.modules?.[0],
+      clientVersion: request.clientVersion ?? request.header('x-client-version'),
+      userAgent: request.header('user-agent'),
+    }).catch(() => undefined);
+
     if (isQuotaExceeded(exception)) {
       response.status(HttpStatus.SERVICE_UNAVAILABLE).json({
         success: false,

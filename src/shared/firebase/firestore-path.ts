@@ -1,4 +1,4 @@
-﻿export const TENANT_COLLECTION = {
+export const TENANT_COLLECTION = {
   customers: 'customers',
   patients: 'patients',
   appointments: 'appointments',
@@ -189,6 +189,9 @@ export const ROOT_COLLECTION = {
   tenants: 'tenants',
   gymAgentIndex: 'gymAgentIndex',
   gymAgentPairingCodes: 'gymAgentPairingCodes',
+  platformAdmins: 'platformAdmins',
+  platformErrorLogs: 'platformErrorLogs',
+  platformAuditLogs: 'platformAuditLogs',
 } as const;
 
 export function tenantCollectionPath(tenantId: string, collection: string): string {

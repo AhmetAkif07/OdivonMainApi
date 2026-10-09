@@ -14,4 +14,10 @@ export interface TenantDocument extends BaseDocument {
   /** End of the paid Odivon subscription period (written by billing after a verified payment). */
   subscriptionEndsAt?: string | null;
   logoUrl?: string | null;
+  planId?: string | null;
+  billingCycle?: 'monthly' | 'yearly' | null;
+  isDemo?: boolean;
+  demoCreatedBy?: string | null;
+  suspendedAt?: string | null;
+  suspendedReason?: string | null;
 }

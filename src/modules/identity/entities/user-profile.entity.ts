@@ -16,6 +16,7 @@ export interface UserProfile {
   displayName?: string | null;
   roleIds?: string[];
   status: UserStatus;
+  suspendedByPlatform?: boolean;
   phone?: string | null;
   membershipStatus?: MembershipStatus;
   trialStartedAt?: string | null;

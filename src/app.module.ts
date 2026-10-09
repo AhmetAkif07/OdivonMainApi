@@ -21,6 +21,7 @@ import { SpaModule } from './modules/spa/spa.module';
 import { HairModule } from './modules/hair/hair.module';
 import { PaymentsModule } from './modules/payments/payments.module';
 import { ApmModule } from './modules/apm/apm.module';
+import { PlatformModule } from './modules/platform/platform.module';
 
 @Module({
   imports: [
@@ -39,6 +40,7 @@ import { ApmModule } from './modules/apm/apm.module';
     HairModule,
     PaymentsModule,
     ApmModule,
+    PlatformModule,
     ThrottlerModule.forRoot({
       // Per client IP: a front desk behind one NAT runs several panels plus the edge agent.
       throttlers: [{ ttl: 60_000, limit: 1200 }],

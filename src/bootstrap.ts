@@ -7,6 +7,8 @@ import { loadConfiguration } from './config/configuration';
 import { GymClassBookingService } from './modules/gym/ops/class-booking.service';
 import { GymRemindersService } from './modules/gym/reminders/reminders.service';
 import { SaasBillingService } from './modules/payments/saas-billing.service';
+import { PlatformDemosService } from './modules/platform/demos/demos.service';
+import { ErrorLogService } from './shared/errors/error-log.service';
 
 let application: INestApplication | null = null;
 
@@ -17,10 +19,23 @@ export async function bootstrap(options: { swaggerUi?: boolean } = {}): Promise<
   application = app;
   app.useLogger(app.get(Logger));
   app.use(helmet());
+  const configuredOrigin = config.corsOrigin;
   app.enableCors({
-    origin: config.corsOrigin ?? true,
+    origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+      if (!origin) return callback(null, true);
+      if (origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:')) {
+        return callback(null, true);
+      }
+      if (!configuredOrigin || configuredOrigin === '*' || origin === configuredOrigin) {
+        return callback(null, true);
+      }
+      const allowedList = configuredOrigin.split(',').map((o) => o.trim());
+      if (allowedList.includes(origin)) {
+        return callback(null, true);
+      }
+      return callback(null, false);
+    },
     credentials: true,
-    // Browsers cache the preflight (Chrome caps it at 2 h), so polling panels skip an OPTIONS per call.
     maxAge: 7200,
   });
   app.setGlobalPrefix('api/v1', {
@@ -65,4 +80,12 @@ export async function runScheduledJobs(): Promise<void> {
   const billing = application.get(SaasBillingService);
   const created = await reminders.forEachGymTenant('saas-reminders', () => billing.runReminders());
   billing.logRun(created.reduce((sum, n) => sum + n, 0), created.length);
+
+  // Platform: Demos expiry and auto-suspension (after 7 days)
+  const demos = application.get(PlatformDemosService);
+  await demos.runExpiryJob();
+
+  // Platform: Purge error logs older than 30 days
+  const errorLogs = application.get(ErrorLogService);
+  await errorLogs.purgeOlderThan(30);
 }
