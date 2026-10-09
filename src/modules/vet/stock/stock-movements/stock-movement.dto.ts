@@ -1,4 +1,4 @@
-import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
+﻿import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { IsIn, IsISO8601, IsNotEmpty, IsNumber, IsOptional, IsString, Min } from 'class-validator';
 import { PagingQueryDto } from '../../../../shared/http/paging.dto';
@@ -44,6 +44,16 @@ export class CreateStockMovementDto {
   @IsOptional()
   @IsString()
   remark?: string | null;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  batchNo?: string | null;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  expirationDate?: string | null;
 }
 
 export class UpdateStockMovementDto extends PartialType(CreateStockMovementDto) {}

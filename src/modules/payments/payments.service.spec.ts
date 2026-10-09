@@ -32,12 +32,13 @@ describe('PaymentsService tenant and source boundaries', () => {
   };
   const firebase = { db } as unknown as FirebaseService;
   let role: 'owner' | 'admin' = 'owner';
+  let modules: string[] | undefined;
   const tenant = { getTenantId: () => 'tenant-a', getUserId: () => 'staff-a',
-    getStore: () => ({ role }) } as TenantContext;
+    getStore: () => ({ role, modules }) } as TenantContext;
   const iyzico = { id: 'iyzico', verifyCheckout: jest.fn() } as unknown as IyzicoProvider;
   const service = new PaymentsService(firebase, tenant, iyzico);
 
-  beforeEach(() => { documents.clear(); role = 'owner'; jest.clearAllMocks(); });
+  beforeEach(() => { documents.clear(); role = 'owner'; modules = undefined; jest.clearAllMocks(); });
 
   it('derives the vet charge from the tenant sale minus recorded collections', async () => {
     documents.set('tenants/tenant-a/sales/sale-1', { type: 'sale', customerId: 'customer-1', total: 120.5 });
@@ -95,5 +96,18 @@ describe('PaymentsService tenant and source boundaries', () => {
     await expect(service.createSaasOrder({ planId: 'starter', billingCycle: 'monthly' }))
       .rejects.toThrow('tenant owner');
     expect([...documents.keys()]).toEqual([]);
+  });
+
+  it('sells the APM packages only to APM tenants, at exact kuruş amounts', async () => {
+    modules = ['apm'];
+    expect(Object.keys(service.saasPlans())).toEqual(['apm_limited', 'apm_premium']);
+    expect((await service.createSaasOrder({ planId: 'apm_limited', billingCycle: 'monthly' })).amountKurus).toBe(3999);
+    expect((await service.createSaasOrder({ planId: 'apm_premium', billingCycle: 'monthly' })).amountKurus).toBe(5999);
+    await expect(service.createSaasOrder({ planId: 'pro', billingCycle: 'monthly' })).rejects.toThrow('not available');
+    await expect(service.createSaasOrder({ planId: 'apm_premium', billingCycle: 'yearly' })).rejects.toThrow('Invalid SaaS plan');
+
+    modules = ['gym'];
+    expect(Object.keys(service.saasPlans())).toEqual(['starter', 'pro', 'enterprise']);
+    await expect(service.createSaasOrder({ planId: 'apm_limited', billingCycle: 'monthly' })).rejects.toThrow('not available');
   });
 });

@@ -1,4 +1,5 @@
-import { Module } from '@nestjs/common';
+import { BranchesModule } from './branches/branches.module';
+﻿import { Module } from '@nestjs/common';
 import { AppointmentsModule } from './appointments/appointments.module';
 import { CustomersModule } from './customers/customers.module';
 import { DefinitionsModule } from './definitions/definitions.module';
@@ -11,6 +12,7 @@ import { HospitalizationModule } from './hospitalization/hospitalization.module'
 import { ConsentsModule } from './consents/consents.module';
 import { CrmModule } from './crm/crm.module';
 import { PetHotelModule } from './pet-hotel/pet-hotel.module';
+import { GroomingModule } from './grooming/grooming.module';
 
 @Module({
   imports: [
@@ -26,6 +28,8 @@ import { PetHotelModule } from './pet-hotel/pet-hotel.module';
     ConsentsModule,
     CrmModule,
     PetHotelModule,
+    GroomingModule,
+    BranchesModule,
   ],
 })
 export class VetModule {}

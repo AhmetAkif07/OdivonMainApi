@@ -18,7 +18,9 @@ import { VetModule } from './modules/vet/vet.module';
 import { FarmModule } from './modules/farm/farm.module';
 import { GymModule } from './modules/gym/gym.module';
 import { SpaModule } from './modules/spa/spa.module';
+import { HairModule } from './modules/hair/hair.module';
 import { PaymentsModule } from './modules/payments/payments.module';
+import { ApmModule } from './modules/apm/apm.module';
 
 @Module({
   imports: [
@@ -34,10 +36,12 @@ import { PaymentsModule } from './modules/payments/payments.module';
     FarmModule,
     GymModule,
     SpaModule,
+    HairModule,
     PaymentsModule,
+    ApmModule,
     ThrottlerModule.forRoot({
       // Per client IP: a front desk behind one NAT runs several panels plus the edge agent.
-      throttlers: [{ ttl: 60_000, limit: 600 }],
+      throttlers: [{ ttl: 60_000, limit: 1200 }],
     }),
   ],
   providers: [

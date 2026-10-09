@@ -47,7 +47,9 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       const code =
         status === HttpStatus.UNAUTHORIZED
           ? ErrorCode.AUTH_REQUIRED
-          : status === HttpStatus.NOT_IMPLEMENTED
+          : status === HttpStatus.TOO_MANY_REQUESTS
+            ? ErrorCode.RATE_LIMITED
+            : status === HttpStatus.NOT_IMPLEMENTED
             ? ErrorCode.NOT_IMPLEMENTED
             : ErrorCode.VALIDATION_ERROR;
 

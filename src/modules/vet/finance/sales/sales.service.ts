@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+﻿import { Injectable } from '@nestjs/common';
 import { AppException } from '../../../../shared/errors/app.exception';
 import { ErrorCode } from '../../../../shared/errors/error-codes';
 import { matchesColumnFilters } from '../../../../shared/http/column-filters';
@@ -29,7 +29,7 @@ export class SalesService {
   ) {}
 
   async create(dto: CreateSaleDto): Promise<Sale> {
-    this.assertParty(dto.type, dto.customerId, dto.supplierId);
+    this.assertParty(dto.type, dto.customerId, dto.supplierId, dto.isQuickSale);
     const lines = await this.resolveLines(dto.lines);
     const sale = await this.sales.create(dto, lines);
     await this.syncStock(sale);
@@ -56,7 +56,7 @@ export class SalesService {
     const type = dto.type ?? current.type;
     const customerId = dto.customerId === undefined ? current.customerId : dto.customerId;
     const supplierId = dto.supplierId === undefined ? current.supplierId : dto.supplierId;
-    this.assertParty(type, customerId, supplierId);
+    this.assertParty(type, customerId, supplierId, dto.isQuickSale);
     const lines = dto.lines ? await this.resolveLines(dto.lines) : undefined;
     const sale = await this.sales.update(id, dto, lines);
     await this.syncStock(sale);
@@ -85,7 +85,10 @@ export class SalesService {
     );
   }
 
-  private assertParty(type: 'sale' | 'purchase', customerId?: string | null, supplierId?: string | null): void {
+  private assertParty(type: 'sale' | 'purchase', customerId?: string | null, supplierId?: string | null, isQuickSale?: boolean): void {
+    if (type === 'sale' && !customerId && !isQuickSale) {
+      throw new AppException(ErrorCode.FINANCE_INVALID, 'Satış için müşteri seçin');
+    }
     if (type === 'sale' && !customerId) {
       throw new AppException(ErrorCode.FINANCE_INVALID, 'Satış için müşteri seçin');
     }

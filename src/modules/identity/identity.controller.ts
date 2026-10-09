@@ -1,12 +1,18 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Injectable, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { FirebaseAuthGuard } from '../../shared/auth/firebase-auth.guard';
 import { PermissionGuard } from '../../shared/authorization/permission.guard';
 import { RequirePermission } from '../../shared/authorization/require-permission.decorator';
+import { Throttle } from '@nestjs/throttler';
+import { ClientThrottlerGuard } from '../../shared/http/client-throttler.guard';
 import { TenantGuard } from '../../shared/tenancy/tenant.guard';
 import { RegisterDto } from './dto/register.dto';
 import { CreateUserDto, UpdateMeDto, UpdateUserDto } from './dto/user.dto';
 import { IdentityService } from './identity.service';
+
+/** Rate-limits registration per client IP, also outside production where the global guard is off. */
+@Injectable()
+export class RegisterThrottlerGuard extends ClientThrottlerGuard {}
 
 @ApiTags('identity')
 @Controller('identity')
@@ -14,6 +20,8 @@ export class IdentityController {
   constructor(private readonly identity: IdentityService) {}
 
   @Post('register')
+  @UseGuards(RegisterThrottlerGuard)
+  @Throttle({ default: { limit: 5, ttl: 900_000 } })
   @ApiOperation({ summary: 'Register a new clinic tenant and owner user' })
   register(@Body() dto: RegisterDto) {
     return this.identity.register(dto);

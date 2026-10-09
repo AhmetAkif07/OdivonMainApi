@@ -1,4 +1,4 @@
-import { BaseDocument } from '../../../../shared/firestore/base-document';
+﻿import { BaseDocument } from '../../../../shared/firestore/base-document';
 
 export const SALE_TYPES = ['sale', 'purchase'] as const;
 export type SaleType = (typeof SALE_TYPES)[number];
@@ -24,6 +24,7 @@ export interface Sale extends BaseDocument {
   discount: number;
   remark: string | null;
   appointmentId: string | null;
+  isQuickSale?: boolean;
   lines: SaleLine[];
   net: number;
   vat: number;

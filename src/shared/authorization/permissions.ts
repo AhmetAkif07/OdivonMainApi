@@ -1,9 +1,9 @@
-import { PRODUCT_MODULES, ProductModule } from './constants';
+﻿import { PRODUCT_MODULES, ProductModule } from './constants';
 
 export const PERMISSION_ACTIONS = ['view', 'create', 'update', 'delete'] as const;
 export type PermissionAction = (typeof PERMISSION_ACTIONS)[number];
 
-export type PermissionGroup = 'clinic' | 'finance' | 'stock' | 'definitions' | 'admin' | 'gym' | 'spa';
+export type PermissionGroup = 'clinic' | 'finance' | 'stock' | 'definitions' | 'admin' | 'gym' | 'spa' | 'hair' | 'apm';
 
 export interface PermissionResourceDefinition {
   key: string;
@@ -18,6 +18,7 @@ export const PERMISSION_RESOURCES = [
   { key: 'crm', label: 'CRM & Bildirimler', group: 'clinic', modules: ['vet'] },
   { key: 'petHotel', label: 'Pet Otel & Pansiyon', group: 'clinic', modules: ['vet'] },
   { key: 'hotelRooms', label: 'Otel Odaları', group: 'clinic', modules: ['vet'] },
+  { key: 'grooming', label: 'Pet Kuaför & Bakım', group: 'clinic', modules: ['vet'] },
   { key: 'patients', label: 'Hastalar', group: 'clinic', modules: ['vet'] },
   { key: 'appointments', label: 'Randevular', group: 'clinic', modules: ['vet'] },
   { key: 'examinations', label: 'Muayeneler', group: 'clinic', modules: ['vet'] },
@@ -85,6 +86,26 @@ export const PERMISSION_RESOURCES = [
   { key: 'spaCommissions', label: 'Prim / Komisyon', group: 'spa', modules: ['spa'] },
   { key: 'spaSettings', label: 'İşletme ayarları', group: 'spa', modules: ['spa'] },
   { key: 'spaAudit', label: 'İşlem geçmişi', group: 'spa', modules: ['spa'] },
+  { key: 'hairCustomers', label: 'Müşteriler', group: 'hair', modules: ['hair'] },
+  { key: 'hairAppointments', label: 'Randevular', group: 'hair', modules: ['hair'] },
+  { key: 'hairCatalog', label: 'Hizmet / Kategori', group: 'hair', modules: ['hair'] },
+  { key: 'hairStock', label: 'Ürün / Stok', group: 'hair', modules: ['hair'] },
+  { key: 'hairStaff', label: 'Personel', group: 'hair', modules: ['hair'] },
+  { key: 'hairLeaves', label: 'İzinler', group: 'hair', modules: ['hair'] },
+  { key: 'hairPackages', label: 'Paketler', group: 'hair', modules: ['hair'] },
+  { key: 'hairSessions', label: 'Seanslar / POS', group: 'hair', modules: ['hair'] },
+  { key: 'hairPayments', label: 'Ödemeler', group: 'hair', modules: ['hair'] },
+  { key: 'hairExpenses', label: 'Giderler', group: 'hair', modules: ['hair'] },
+  { key: 'hairCashRegister', label: 'Kasa', group: 'hair', modules: ['hair'] },
+  { key: 'hairCommissions', label: 'Prim / Komisyon', group: 'hair', modules: ['hair'] },
+  { key: 'hairFormulas', label: 'Saç formülleri', group: 'hair', modules: ['hair'] },
+  { key: 'hairSettings', label: 'İşletme ayarları', group: 'hair', modules: ['hair'] },
+  { key: 'hairReports', label: 'Raporlar', group: 'hair', modules: ['hair'] },
+  { key: 'hairBranches', label: 'Şubeler', group: 'hair', modules: ['hair'] },
+  { key: 'hairDashboard', label: 'Gösterge paneli', group: 'hair', modules: ['hair'] },
+  { key: 'hairAudit', label: 'İşlem geçmişi', group: 'hair', modules: ['hair'] },
+  { key: 'apmDashboard', label: 'APM gösterge paneli', group: 'apm', modules: ['apm'] },
+  { key: 'apmAppointments', label: 'APM randevuları', group: 'apm', modules: ['apm'] },
 ] as const satisfies readonly PermissionResourceDefinition[];
 
 export type PermissionResource = (typeof PERMISSION_RESOURCES)[number]['key'];
@@ -99,6 +120,8 @@ export const PERMISSION_GROUP_LABELS: Record<PermissionGroup, string> = {
   admin: 'Yönetim',
   gym: 'Salon',
   spa: 'Spa',
+  hair: 'Kuaför',
+  apm: 'Randevu Yönetimi',
 };
 
 export function resourcesForModules(

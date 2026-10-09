@@ -9,6 +9,11 @@ export interface Customer extends BaseDocument {
   note: string | null;
   discountRate: number;
   isArchive: boolean;
+  branchId?: string | null;
+  portalAccess?: boolean;
+  portalStatus?: 'active' | 'invited' | 'disabled';
+  portalUid?: string | null;
+  lastMobileLoginAt?: string | null;
 }
 
 export interface CustomerPatientSummary {

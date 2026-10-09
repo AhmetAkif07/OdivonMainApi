@@ -18,7 +18,7 @@ import { ProductModule } from '../../shared/authorization/constants';
 import { effectiveSubscription, TenantBillingState } from '../payments/saas-billing';
 import { RolesService } from './roles/roles.service';
 
-const GYM_TRIAL_DAYS = 14;
+const SAAS_TRIAL_DAYS = 14;
 
 @Injectable()
 export class IdentityService {
@@ -49,16 +49,14 @@ export class IdentityService {
       const now = new Date();
       const nowIso = now.toISOString();
       const isGym = productModule === 'gym';
-      const trialEndsAt = isGym
-        ? new Date(now.getTime() + GYM_TRIAL_DAYS * 24 * 60 * 60 * 1000).toISOString()
-        : null;
+      const trialEndsAt = new Date(now.getTime() + SAAS_TRIAL_DAYS * 24 * 60 * 60 * 1000).toISOString();
 
       const createdTenant = await this.tenants.create({
         name: dto.tenantName,
         ownerUid: uid,
         modules,
-        onboardingCompleted: !isGym,
-        membershipStatus: isGym ? 'trial' : 'active',
+        onboardingCompleted: true,
+        membershipStatus: 'trial',
         trialEndsAt,
       });
       tenantId = createdTenant.id;
@@ -72,8 +70,8 @@ export class IdentityService {
         displayName: dto.displayName?.trim() || null,
         phone: dto.phone?.trim() || null,
         status: 'active',
-        membershipStatus: isGym ? 'trial' : 'active',
-        trialStartedAt: isGym ? nowIso : null,
+        membershipStatus: 'trial',
+        trialStartedAt: nowIso,
         trialEndsAt,
         createdAt: nowIso,
         updatedAt: nowIso,

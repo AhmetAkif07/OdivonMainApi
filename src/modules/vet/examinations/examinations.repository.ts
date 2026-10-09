@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+﻿import { Injectable } from '@nestjs/common';
 import { AuditService } from '../../../shared/audit/audit.service';
 import { AuditAction } from '../../../shared/audit/audit.types';
 import { AppException } from '../../../shared/errors/app.exception';
@@ -48,6 +48,10 @@ export class ExaminationsRepository {
       complaint: dto.complaint ?? null,
       treatment: dto.treatment ?? null,
       status: dto.status ?? 'draft',
+      bundleId: dto.bundleId ?? null,
+      bundleName: dto.bundleName ?? null,
+      deductStock: dto.deductStock ?? false,
+      treatmentItems: dto.treatmentItems ?? null,
     };
     await ref.set(examination);
     await this.audit.record({
@@ -112,6 +116,10 @@ export class ExaminationsRepository {
       complaint: dto.complaint ?? current.complaint,
       treatment: dto.treatment ?? current.treatment,
       status: dto.status ?? current.status,
+      bundleId: dto.bundleId !== undefined ? dto.bundleId : current.bundleId,
+      bundleName: dto.bundleName !== undefined ? dto.bundleName : current.bundleName,
+      deductStock: dto.deductStock !== undefined ? dto.deductStock : current.deductStock,
+      treatmentItems: dto.treatmentItems !== undefined ? dto.treatmentItems : current.treatmentItems,
       ...touchBaseFields(this.tenantContext.getUserId()),
     };
     await this.collection().doc(id).set(updated);

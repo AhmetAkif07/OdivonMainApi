@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+﻿import { Injectable } from '@nestjs/common';
 import { CustomersRepository } from '../customers/customers.repository';
 import { AppException } from '../../../shared/errors/app.exception';
 import { ErrorCode } from '../../../shared/errors/error-codes';
@@ -53,6 +53,57 @@ export class PatientsService {
 
   update(id: string, dto: UpdatePatientDto) {
     return this.patients.update(id, dto);
+  }
+
+  async getPedigree(id: string) {
+    const patient = await this.patients.getByIdOrThrow(id);
+    const father = patient.fatherId ? await this.patients.findById(patient.fatherId) : null;
+    const mother = patient.motherId ? await this.patients.findById(patient.motherId) : null;
+
+    let paternalGrandfather = null;
+    let paternalGrandmother = null;
+    if (father) {
+      if (father.fatherId) paternalGrandfather = await this.patients.findById(father.fatherId);
+      if (father.motherId) paternalGrandmother = await this.patients.findById(father.motherId);
+    }
+
+    let maternalGrandfather = null;
+    let maternalGrandmother = null;
+    if (mother) {
+      if (mother.fatherId) maternalGrandfather = await this.patients.findById(mother.fatherId);
+      if (mother.motherId) maternalGrandmother = await this.patients.findById(mother.motherId);
+    }
+
+    return {
+      patient,
+      parents: {
+        father: father || (patient.fatherName ? { name: patient.fatherName, pedigreeNo: patient.fatherPedigreeNo } : null),
+        mother: mother || (patient.motherName ? { name: patient.motherName, pedigreeNo: patient.motherPedigreeNo } : null),
+      },
+      grandparents: {
+        paternalGrandfather: paternalGrandfather || (patient.paternalGrandfatherName ? { name: patient.paternalGrandfatherName } : null),
+        paternalGrandmother: paternalGrandmother || (patient.paternalGrandmotherName ? { name: patient.paternalGrandmotherName } : null),
+        maternalGrandfather: maternalGrandfather || (patient.maternalGrandfatherName ? { name: patient.maternalGrandfatherName } : null),
+        maternalGrandmother: maternalGrandmother || (patient.maternalGrandmotherName ? { name: patient.maternalGrandmotherName } : null),
+      },
+    };
+  }
+
+  async getOffspring(id: string) {
+    const all = await this.patients.collect({});
+    const offspring = all.filter((p) => p.motherId === id || p.fatherId === id);
+    return this.withCustomers(offspring);
+  }
+
+  async getScrCertificate(id: string) {
+    const pedigreeData = await this.getPedigree(id);
+    return {
+      certificateNumber: pedigreeData.patient.pedigreeNo || ('SCR-' + id.toUpperCase()),
+      issuedDate: new Date().toISOString(),
+      patient: pedigreeData.patient,
+      lineage: pedigreeData,
+      seal: 'VERIFIED_ODIVON_VET_REGISTRY',
+    };
   }
 
   softDelete(id: string) {

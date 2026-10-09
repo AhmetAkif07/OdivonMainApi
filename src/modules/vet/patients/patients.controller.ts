@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+﻿import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { FirebaseAuthGuard } from '../../../shared/auth/firebase-auth.guard';
 import { RequireModule } from '../../../shared/authorization/module.decorator';
@@ -41,6 +41,27 @@ export class PatientsController {
   @ApiOperation({ summary: 'Get patient by id' })
   get(@Param('id') id: string) {
     return this.patients.getById(id);
+  }
+
+  @Get(':id/pedigree')
+  @RequirePermission('patients', 'view')
+  @ApiOperation({ summary: 'Get 3-generation pedigree tree for a patient' })
+  getPedigree(@Param('id') id: string) {
+    return this.patients.getPedigree(id);
+  }
+
+  @Get(':id/offspring')
+  @RequirePermission('patients', 'view')
+  @ApiOperation({ summary: 'Get offspring/litters of a patient' })
+  getOffspring(@Param('id') id: string) {
+    return this.patients.getOffspring(id);
+  }
+
+  @Get(':id/scr-certificate')
+  @RequirePermission('patients', 'view')
+  @ApiOperation({ summary: 'Get official SCR certificate payload for a patient' })
+  getScrCertificate(@Param('id') id: string) {
+    return this.patients.getScrCertificate(id);
   }
 
   @Patch(':id')

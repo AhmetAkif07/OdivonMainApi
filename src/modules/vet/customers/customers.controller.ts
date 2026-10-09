@@ -59,4 +59,14 @@ export class CustomersController {
     await this.customers.softDelete(id);
     return { id };
   }
+
+  @Post(':id/portal-access')
+  @ApiOperation({ summary: 'Müşteri mobil portal erişimini aç/kapat veya parola güncelle' })
+  async setPortalAccess(
+    @Param('id') id: string,
+    @Body() body: { portalAccess: boolean; password?: string; sendPortalInvite?: boolean },
+  ) {
+    return this.customers.setPortalAccess(id, body);
+  }
+
 }

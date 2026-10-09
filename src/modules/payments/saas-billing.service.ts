@@ -1,8 +1,10 @@
+import { randomUUID } from 'crypto';
 import { Injectable, Logger } from '@nestjs/common';
 import { FirebaseService } from '../../shared/firebase/firebase.service';
 import { TenantContext } from '../../shared/tenancy/tenant.context';
 import { gymToday } from '../gym/ops/receivables.math';
-import { daysUntil, effectiveSubscription, SAAS_GRACE_DAYS, SAAS_REMINDER_DAYS, TenantBillingState } from './saas-billing';
+import { daysUntil, effectiveSubscription, nextPeriod, receiptNo, SAAS_GRACE_DAYS, SAAS_REMINDER_DAYS, SaasCycle, TenantBillingState } from './saas-billing';
+import { SAAS_SANDBOX_PRICES } from './saas-prices';
 
 export interface SaasPaymentRecord {
   id: string;
@@ -115,5 +117,71 @@ export class SaasBillingService {
 
   logRun(created: number, gyms: number) {
     this.logger.log(`SaaS reminders: ${created} notices in ${gyms} gyms`);
+  }
+  async subscribe(planId: string, billingCycle: 'monthly' | 'yearly', cardHolderName?: string) {
+    const tenantId = this.tenant.getTenantId();
+    const tenantRef = this.firebase.db.doc(`tenants/${tenantId}`);
+    const tenantData = (await tenantRef.get()).data() as TenantBillingState | undefined;
+    const currentEnd = tenantData?.membershipStatus === 'active' ? tenantData.subscriptionEndsAt : null;
+    const paidAt = new Date().toISOString();
+    const period = nextPeriod(currentEnd, billingCycle as SaasCycle, new Date(paidAt));
+    const sessionId = randomUUID();
+    const recNo = receiptNo(sessionId, paidAt);
+
+    await tenantRef.update({
+      membershipStatus: 'active',
+      planId,
+      billingCycle,
+      subscriptionEndsAt: period.endsAt,
+      updatedAt: paidAt,
+    });
+
+    const amount = (SAAS_SANDBOX_PRICES as any)[planId]?.[billingCycle] ?? 1490;
+    const paymentRecord: SaasPaymentRecord = {
+      id: sessionId,
+      receiptNo: recNo,
+      planId,
+      billingCycle,
+      amountKurus: amount * 100,
+      currency: 'TRY',
+      mode: 'sandbox',
+      periodStartsAt: period.startsAt,
+      periodEndsAt: period.endsAt,
+      paidAt,
+    };
+
+    await this.col('saasPayments').doc(sessionId).set(paymentRecord);
+
+    return {
+      success: true,
+      membershipStatus: 'active',
+      planId,
+      billingCycle,
+      subscriptionEndsAt: period.endsAt,
+      receiptNo: recNo,
+      paidAt,
+    };
+  }
+
+  async expireDemoTrial() {
+    const tenantId = this.tenant.getTenantId();
+    const expiredAt = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    await this.firebase.db.doc(`tenants/${tenantId}`).update({
+      membershipStatus: 'expired',
+      trialEndsAt: expiredAt,
+      updatedAt: new Date().toISOString(),
+    });
+    return { membershipStatus: 'expired', trialEndsAt: expiredAt };
+  }
+
+  async resetDemoTrial() {
+    const tenantId = this.tenant.getTenantId();
+    const freshTrial = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
+    await this.firebase.db.doc(`tenants/${tenantId}`).update({
+      membershipStatus: 'trial',
+      trialEndsAt: freshTrial,
+      updatedAt: new Date().toISOString(),
+    });
+    return { membershipStatus: 'trial', trialEndsAt: freshTrial };
   }
 }

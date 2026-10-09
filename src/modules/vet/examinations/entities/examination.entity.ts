@@ -1,4 +1,4 @@
-import { BaseDocument } from '../../../../shared/firestore/base-document';
+﻿import { BaseDocument } from '../../../../shared/firestore/base-document';
 
 export const EXAMINATION_STATUSES = ['draft', 'completed'] as const;
 export type ExaminationStatus = (typeof EXAMINATION_STATUSES)[number];
@@ -22,6 +22,9 @@ export interface Examination extends BaseDocument {
   systemFindings?: Record<string, string> | null;
   treatmentItems?: Array<{ name: string; quantity: number; unit?: string; notes?: string; price?: number }> | null;
   appointmentId?: string | null;
+  bundleId?: string | null;
+  bundleName?: string | null;
+  deductStock?: boolean;
   status: ExaminationStatus;
 }
 

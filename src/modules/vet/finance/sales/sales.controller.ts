@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+﻿import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { FirebaseAuthGuard } from '../../../../shared/auth/firebase-auth.guard';
 import { RequireModule } from '../../../../shared/authorization/module.decorator';
@@ -23,6 +23,14 @@ export class SalesController {
   @ApiOperation({ summary: 'List sales and purchases' })
   list(@Query() query: ListSalesQueryDto) {
     return this.service.list(query);
+  }
+
+  @Post('pos')
+  @RequirePermission('sales', 'create')
+  @ApiOperation({ summary: 'Create quick POS counter sale' })
+  createPos(@Body() dto: CreateSaleDto) {
+    dto.type = 'sale';
+    return this.service.create({ ...dto, isQuickSale: true });
   }
 
   @Post()

@@ -1,4 +1,4 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+﻿import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
   IsArray,
@@ -67,6 +67,25 @@ export class CreateExaminationDto {
   @IsOptional()
   @IsString()
   treatment?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  bundleId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  bundleName?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  deductStock?: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsArray()
+  treatmentItems?: Array<{ name: string; quantity: number; unit?: string; notes?: string; price?: number }>;
 
   @ApiPropertyOptional({ enum: EXAMINATION_STATUSES, default: 'draft' })
   @IsOptional()

@@ -70,6 +70,14 @@ export class GymRecordDto {
 
   @IsOptional()
   @IsString()
+  note?: string;
+
+  @IsOptional()
+  @IsString()
+  customerName?: string;
+
+  @IsOptional()
+  @IsString()
   userId?: string;
 
   @IsOptional()
