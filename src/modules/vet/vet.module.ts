@@ -13,6 +13,8 @@ import { ConsentsModule } from './consents/consents.module';
 import { CrmModule } from './crm/crm.module';
 import { PetHotelModule } from './pet-hotel/pet-hotel.module';
 import { GroomingModule } from './grooming/grooming.module';
+import { VetReportsModule } from './reports/reports.module';
+import { VetAiModule } from './ai/ai.module';
 
 @Module({
   imports: [
@@ -30,6 +32,8 @@ import { GroomingModule } from './grooming/grooming.module';
     PetHotelModule,
     GroomingModule,
     BranchesModule,
+    VetReportsModule,
+    VetAiModule,
   ],
 })
 export class VetModule {}
