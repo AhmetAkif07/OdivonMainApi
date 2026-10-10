@@ -17,6 +17,7 @@ import {
 import { ProductModule } from '../../shared/authorization/constants';
 import { effectiveSubscription, TenantBillingState } from '../payments/saas-billing';
 import { RolesService } from './roles/roles.service';
+import { MailService } from '../../shared/mail/mail.service';
 
 const SAAS_TRIAL_DAYS = 14;
 
@@ -30,6 +31,7 @@ export class IdentityService {
     private readonly users: IdentityRepository,
     private readonly tenantContext: TenantContext,
     private readonly roles: RolesService,
+    private readonly mail: MailService,
   ) {}
 
   async register(dto: RegisterDto) {
@@ -88,6 +90,20 @@ export class IdentityService {
         role: 'owner',
         modules,
       });
+
+      if (modules.includes('gym')) {
+        this.mail
+          .sendWelcomeGymOwner({
+            to: dto.email,
+            displayName: dto.displayName,
+            tenantName: dto.tenantName,
+          })
+          ?.catch((err) => {
+            this.logger.error(
+              `Hoş geldin maili gönderilemedi (${dto.email}): ${err?.message || err}`,
+            );
+          });
+      }
 
       return {
         uid,

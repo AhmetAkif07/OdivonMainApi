@@ -1,4 +1,4 @@
-import { IdentityService } from './identity.service';
+﻿import { IdentityService } from './identity.service';
 import { ErrorCode } from '../../shared/errors/error-codes';
 import { AppException } from '../../shared/errors/app.exception';
 
@@ -25,9 +25,12 @@ describe('IdentityService.register', () => {
   const tenantContext = {
     getStore: jest.fn(),
   };
+  
   const roles = {
-    assertRolesExist: jest.fn(),
+    assertRolesExist: jest.fn().mockResolvedValue([]),
+    resolvePermissions: jest.fn().mockResolvedValue([]),
   };
+  const mail = { sendWelcomeGymOwner: jest.fn().mockResolvedValue(true) };
 
   let service: IdentityService;
 
@@ -39,6 +42,7 @@ describe('IdentityService.register', () => {
       users as never,
       tenantContext as never,
       roles as never,
+      mail as never,
     );
   });
 
@@ -87,7 +91,7 @@ describe('IdentityService.register', () => {
     expect(tenants.create).toHaveBeenCalledWith(
       expect.objectContaining({
         modules: ['gym'],
-        onboardingCompleted: false,
+        onboardingCompleted: true,
         membershipStatus: 'trial',
       }),
     );
@@ -152,13 +156,7 @@ describe('IdentityService.me', () => {
     const tenantContext = {
       getStore: jest.fn().mockReturnValue({ userId: 'u1', tenantId: 't1' }),
     };
-    const service = new IdentityService(
-      firebase as never,
-      tenants as never,
-      users as never,
-      tenantContext as never,
-      {} as never,
-    );
+    const service = new IdentityService(firebase as never, tenants as never, users as never, tenantContext as never, {} as never, {} as never);
 
     await expect(service.me()).resolves.toMatchObject({
       uid: 'u1',
@@ -184,7 +182,7 @@ describe('IdentityService.me', () => {
           name: 'Gym',
           status: 'active',
           membershipStatus: 'trial',
-          trialEndsAt: '2026-10-01T00:00:00.000Z',
+          trialEndsAt: '2029-10-01T00:00:00.000Z',
           onboardingCompleted: false,
         }),
       } as never,
@@ -198,6 +196,7 @@ describe('IdentityService.me', () => {
         }),
       } as never,
       { getStore: jest.fn().mockReturnValue({ userId: 'u3', tenantId: 'g1' }) } as never,
+      {} as never,
       {} as never,
     );
 
@@ -230,6 +229,7 @@ describe('IdentityService.me', () => {
         }),
       } as never,
       {} as never,
+      {} as never,
     );
 
     await expect(service.me()).resolves.toMatchObject({
@@ -245,6 +245,7 @@ describe('IdentityService.me', () => {
       { getById: jest.fn() } as never,
       { findByUid: jest.fn().mockResolvedValue(null) } as never,
       { getStore: jest.fn().mockReturnValue({ userId: 'u1' }) } as never,
+      {} as never,
       {} as never,
     );
     await expect(service.me()).rejects.toMatchObject({ code: ErrorCode.USER_NOT_FOUND });
@@ -272,9 +273,12 @@ describe('IdentityService user management', () => {
     getStore: jest.fn(),
     getTenantId: jest.fn(),
   };
+  
   const roles = {
-    assertRolesExist: jest.fn(),
+    assertRolesExist: jest.fn().mockResolvedValue([]),
+    resolvePermissions: jest.fn().mockResolvedValue([]),
   };
+  const mail = { sendWelcomeGymOwner: jest.fn().mockResolvedValue(true) };
 
   let service: IdentityService;
 
@@ -288,6 +292,7 @@ describe('IdentityService user management', () => {
       users as never,
       tenantContext as never,
       roles as never,
+      mail as never,
     );
   });
 

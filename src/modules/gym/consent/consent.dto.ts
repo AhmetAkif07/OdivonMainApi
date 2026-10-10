@@ -1,4 +1,4 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+﻿import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
   IsArray,
@@ -14,6 +14,7 @@ export const CONSENT_TYPES = [
   'commercial_communication',
   'health_biometric',
   'camera_cctv',
+  'cookie_policy',
 ] as const;
 
 export type ConsentType = (typeof CONSENT_TYPES)[number];

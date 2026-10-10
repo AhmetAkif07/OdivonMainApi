@@ -190,6 +190,7 @@ export class GymConsentService {
         consentedAt: member.healthConsentAt ?? undefined,
       },
       camera_cctv: { status: 'none' },
+      cookie_policy: { status: 'none' },
     };
 
     for (const log of memberLogs) {
