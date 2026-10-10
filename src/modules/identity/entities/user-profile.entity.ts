@@ -13,6 +13,9 @@ export interface UserProfile {
   accountType?: AccountType;
   modules: ProductModule[];
   email: string;
+  emailVerified?: boolean;
+  emailVerificationToken?: string | null;
+  emailVerificationExpiresAt?: string | null;
   displayName?: string | null;
   roleIds?: string[];
   status: UserStatus;

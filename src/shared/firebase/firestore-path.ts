@@ -38,6 +38,7 @@ export const TENANT_COLLECTION = {
   clinicParameters: 'clinicParameters',
   vetBranches: 'vetBranches',
   gymInfo: 'gymInfo',
+  gymMailTemplate: 'gymMailTemplate',
   gymBranches: 'gymBranches',
   gymStaff: 'gymStaff',
   gymPackages: 'gymPackages',

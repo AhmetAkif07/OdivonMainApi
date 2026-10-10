@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { MailModule } from '../../shared/mail/mail.module';
 import { IdentityModule } from '../identity/identity.module';
 import { TenantModule } from '../tenant/tenant.module';
 import { SpaAppointmentsController } from './appointments/spa-appointments.controller';
@@ -39,7 +40,7 @@ import { SpaStaffService } from './staff/spa-staff.service';
 
 /** Spa & wellness product module — replaces the SPA client's direct Firestore access. */
 @Module({
-  imports: [IdentityModule, TenantModule],
+  imports: [IdentityModule, TenantModule, MailModule],
   controllers: [
     SpaCoreController,
     SpaOnboardingController,

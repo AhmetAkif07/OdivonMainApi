@@ -1,3 +1,4 @@
+import * as crypto from 'crypto';
 import { Injectable, Logger } from '@nestjs/common';
 import { AppException } from '../../shared/errors/app.exception';
 import { ErrorCode } from '../../shared/errors/error-codes';
@@ -18,6 +19,7 @@ import { ProductModule } from '../../shared/authorization/constants';
 import { effectiveSubscription, TenantBillingState } from '../payments/saas-billing';
 import { RolesService } from './roles/roles.service';
 import { MailService } from '../../shared/mail/mail.service';
+import { WelcomeModule } from '../../shared/mail/welcome-templates';
 
 const SAAS_TRIAL_DAYS = 14;
 
@@ -63,12 +65,18 @@ export class IdentityService {
       });
       tenantId = createdTenant.id;
 
+            const verificationToken = crypto.randomBytes(32).toString('hex');
+      const verificationExpiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString();
+
       const profile: UserProfile = {
         uid,
         tenantId: createdTenant.id,
         role: 'owner',
         modules,
         email: dto.email,
+        emailVerified: false,
+        emailVerificationToken: verificationToken,
+        emailVerificationExpiresAt: verificationExpiresAt,
         displayName: dto.displayName?.trim() || null,
         phone: dto.phone?.trim() || null,
         status: 'active',
@@ -103,6 +111,20 @@ export class IdentityService {
               `Hoş geldin maili gönderilemedi (${dto.email}): ${err?.message || err}`,
             );
           });
+      } else {
+        this.mail
+          .sendModuleWelcome({
+            module: productModule as WelcomeModule,
+            to: dto.email,
+            displayName: dto.displayName,
+            tenantName: dto.tenantName,
+            trialDays: SAAS_TRIAL_DAYS,
+          })
+          ?.catch((err) => {
+            this.logger.error(
+              `Hoş geldin maili gönderilemedi (${dto.email}): ${err?.message || err}`,
+            );
+          });
       }
 
       return {
@@ -119,6 +141,89 @@ export class IdentityService {
       }
       throw mapFirebaseUserError(error, this.logger, 'Registration failed');
     }
+  }
+
+  async verifyEmail(token: string) {
+    const profile = await this.users.findByVerificationToken(token);
+    if (!profile) {
+      throw new AppException(
+        ErrorCode.VERIFICATION_TOKEN_INVALID,
+        'Geçersiz veya bulunamayan e-posta doğrulama bağlantısı.',
+      );
+    }
+
+    if (
+      profile.emailVerificationExpiresAt &&
+      new Date(profile.emailVerificationExpiresAt).getTime() < Date.now()
+    ) {
+      throw new AppException(
+        ErrorCode.VERIFICATION_TOKEN_EXPIRED,
+        'Doğrulama bağlantısının süresi dolmuş. Lütfen yeni bir bağlantı isteyin.',
+      );
+    }
+
+    try {
+      await this.firebase.auth.updateUser(profile.uid, { emailVerified: true });
+    } catch (err) {
+      this.logger.error(`Firebase Auth emailVerified güncellenemedi (${profile.uid})`, err);
+    }
+
+    const nowIso = new Date().toISOString();
+    await this.users.updateProfile(profile.uid, {
+      emailVerified: true,
+      emailVerificationToken: null,
+      emailVerificationExpiresAt: null,
+      updatedAt: nowIso,
+    });
+
+    if (profile.modules.includes('gym')) {
+      const tenant = await this.tenants.getById(profile.tenantId).catch(() => null);
+      this.mail
+        .sendWelcomeGymOwner({
+          to: profile.email,
+          displayName: profile.displayName,
+          tenantName: tenant?.name || 'Spor Salonu',
+        })
+        ?.catch((err) => {
+          this.logger.error(`Hoş geldin maili gönderilemedi (${profile.email}): ${err?.message || err}`);
+        });
+    }
+
+    return { success: true, email: profile.email };
+  }
+
+  async resendVerification(email: string) {
+    const normalizedEmail = email.trim().toLowerCase();
+    const profile = await this.users.findByEmail(normalizedEmail);
+    if (!profile || profile.emailVerified) {
+      return { success: true };
+    }
+
+    const verificationToken = crypto.randomBytes(32).toString('hex');
+    const verificationExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+
+    await this.users.updateProfile(profile.uid, {
+      emailVerificationToken: verificationToken,
+      emailVerificationExpiresAt: verificationExpiresAt,
+      updatedAt: new Date().toISOString(),
+    });
+
+    const tenant = await this.tenants.getById(profile.tenantId).catch(() => null);
+    const appUrl = process.env.APP_URL || 'https://odivongym.app';
+    const verificationLink = `${appUrl}/auth/verify-email?token=${verificationToken}`;
+
+    this.mail
+      .sendVerificationEmail({
+        to: profile.email,
+        displayName: profile.displayName,
+        tenantName: tenant?.name || 'Spor Salonu',
+        verificationLink,
+      })
+      ?.catch((err) => {
+        this.logger.error(`Doğrulama maili tekrar gönderilemedi (${profile.email}): ${err?.message || err}`);
+      });
+
+    return { success: true };
   }
 
   async me() {

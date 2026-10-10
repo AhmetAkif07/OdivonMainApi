@@ -1,3 +1,7 @@
+import { Logger } from '@nestjs/common';
+import { MailService } from '../../../shared/mail/mail.service';
+import { TenantService } from '../../tenant/tenant.service';
+import { GymMailTemplateService } from '../mail-template/gym-mail-template.service';
 import { Injectable } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import { paginateInMemory } from '../../../shared/http/paginate-memory';

@@ -30,7 +30,11 @@ describe('IdentityService.register', () => {
     assertRolesExist: jest.fn().mockResolvedValue([]),
     resolvePermissions: jest.fn().mockResolvedValue([]),
   };
-  const mail = { sendWelcomeGymOwner: jest.fn().mockResolvedValue(true) };
+  const mail = {
+    sendWelcomeGymOwner: jest.fn().mockResolvedValue(true),
+    sendModuleWelcome: jest.fn().mockResolvedValue(true),
+    sendVerificationEmail: jest.fn().mockResolvedValue(true),
+  };
 
   let service: IdentityService;
 
@@ -102,6 +106,33 @@ describe('IdentityService.register', () => {
     });
   });
 
+  it('sends the module welcome mail without failing the registration when it rejects', async () => {
+    firebase.auth.createUser.mockResolvedValue({ uid: 'uid-3' });
+    tenants.create.mockResolvedValue({ id: 'tenant-3' });
+    users.createProfile.mockResolvedValue({});
+    firebase.auth.setCustomUserClaims.mockResolvedValue(undefined);
+    mail.sendModuleWelcome.mockRejectedValue(new Error('smtp down'));
+
+    const result = await service.register({
+      email: 'spa@example.com',
+      password: 'password1',
+      tenantName: 'Spa',
+      module: 'spa',
+      displayName: 'Owner',
+    });
+
+    expect(result.modules).toEqual(['spa']);
+    expect(mail.sendModuleWelcome).toHaveBeenCalledWith({
+      module: 'spa',
+      to: 'spa@example.com',
+      displayName: 'Owner',
+      tenantName: 'Spa',
+      trialDays: 14,
+    });
+    expect(mail.sendWelcomeGymOwner).not.toHaveBeenCalled();
+    expect(firebase.auth.deleteUser).not.toHaveBeenCalled();
+  });
+
   it('explains missing Firebase Authentication configuration', async () => {
     firebase.auth.createUser.mockRejectedValue({
       code: 'auth/configuration-not-found',
@@ -138,7 +169,66 @@ describe('IdentityService.register', () => {
   });
 });
 
-describe('IdentityService.me', () => {
+
+  describe('IdentityService.verifyEmail', () => {
+  it('verifies user and updates auth + firestore profile', async () => {
+    const firebase = { auth: { updateUser: jest.fn().mockResolvedValue({}) } };
+    const tenants = { getById: jest.fn().mockResolvedValue({ id: 't-1', name: 'Gym 1' }) };
+    const users = {
+      findByVerificationToken: jest.fn().mockResolvedValue({
+        uid: 'uid-1',
+        email: 'test@example.com',
+        tenantId: 't-1',
+        modules: ['gym'],
+        displayName: 'Test',
+        emailVerificationExpiresAt: new Date(Date.now() + 100000).toISOString(),
+      }),
+      updateProfile: jest.fn().mockResolvedValue(undefined),
+    };
+    const tenantContext = { getStore: jest.fn() };
+    const roles = { assertRolesExist: jest.fn(), resolvePermissions: jest.fn() };
+    const mail = { sendWelcomeGymOwner: jest.fn().mockResolvedValue(true) };
+
+    const service = new IdentityService(
+      firebase as never,
+      tenants as never,
+      users as never,
+      tenantContext as never,
+      roles as never,
+      mail as never,
+    );
+
+    const result = await service.verifyEmail('valid-token');
+    expect(result).toEqual({ success: true, email: 'test@example.com' });
+    expect(firebase.auth.updateUser).toHaveBeenCalledWith('uid-1', { emailVerified: true });
+    expect(users.updateProfile).toHaveBeenCalledWith(
+      'uid-1',
+      expect.objectContaining({ emailVerified: true, emailVerificationToken: null })
+    );
+  });
+
+  it('throws VERIFICATION_TOKEN_INVALID for invalid token', async () => {
+    const firebase = { auth: { updateUser: jest.fn() } };
+    const tenants = { getById: jest.fn() };
+    const users = { findByVerificationToken: jest.fn().mockResolvedValue(null) };
+    const tenantContext = { getStore: jest.fn() };
+    const roles = { assertRolesExist: jest.fn() };
+    const mail = {};
+
+    const service = new IdentityService(
+      firebase as never,
+      tenants as never,
+      users as never,
+      tenantContext as never,
+      roles as never,
+      mail as never,
+    );
+
+    await expect(service.verifyEmail('invalid-token')).rejects.toThrow(AppException);
+  });
+});
+
+  describe('IdentityService.me', () => {
   it('uses Firestore profile plus tenant summary, not claims alone', async () => {
     const firebase = { auth: {} };
     const tenants = {

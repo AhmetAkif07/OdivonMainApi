@@ -8,6 +8,7 @@ import { ClientThrottlerGuard } from '../../shared/http/client-throttler.guard';
 import { TenantGuard } from '../../shared/tenancy/tenant.guard';
 import { RegisterDto } from './dto/register.dto';
 import { CreateUserDto, UpdateMeDto, UpdateUserDto } from './dto/user.dto';
+import { VerifyEmailDto, ResendVerificationDto } from './dto/verify-email.dto';
 import { IdentityService } from './identity.service';
 
 /** Rate-limits registration per client IP, also outside production where the global guard is off. */

@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { MailModule } from '../../shared/mail/mail.module';
 import { IdentityModule } from '../identity/identity.module';
 import { TenantModule } from '../tenant/tenant.module';
 import { HairAppointmentsController } from './appointments/hair-appointments.controller';
@@ -51,7 +52,7 @@ import { HairWaitlistService } from './waitlist/hair-waitlist.service';
 
 /** Hair salon product module (plan docs/odivonprohair-master-plan.md). */
 @Module({
-  imports: [IdentityModule, TenantModule],
+  imports: [IdentityModule, TenantModule, MailModule],
   controllers: [
     HairCoreController,
     HairOnboardingController,

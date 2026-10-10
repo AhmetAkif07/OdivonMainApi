@@ -1,3 +1,4 @@
+import { GymMailTemplateModule } from './mail-template/gym-mail-template.module';
 import { Module } from '@nestjs/common';
 import { GymAuditModule } from './audit/gym-audit.module';
 import { GymBranchesModule } from './branches/branches.module';
@@ -29,6 +30,7 @@ import { GymStaffModule } from './staff/staff.module';
     GymLeadsModule,
     GymReportsModule,
     GymConsentModule,
+    GymMailTemplateModule,
   ],
   controllers: [GymController],
 })
