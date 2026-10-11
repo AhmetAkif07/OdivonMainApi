@@ -12,6 +12,9 @@ export interface TenantStore {
   modules: ProductModule[];
   email: string;
   accountType?: 'gym_member' | 'staff';
+  roleIds?: string[];
+  displayName?: string | null;
+  phone?: string | null;
   permissions?: PermissionMap;
 }
 

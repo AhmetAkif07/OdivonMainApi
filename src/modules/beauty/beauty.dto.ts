@@ -1,5 +1,18 @@
 import { Type } from 'class-transformer';
-import { IsArray, IsBoolean, IsIn, IsInt, IsISO8601, IsNumber, IsObject, IsOptional, IsString, Max, Min, ValidateNested } from 'class-validator';
+import {
+  IsArray,
+  IsBoolean,
+  IsIn,
+  IsInt,
+  IsISO8601,
+  IsNumber,
+  IsObject,
+  IsOptional,
+  IsString,
+  Max,
+  Min,
+  ValidateNested,
+} from 'class-validator';
 
 export class BeautyListQueryDto {
   @IsOptional() @IsString() branchId?: string;
@@ -43,7 +56,16 @@ export class BeautyAvailabilityDto {
 }
 
 export class BeautyAppointmentStatusDto {
-  @IsIn(['pending', 'confirmed', 'checked-in', 'in-progress', 'completed', 'cancelled', 'no-show', 'rescheduled'])
+  @IsIn([
+    'pending',
+    'confirmed',
+    'checked-in',
+    'in-progress',
+    'completed',
+    'cancelled',
+    'no-show',
+    'rescheduled',
+  ])
   status!: string;
   @IsOptional() @IsString() reason?: string;
 }
@@ -63,7 +85,10 @@ export class CompleteBeautySessionDto {
   @IsInt() @Min(1) durationMin!: number;
   @IsOptional() @IsString() reaction?: string;
   @IsOptional() @IsString() notes?: string;
-  @IsArray() @ValidateNested({ each: true }) @Type(() => ConsumedProductDto) products: ConsumedProductDto[] = [];
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ConsumedProductDto)
+  products: ConsumedProductDto[] = [];
   @IsOptional() @IsString() idempotencyKey?: string;
 }
 
@@ -98,4 +123,8 @@ export class BeautyOnboardingDto {
   @IsString() businessName!: string;
   @IsString() branchName!: string;
   @IsOptional() @IsString() timezone = 'Europe/Istanbul';
+}
+
+export class BeautyMobileConnectDto {
+  @IsString() centerCode!: string;
 }

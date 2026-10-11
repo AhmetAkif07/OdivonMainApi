@@ -1,12 +1,27 @@
-import { Body, Controller, Delete, Get, Headers, Ip, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Headers,
+  Ip,
+  Param,
+  Patch,
+  Post,
+  Query,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Request } from 'express';
+import { FirebaseAuthGuard, getDecodedToken } from '../../shared/auth/firebase-auth.guard';
 import { RequireModule } from '../../shared/authorization/module.decorator';
 import {
   BeautyAppointmentDto,
   BeautyAppointmentStatusDto,
   BeautyAvailabilityDto,
   BeautyListQueryDto,
+  BeautyMobileConnectDto,
   BeautyOnboardingDto,
   BeautyPaymentDto,
   BeautyRecommendationDto,
@@ -15,11 +30,25 @@ import {
   CompleteBeautySessionDto,
 } from './beauty.dto';
 import { BeautyService } from './beauty.service';
+import { BeautyMobileAccessService } from './beauty-mobile-access.service';
 import { BeautyGuards } from './shared/beauty-guards';
 import { AuditMeta } from './shared/beauty-store';
 
 function auditMeta(request: Request, ip: string, userAgent?: string): AuditMeta {
   return { ip, userAgent: userAgent ?? '', requestId: request.header('x-request-id') ?? '' };
+}
+
+@ApiTags('beauty-mobile-access')
+@ApiBearerAuth()
+@UseGuards(FirebaseAuthGuard)
+@Controller('beauty/mobile')
+export class BeautyMobileAccessController {
+  constructor(private readonly access: BeautyMobileAccessService) {}
+
+  @Post('connect')
+  connect(@Body() dto: BeautyMobileConnectDto, @Req() request: Request) {
+    return this.access.connectCustomer(dto.centerCode, getDecodedToken(request));
+  }
 }
 
 @ApiTags('beauty-onboarding')
@@ -31,12 +60,19 @@ export class BeautyCoreController {
   constructor(private readonly beauty: BeautyService) {}
 
   @Post('onboarding')
-  onboard(@Body() dto: BeautyOnboardingDto, @Req() req: Request, @Ip() ip: string, @Headers('user-agent') ua?: string) {
+  onboard(
+    @Body() dto: BeautyOnboardingDto,
+    @Req() req: Request,
+    @Ip() ip: string,
+    @Headers('user-agent') ua?: string,
+  ) {
     return this.beauty.onboard(dto, auditMeta(req, ip, ua));
   }
 
   @Get('me')
-  me(@Req() request: Request & { currentUser?: unknown }) { return request.currentUser; }
+  me() {
+    return this.beauty.me();
+  }
 }
 
 @ApiTags('beauty-appointments')
@@ -49,30 +85,59 @@ export class BeautyAppointmentsController {
 
   @Post('check-availability')
   @ApiOperation({ summary: 'Checks staff, room, device and customer overlap' })
-  check(@Body() dto: BeautyAvailabilityDto) { return this.beauty.checkAvailability(dto); }
+  check(@Body() dto: BeautyAvailabilityDto) {
+    return this.beauty.checkAvailability(dto);
+  }
 
   @Post()
-  create(@Body() dto: BeautyAppointmentDto, @Req() req: Request, @Ip() ip: string, @Headers('user-agent') ua?: string) {
+  create(
+    @Body() dto: BeautyAppointmentDto,
+    @Req() req: Request,
+    @Ip() ip: string,
+    @Headers('user-agent') ua?: string,
+  ) {
     return this.beauty.createAppointment(dto, auditMeta(req, ip, ua));
   }
 
   @Patch(':id/status')
-  status(@Param('id') id: string, @Body() dto: BeautyAppointmentStatusDto, @Req() req: Request, @Ip() ip: string, @Headers('user-agent') ua?: string) {
+  status(
+    @Param('id') id: string,
+    @Body() dto: BeautyAppointmentStatusDto,
+    @Req() req: Request,
+    @Ip() ip: string,
+    @Headers('user-agent') ua?: string,
+  ) {
     return this.beauty.setAppointmentStatus(id, dto.status, dto.reason, auditMeta(req, ip, ua));
   }
 
   @Post(':id/complete')
-  complete(@Param('id') id: string, @Body() dto: CompleteBeautySessionDto, @Req() req: Request, @Ip() ip: string, @Headers('user-agent') ua?: string) {
+  complete(
+    @Param('id') id: string,
+    @Body() dto: CompleteBeautySessionDto,
+    @Req() req: Request,
+    @Ip() ip: string,
+    @Headers('user-agent') ua?: string,
+  ) {
     return this.beauty.completeAppointment(id, dto, auditMeta(req, ip, ua));
   }
 
   @Post(':id/check-in')
-  checkIn(@Param('id') id: string, @Req() req: Request, @Ip() ip: string, @Headers('user-agent') ua?: string) {
+  checkIn(
+    @Param('id') id: string,
+    @Req() req: Request,
+    @Ip() ip: string,
+    @Headers('user-agent') ua?: string,
+  ) {
     return this.beauty.setAppointmentStatus(id, 'checked-in', undefined, auditMeta(req, ip, ua));
   }
 
   @Post(':id/reschedule')
-  reschedule(@Param('id') id: string, @Req() req: Request, @Ip() ip: string, @Headers('user-agent') ua?: string) {
+  reschedule(
+    @Param('id') id: string,
+    @Req() req: Request,
+    @Ip() ip: string,
+    @Headers('user-agent') ua?: string,
+  ) {
     return this.beauty.setAppointmentStatus(id, 'rescheduled', undefined, auditMeta(req, ip, ua));
   }
 }
@@ -85,11 +150,22 @@ export class BeautyAppointmentsController {
 export class BeautyPaymentsController {
   constructor(private readonly beauty: BeautyService) {}
   @Post()
-  create(@Body() dto: BeautyPaymentDto, @Req() req: Request, @Ip() ip: string, @Headers('user-agent') ua?: string) {
+  create(
+    @Body() dto: BeautyPaymentDto,
+    @Req() req: Request,
+    @Ip() ip: string,
+    @Headers('user-agent') ua?: string,
+  ) {
     return this.beauty.createPayment(dto, auditMeta(req, ip, ua));
   }
   @Post(':id/refund')
-  refund(@Param('id') id: string, @Body() dto: BeautyRefundDto, @Req() req: Request, @Ip() ip: string, @Headers('user-agent') ua?: string) {
+  refund(
+    @Param('id') id: string,
+    @Body() dto: BeautyRefundDto,
+    @Req() req: Request,
+    @Ip() ip: string,
+    @Headers('user-agent') ua?: string,
+  ) {
     return this.beauty.refundPayment(id, dto, auditMeta(req, ip, ua));
   }
 }
@@ -101,7 +177,9 @@ export class BeautyPaymentsController {
 @Controller('beauty/reports')
 export class BeautyReportsController {
   constructor(private readonly beauty: BeautyService) {}
-  @Get('dashboard') dashboard(@Query('branchId') branchId?: string) { return this.beauty.dashboard(branchId); }
+  @Get('dashboard') dashboard(@Query('branchId') branchId?: string) {
+    return this.beauty.dashboard(branchId);
+  }
   @Get(':type') report(@Param('type') type: string, @Query() query: BeautyListQueryDto) {
     return { type, query, status: 'ready', generatedAt: new Date().toISOString() };
   }
@@ -114,7 +192,9 @@ export class BeautyReportsController {
 @Controller('beauty/recommendations')
 export class BeautyRecommendationsController {
   constructor(private readonly beauty: BeautyService) {}
-  @Post('preview') preview(@Body() dto: BeautyRecommendationDto) { return this.beauty.recommendation(dto); }
+  @Post('preview') preview(@Body() dto: BeautyRecommendationDto) {
+    return this.beauty.recommendation(dto);
+  }
 }
 
 @ApiTags('beauty-resources')
@@ -126,19 +206,42 @@ export class BeautyResourcesController {
   constructor(private readonly beauty: BeautyService) {}
 
   @Get(':resource')
-  list(@Param('resource') resource: string, @Query() query: BeautyListQueryDto) { return this.beauty.list(resource, query); }
+  list(@Param('resource') resource: string, @Query() query: BeautyListQueryDto) {
+    return this.beauty.list(resource, query);
+  }
   @Get(':resource/:id')
-  get(@Param('resource') resource: string, @Param('id') id: string) { return this.beauty.get(resource, id); }
+  get(@Param('resource') resource: string, @Param('id') id: string) {
+    return this.beauty.get(resource, id);
+  }
   @Post(':resource')
-  create(@Param('resource') resource: string, @Body() dto: BeautyRecordDto, @Req() req: Request, @Ip() ip: string, @Headers('user-agent') ua?: string) {
+  create(
+    @Param('resource') resource: string,
+    @Body() dto: BeautyRecordDto,
+    @Req() req: Request,
+    @Ip() ip: string,
+    @Headers('user-agent') ua?: string,
+  ) {
     return this.beauty.create(resource, dto, auditMeta(req, ip, ua));
   }
   @Patch(':resource/:id')
-  update(@Param('resource') resource: string, @Param('id') id: string, @Body() dto: BeautyRecordDto, @Req() req: Request, @Ip() ip: string, @Headers('user-agent') ua?: string) {
+  update(
+    @Param('resource') resource: string,
+    @Param('id') id: string,
+    @Body() dto: BeautyRecordDto,
+    @Req() req: Request,
+    @Ip() ip: string,
+    @Headers('user-agent') ua?: string,
+  ) {
     return this.beauty.update(resource, id, dto, auditMeta(req, ip, ua));
   }
   @Delete(':resource/:id')
-  remove(@Param('resource') resource: string, @Param('id') id: string, @Req() req: Request, @Ip() ip: string, @Headers('user-agent') ua?: string) {
+  remove(
+    @Param('resource') resource: string,
+    @Param('id') id: string,
+    @Req() req: Request,
+    @Ip() ip: string,
+    @Headers('user-agent') ua?: string,
+  ) {
     return this.beauty.remove(resource, id, auditMeta(req, ip, ua));
   }
 }

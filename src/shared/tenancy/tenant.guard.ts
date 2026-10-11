@@ -10,7 +10,11 @@ import {
 import { AppException } from '../errors/app.exception';
 import { ErrorCode } from '../errors/error-codes';
 import { FirebaseService } from '../firebase/firebase.service';
-import { ROOT_COLLECTION, TENANT_COLLECTION, tenantCollectionPath } from '../firebase/firestore-path';
+import {
+  ROOT_COLLECTION,
+  TENANT_COLLECTION,
+  tenantCollectionPath,
+} from '../firebase/firestore-path';
 import { TenantContext, TenantStore, RequestWithTenant } from './tenant.context';
 import { getDecodedToken } from '../auth/firebase-auth.guard';
 
@@ -22,6 +26,8 @@ interface UserProfileDoc {
   status: string;
   roleIds?: string[];
   accountType?: 'gym_member' | 'staff';
+  displayName?: string | null;
+  phone?: string | null;
 }
 
 interface RoleDoc {
@@ -39,7 +45,10 @@ export class TenantGuard implements CanActivate {
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<Request & RequestWithTenant>();
     const decoded = getDecodedToken(request);
-    const snapshot = await this.firebase.db.collection(ROOT_COLLECTION.users).doc(decoded.uid).get();
+    const snapshot = await this.firebase.db
+      .collection(ROOT_COLLECTION.users)
+      .doc(decoded.uid)
+      .get();
     if (!snapshot.exists) {
       throw new AppException(ErrorCode.USER_NOT_FOUND, 'User profile was not found');
     }
@@ -63,6 +72,9 @@ export class TenantGuard implements CanActivate {
       modules: profile.modules ?? [],
       email: profile.email ?? decoded.email ?? '',
       accountType: profile.accountType,
+      roleIds: profile.roleIds ?? [],
+      displayName: profile.displayName ?? null,
+      phone: profile.phone ?? decoded.phone_number ?? null,
       permissions:
         role === 'owner'
           ? fullPermissionMap(profile.modules ?? [])
