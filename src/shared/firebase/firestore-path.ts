@@ -31,6 +31,10 @@ export const TENANT_COLLECTION = {
   cashMovements: 'cashMovements',
   stockMovements: 'stockMovements',
   demands: 'demands',
+  approvalWorkflows: 'approvalWorkflows',
+  approvalRequests: 'approvalRequests',
+  rfqs: 'rfqs',
+  purchaseOrders: 'purchaseOrders',
   roles: 'roles',
   agenda: 'agenda',
   labDocuments: 'labDocuments',
@@ -201,3 +205,4 @@ export function tenantCollectionPath(tenantId: string, collection: string): stri
   }
   return `tenants/${tenantId}/${collection}`;
 }
+

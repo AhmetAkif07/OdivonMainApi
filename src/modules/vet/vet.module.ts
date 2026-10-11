@@ -1,3 +1,4 @@
+import { PurchasingModule } from './purchasing/purchasing.module';
 import { BranchesModule } from './branches/branches.module';
 ﻿import { Module } from '@nestjs/common';
 import { AppointmentsModule } from './appointments/appointments.module';
@@ -34,6 +35,7 @@ import { VetAiModule } from './ai/ai.module';
     BranchesModule,
     VetReportsModule,
     VetAiModule,
+    PurchasingModule,
   ],
 })
 export class VetModule {}
