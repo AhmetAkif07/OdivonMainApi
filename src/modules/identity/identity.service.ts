@@ -99,6 +99,22 @@ export class IdentityService {
         modules,
       });
 
+            const appUrl = process.env.APP_URL || 'https://odivongym.app';
+      const verificationLink = `${appUrl}/auth/verify-email?token=${verificationToken}`;
+
+      this.mail
+        .sendVerificationEmail({
+          to: dto.email,
+          displayName: dto.displayName,
+          tenantName: dto.tenantName,
+          verificationLink,
+        })
+        ?.catch((err) => {
+          this.logger.error(
+            `Doğrulama maili gönderilemedi (${dto.email}): ${err?.message || err}`,
+          );
+        });
+
       if (modules.includes('gym')) {
         this.mail
           .sendWelcomeGymOwner({

@@ -1,6 +1,6 @@
+import { GymInfoService } from '../info/gym-info.service';
 import { Logger } from '@nestjs/common';
 import { MailService } from '../../../shared/mail/mail.service';
-import { TenantService } from '../../tenant/tenant.service';
 import { GymMailTemplateService } from '../mail-template/gym-mail-template.service';
 import { Injectable } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
@@ -20,6 +20,8 @@ import { MembersRepository } from './members.repository';
 
 @Injectable()
 export class MembersService {
+  private readonly logger = new Logger(MembersService.name);
+
   constructor(
     private readonly members: MembersRepository,
     private readonly accessSync: AccessSyncService,
@@ -39,6 +41,11 @@ export class MembersService {
     }
     const created = await this.members.create(dto);
     const member = sale && receivables ? await receivables.openingSale(created, sale) : created;
+
+    if (member?.email) {
+      this.sendMemberWelcomeSafely(member, dto.password);
+    }
+
     return this.synced(member);
   }
 
@@ -111,6 +118,37 @@ export class MembersService {
   private async synced<T extends GymMember>(member: T): Promise<T> {
     await this.accessSync.syncMemberSafely(member);
     return member;
+  }
+
+  private async sendMemberWelcomeSafely(member: GymMember, rawPassword?: string) {
+    try {
+      if (!member?.email) return;
+
+      const gymInfoService = this.moduleRef.get(GymInfoService, { strict: false });
+      const mailTemplateService = this.moduleRef.get(GymMailTemplateService, { strict: false });
+      const mailService = this.moduleRef.get(MailService, { strict: false });
+
+      const gymInfo = await gymInfoService?.get().catch(() => null);
+      const tenantName = gymInfo?.businessName || 'Spor Salonu';
+      const template = await mailTemplateService?.getTemplate().catch(() => null);
+
+      if (template && !template.enabled) {
+        return;
+      }
+
+      await mailService?.sendMemberWelcomeEmail({
+        to: member.email,
+        displayName: member.displayName || 'Değerli Üyemiz',
+        tenantName,
+        password: rawPassword,
+        memberNumber: member.memberNumber || member.id,
+        template,
+      });
+    } catch (err: any) {
+      this.logger.error(
+        `Yeni üye karşılama e-postası gönderilemedi (${member?.email}): ${err?.message || err}`,
+      );
+    }
   }
 }
 
