@@ -28,6 +28,20 @@ export class IdentityController {
     return this.identity.register(dto);
   }
 
+  @Post('verify-email')
+  @ApiOperation({ summary: 'Verify email address with token' })
+  verifyEmail(@Body() dto: VerifyEmailDto) {
+    return this.identity.verifyEmail(dto.token);
+  }
+
+  @Post('resend-verification')
+  @UseGuards(RegisterThrottlerGuard)
+  @Throttle({ default: { limit: 5, ttl: 900_000 } })
+  @ApiOperation({ summary: 'Resend email verification link' })
+  resendVerification(@Body() dto: ResendVerificationDto) {
+    return this.identity.resendVerification(dto.email);
+  }
+
   @Get('me')
   @UseGuards(FirebaseAuthGuard, TenantGuard)
   @ApiBearerAuth()
