@@ -55,7 +55,7 @@ SMTP_SECURE=true
 SMTP_USER=info@odivon.com
 SMTP_PASS=BURAYA_HOSTINGER_EPOSTA_SIFRENIZI_YAZIN
 SMTP_FROM="OdivonGYM" <info@odivon.com>
-APP_URL=https://odivongym.app
+APP_URL=https://gym.odivon.com
 ```
 
 > [!WARNING]

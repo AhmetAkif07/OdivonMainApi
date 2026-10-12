@@ -29,7 +29,7 @@ describe('GymMailTemplateService', () => {
       customMessage: 'Özel mesaj',
       includeCredentials: true,
       includeQrCodeInfo: true,
-      mobileAppUrl: 'https://odivongym.app',
+      mobileAppUrl: 'https://gym.odivon.com',
     };
     repo.save.mockResolvedValue({ ...patch, updatedAt: new Date().toISOString() });
     const result = await service.updateTemplate(patch);

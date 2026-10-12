@@ -98,7 +98,7 @@ export class IdentityService {
         modules,
       });
 
-            const appUrl = process.env.APP_URL || 'https://odivongym.app';
+      const appUrl = process.env.APP_URL || 'https://gym.odivon.com';
       const verificationLink = `${appUrl}/auth/verify-email?token=${verificationToken}`;
 
       this.mail
@@ -224,7 +224,7 @@ export class IdentityService {
     });
 
     const tenant = await this.tenants.getById(profile.tenantId).catch(() => null);
-    const appUrl = process.env.APP_URL || 'https://odivongym.app';
+    const appUrl = process.env.APP_URL || 'https://gym.odivon.com';
     const verificationLink = `${appUrl}/auth/verify-email?token=${verificationToken}`;
 
     let sent = false;

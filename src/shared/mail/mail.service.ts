@@ -147,7 +147,7 @@ export class MailService {
     }
 
     const from = process.env.SMTP_FROM || '"OdivonGYM" <info@odivon.com>';
-    const appUrl = process.env.APP_URL || 'https://odivongym.app';
+    const appUrl = process.env.APP_URL || 'https://gym.odivon.com';
     const loginUrl = `${appUrl}/auth/login`;
     const recipientName = input.displayName?.trim() || 'Salon Yöneticisi';
     const tenantName = input.tenantName.trim();
@@ -489,7 +489,7 @@ export class MailService {
     }
 
     const from = process.env.SMTP_FROM || '"OdivonGYM" <info@odivon.com>';
-    const appUrl = input.template?.mobileAppUrl?.trim() || process.env.APP_URL || 'https://odivongym.app';
+    const appUrl = input.template?.mobileAppUrl?.trim() || process.env.APP_URL || 'https://gym.odivon.com';
     const loginUrl = `${appUrl}/auth/login`;
     const recipientName = input.displayName.trim() || 'Değerli Üyemiz';
     const tenantName = input.tenantName.trim();

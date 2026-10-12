@@ -35,7 +35,7 @@ describe('MailService', () => {
       to: 'owner@example.com',
       displayName: 'Owner',
       tenantName: 'Gym',
-      verificationLink: 'https://odivongym.app/auth/verify-email?token=test',
+      verificationLink: 'https://gym.odivon.com/auth/verify-email?token=test',
     });
 
     expect(sent).toBe(true);
@@ -45,7 +45,7 @@ describe('MailService', () => {
     expect(JSON.parse(options.body)).toEqual(expect.objectContaining({
       to: ['owner@example.com'],
       subject: expect.stringContaining('Doğrulayın'),
-      html: expect.stringContaining('https://odivongym.app/auth/verify-email?token=test'),
+      html: expect.stringContaining('https://gym.odivon.com/auth/verify-email?token=test'),
     }));
   });
 
@@ -57,7 +57,7 @@ describe('MailService', () => {
     const sent = await service.sendVerificationEmail({
       to: 'owner@example.com',
       tenantName: 'Gym',
-      verificationLink: 'https://odivongym.app/auth/verify-email?token=test',
+      verificationLink: 'https://gym.odivon.com/auth/verify-email?token=test',
     });
 
     expect(sent).toBe(false);

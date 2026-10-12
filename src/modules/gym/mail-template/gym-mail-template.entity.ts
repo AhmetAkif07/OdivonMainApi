@@ -18,5 +18,5 @@ export const DEFAULT_MEMBER_MAIL_TEMPLATE: GymMailTemplate = {
     'Salonumuza kaydınız başarıyla tamamlanmıştır. Sağlıklı, dinamik ve hedeflerinize ulaştığınız bir antrenman dönemi dileriz!',
   includeCredentials: true,
   includeQrCodeInfo: true,
-  mobileAppUrl: 'https://odivongym.app',
+  mobileAppUrl: 'https://gym.odivon.com',
 };

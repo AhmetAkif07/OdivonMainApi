@@ -99,7 +99,7 @@ npx wrangler secret put IYZICO_SANDBOX_SECRET_KEY
 For local development, set the same names in `.dev.vars`. If the callback should
 reach a different API host, set `PAYMENT_PUBLIC_BASE_URL` to its HTTPS origin.
 Set `PAYMENT_GYM_RETURN_URL` to the public GYM license page URL when it differs
-from `https://odivongym.web.app/admin/subscription`. The callback returns the
+from `https://gym.odivon.com/admin/subscription`. The callback returns the
 browser to that page with a `paymentSession` query parameter.
 Only the sandbox endpoint `https://sandbox-api.iyzipay.com` is used.
 
