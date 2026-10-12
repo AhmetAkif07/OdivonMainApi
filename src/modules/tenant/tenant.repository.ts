@@ -30,7 +30,7 @@ export class TenantRepository {
       ownerUid: input.ownerUid,
       modules: input.modules,
       status: 'active',
-      onboardingCompleted: input.onboardingCompleted ?? true,
+      onboardingCompleted: input.onboardingCompleted ?? false,
       membershipStatus: input.membershipStatus ?? 'active',
       trialEndsAt: input.trialEndsAt ?? null,
     };

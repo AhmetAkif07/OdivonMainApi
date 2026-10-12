@@ -54,11 +54,12 @@ export class IdentityService {
       const nowIso = now.toISOString();
       const trialEndsAt = new Date(now.getTime() + SAAS_TRIAL_DAYS * 24 * 60 * 60 * 1000).toISOString();
 
+      const isGym = modules.includes('gym');
       const createdTenant = await this.tenants.create({
         name: dto.tenantName,
         ownerUid: uid,
         modules,
-        onboardingCompleted: true,
+        onboardingCompleted: !isGym,
         membershipStatus: 'trial',
         trialEndsAt,
       });
@@ -266,13 +267,13 @@ export class IdentityService {
       roleIds: profile.roleIds ?? [],
       membershipStatus: tenant.membershipStatus ? billing.membershipStatus : (profile.membershipStatus ?? 'active'),
       trialEndsAt: tenant.trialEndsAt ?? profile.trialEndsAt ?? null,
-      onboardingCompleted: tenant.onboardingCompleted ?? true,
+      onboardingCompleted: tenant.onboardingCompleted ?? false,
       permissions: profile.role === 'owner' ? fullPermissionMap(profile.modules ?? []) : (store.permissions ?? {}),
       tenant: {
         id: tenant.id,
         name: tenant.name,
         status: tenant.status,
-        onboardingCompleted: tenant.onboardingCompleted ?? true,
+        onboardingCompleted: tenant.onboardingCompleted ?? false,
         membershipStatus: tenant.membershipStatus ? billing.membershipStatus : 'active',
         trialEndsAt: tenant.trialEndsAt ?? null,
         subscriptionEndsAt: billing.subscriptionEndsAt,

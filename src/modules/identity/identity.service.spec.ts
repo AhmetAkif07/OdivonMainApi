@@ -95,7 +95,7 @@ describe('IdentityService.register', () => {
     expect(tenants.create).toHaveBeenCalledWith(
       expect.objectContaining({
         modules: ['gym'],
-        onboardingCompleted: true,
+        onboardingCompleted: false,
         membershipStatus: 'trial',
       }),
     );
