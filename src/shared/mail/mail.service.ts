@@ -42,11 +42,53 @@ export class MailService {
   private transporter: Transporter | null = null;
 
   constructor() {
-    if (!process.env.SMTP_PASS) {
+    if (!process.env.SMTP_PASS && !this.hostingerApiConfigured()) {
       this.logger.warn(
-        'SMTP_PASS ortam değişkeni (.env) tanımlı değil. E-posta gönderimi pasif durumda.',
+        'SMTP_PASS veya Hostinger Mail API yapılandırması yok. E-posta gönderimi pasif durumda.',
       );
     }
+  }
+
+  private hostingerApiConfigured(): boolean {
+    return Boolean(process.env.HOSTINGER_MAIL_API_TOKEN && process.env.HOSTINGER_MAILBOX_RESOURCE_ID);
+  }
+
+  private async sendMessage(message: {
+    from: string | { name: string; address: string };
+    to: string;
+    subject: string;
+    html: string;
+  }): Promise<{ messageId: string }> {
+    if (this.hostingerApiConfigured()) {
+      const mailboxId = encodeURIComponent(process.env.HOSTINGER_MAILBOX_RESOURCE_ID!);
+      const displayName = typeof message.from === 'string'
+        ? message.from.match(/^\s*"?([^"<]+)"?\s*</)?.[1]?.trim() || 'OdivonGYM'
+        : message.from.name;
+      const response = await fetch(`https://api.mail.hostinger.com/api/v1/mailboxes/${mailboxId}/send`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${process.env.HOSTINGER_MAIL_API_TOKEN}`,
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: JSON.stringify({
+          to: [message.to],
+          displayName,
+          subject: message.subject,
+          html: message.html,
+        }),
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (response.status !== 204) {
+        throw new Error(`Hostinger Mail API HTTP ${response.status}`);
+      }
+      return { messageId: 'Hostinger Mail API accepted' };
+    }
+
+    if (!this.transporter) {
+      throw new Error('SMTP transport unavailable');
+    }
+    return this.transporter.sendMail(message);
   }
 
   // nodemailer is loaded and the transport created on the first send, not at application
@@ -94,11 +136,11 @@ export class MailService {
   }
 
   private async deliverWelcomeGymOwner(input: SendWelcomeGymOwnerInput): Promise<boolean> {
-    if (!this.transporter) {
+    if (!this.transporter && !this.hostingerApiConfigured()) {
       await this.initTransporter();
       if (!this.transporter) {
         this.logger.warn(
-          `Hoş geldin maili gönderilemedi (${input.to}): SMTP_PASS tanımlanmamış.`,
+          `Hoş geldin maili gönderilemedi (${input.to}): e-posta sağlayıcısı yapılandırılmamış.`,
         );
         return false;
       }
@@ -228,7 +270,7 @@ export class MailService {
 `.trim();
 
     try {
-      const info = await this.transporter.sendMail({
+      const info = await this.sendMessage({
         from,
         to: input.to,
         subject,
@@ -251,11 +293,11 @@ export class MailService {
   }
 
   private async deliverModuleWelcome(input: SendModuleWelcomeInput): Promise<boolean> {
-    if (!this.transporter) {
+    if (!this.transporter && !this.hostingerApiConfigured()) {
       await this.initTransporter();
       if (!this.transporter) {
         this.logger.warn(
-          `Hoş geldin maili gönderilemedi (${input.to}): SMTP_PASS tanımlanmamış.`,
+          `Hoş geldin maili gönderilemedi (${input.to}): e-posta sağlayıcısı yapılandırılmamış.`,
         );
         return false;
       }
@@ -266,7 +308,7 @@ export class MailService {
         ...input,
         loginUrl: moduleLoginUrl(input.module),
       });
-      const info = await this.transporter.sendMail({
+      const info = await this.sendMessage({
         from: { name: brand, address: fromAddress() },
         to: input.to,
         subject,
@@ -289,11 +331,11 @@ export class MailService {
   }
 
   private async deliverVerificationEmail(input: SendVerificationEmailInput): Promise<boolean> {
-    if (!this.transporter) {
+    if (!this.transporter && !this.hostingerApiConfigured()) {
       await this.initTransporter();
       if (!this.transporter) {
         this.logger.warn(
-          `Doğrulama maili gönderilemedi (${input.to}): SMTP_PASS tanımlanmamış.`,
+          `Doğrulama maili gönderilemedi (${input.to}): e-posta sağlayıcısı yapılandırılmamış.`,
         );
         return false;
       }
@@ -417,7 +459,7 @@ export class MailService {
 `.trim();
 
     try {
-      const info = await this.transporter.sendMail({
+      const info = await this.sendMessage({
         from,
         to: input.to,
         subject,
@@ -436,11 +478,11 @@ export class MailService {
   }
 
   private async deliverMemberWelcomeEmail(input: SendMemberWelcomeInput): Promise<boolean> {
-    if (!this.transporter) {
+    if (!this.transporter && !this.hostingerApiConfigured()) {
       await this.initTransporter();
       if (!this.transporter) {
         this.logger.warn(
-          `Üye hoş geldin maili gönderilemedi (${input.to}): SMTP_PASS tanımlanmamış.`,
+          `Üye hoş geldin maili gönderilemedi (${input.to}): e-posta sağlayıcısı yapılandırılmamış.`,
         );
         return false;
       }
@@ -631,7 +673,7 @@ export class MailService {
 `.trim();
 
     try {
-      const info = await this.transporter.sendMail({
+      const info = await this.sendMessage({
         from,
         to: input.to,
         subject,
