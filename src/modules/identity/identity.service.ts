@@ -182,6 +182,7 @@ export class IdentityService {
       await this.firebase.auth.updateUser(profile.uid, { emailVerified: true });
     } catch (err) {
       this.logger.error(`Firebase Auth emailVerified güncellenemedi (${profile.uid})`, err);
+      throw new ServiceUnavailableException('E-posta doğrulaması şu anda tamamlanamıyor. Lütfen tekrar deneyin.');
     }
 
     const nowIso = new Date().toISOString();

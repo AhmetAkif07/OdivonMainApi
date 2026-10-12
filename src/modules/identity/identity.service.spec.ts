@@ -293,6 +293,24 @@ describe('IdentityService.resendVerification', () => {
 
     await expect(service.verifyEmail('invalid-token')).rejects.toThrow(AppException);
   });
+
+  it('keeps the verification token when Firebase Auth cannot be updated', async () => {
+    const firebase = { auth: { updateUser: jest.fn().mockRejectedValue(new Error('Firebase unavailable')) } };
+    const users = {
+      findByVerificationToken: jest.fn().mockResolvedValue({
+        uid: 'uid-1',
+        email: 'vet@example.com',
+        tenantId: 't-1',
+        modules: ['vet'],
+        emailVerificationExpiresAt: new Date(Date.now() + 100000).toISOString(),
+      }),
+      updateProfile: jest.fn(),
+    };
+    const service = new IdentityService(firebase as never, {} as never, users as never, {} as never, {} as never, {} as never);
+
+    await expect(service.verifyEmail('valid-token')).rejects.toMatchObject({ status: 503 });
+    expect(users.updateProfile).not.toHaveBeenCalled();
+  });
 });
 
   describe('IdentityService.me', () => {
