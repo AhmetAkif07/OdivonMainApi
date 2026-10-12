@@ -1,5 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
+import * as net from 'net';
 import type { Transporter } from 'nodemailer';
+import * as tls from 'tls';
 import { buildModuleWelcomeEmail, ModuleWelcomeInput, WelcomeModule } from './welcome-templates';
 
 export interface SendMemberWelcomeInput {
@@ -66,6 +68,18 @@ export class MailService {
         auth: {
           user,
           pass,
+        },
+        // nodemailer resolves the host itself and connects to the IP with an SNI override, which
+        // Cloudflare Workers sockets do not support. Connecting by host name works on both
+        // runtimes, so the socket is opened here and handed over.
+        getSocket: (_options, callback) => {
+          const socket = secure ? tls.connect({ host, port, servername: host }) : net.connect(port, host);
+          const onError = (error: Error) => callback(error, undefined);
+          socket.once('error', onError);
+          socket.once(secure ? 'secureConnect' : 'connect', () => {
+            socket.removeListener('error', onError);
+            callback(null, { connection: socket, secured: secure });
+          });
         },
       });
       this.logger.log(`SMTP istemcisi yapılandırıldı: ${host}:${port} (${user})`);
