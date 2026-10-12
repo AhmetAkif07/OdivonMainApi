@@ -5,7 +5,7 @@ import bootstrapModule from '../dist/bootstrap.js';
 
 // Initialize Nest during isolate startup, outside the Free plan request CPU budget.
 const configured = Boolean(env.FIREBASE_CLIENT_EMAIL && env.FIREBASE_PRIVATE_KEY);
-if (configured) await bootstrapModule.bootstrap({ swaggerUi: false });
+if (configured) await bootstrapModule.bootstrap({ swaggerUi: false, startupLogs: false });
 const handler = httpServerHandler({ port: 3000 });
 
 export default {

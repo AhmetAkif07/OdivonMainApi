@@ -1,5 +1,4 @@
 import { Injectable, Logger } from '@nestjs/common';
-import * as nodemailer from 'nodemailer';
 import type { Transporter } from 'nodemailer';
 import { buildModuleWelcomeEmail, ModuleWelcomeInput, WelcomeModule } from './welcome-templates';
 
@@ -40,24 +39,26 @@ export class MailService {
   private transporter: Transporter | null = null;
 
   constructor() {
-    this.initTransporter();
+    if (!process.env.SMTP_PASS) {
+      this.logger.warn(
+        'SMTP_PASS ortam değişkeni (.env) tanımlı değil. E-posta gönderimi pasif durumda.',
+      );
+    }
   }
 
-  private initTransporter(): void {
+  // nodemailer is loaded and the transport created on the first send, not at application
+  // startup: the Worker boots inside the isolate startup CPU budget.
+  private async initTransporter(): Promise<void> {
     const host = process.env.SMTP_HOST || 'smtp.hostinger.com';
     const port = Number(process.env.SMTP_PORT || 465);
     const user = process.env.SMTP_USER || 'info@odivon.com';
     const pass = process.env.SMTP_PASS;
     const secure = process.env.SMTP_SECURE ? process.env.SMTP_SECURE === 'true' : port === 465;
 
-    if (!pass) {
-      this.logger.warn(
-        'SMTP_PASS ortam değişkeni (.env) tanımlı değil. E-posta gönderimi pasif durumda.',
-      );
-      return;
-    }
+    if (!pass) return;
 
     try {
+      const nodemailer = await import('nodemailer');
       this.transporter = nodemailer.createTransport({
         host,
         port,
@@ -75,7 +76,7 @@ export class MailService {
 
   async sendWelcomeGymOwner(input: SendWelcomeGymOwnerInput): Promise<boolean> {
     if (!this.transporter) {
-      this.initTransporter();
+      await this.initTransporter();
       if (!this.transporter) {
         this.logger.warn(
           `Hoş geldin maili gönderilemedi (${input.to}): SMTP_PASS tanımlanmamış.`,
@@ -228,7 +229,7 @@ export class MailService {
    */
   async sendModuleWelcome(input: SendModuleWelcomeInput): Promise<boolean> {
     if (!this.transporter) {
-      this.initTransporter();
+      await this.initTransporter();
       if (!this.transporter) {
         this.logger.warn(
           `Hoş geldin maili gönderilemedi (${input.to}): SMTP_PASS tanımlanmamış.`,
@@ -262,7 +263,7 @@ export class MailService {
 
   async sendVerificationEmail(input: SendVerificationEmailInput): Promise<boolean> {
     if (!this.transporter) {
-      this.initTransporter();
+      await this.initTransporter();
       if (!this.transporter) {
         this.logger.warn(
           `Doğrulama maili gönderilemedi (${input.to}): SMTP_PASS tanımlanmamış.`,
@@ -405,7 +406,7 @@ export class MailService {
 
   async sendMemberWelcomeEmail(input: SendMemberWelcomeInput): Promise<boolean> {
     if (!this.transporter) {
-      this.initTransporter();
+      await this.initTransporter();
       if (!this.transporter) {
         this.logger.warn(
           `Üye hoş geldin maili gönderilemedi (${input.to}): SMTP_PASS tanımlanmamış.`,

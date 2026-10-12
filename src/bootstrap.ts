@@ -13,11 +13,19 @@ import { ErrorLogService } from './shared/errors/error-log.service';
 let application: INestApplication | null = null;
 
 
-export async function bootstrap(options: { swaggerUi?: boolean } = {}): Promise<void> {
+export async function bootstrap(options: { swaggerUi?: boolean; startupLogs?: boolean } = {}): Promise<void> {
   const config = loadConfiguration();
-  const app = await NestFactory.create(AppModule, { bufferLogs: true, abortOnError: false });
+  // The Worker boots inside the isolate startup CPU budget: there, Nest's ~1000 "dependencies
+  // initialized" / "Mapped route" lines are dropped instead of being serialized one by one.
+  const startupLogs = options.startupLogs !== false;
+  const app = await NestFactory.create(
+    AppModule,
+    startupLogs
+      ? { bufferLogs: true, abortOnError: false }
+      : { logger: ['fatal', 'error', 'warn'], abortOnError: false },
+  );
   application = app;
-  app.useLogger(app.get(Logger));
+  if (startupLogs) app.useLogger(app.get(Logger));
   app.use(helmet());
   const configuredOrigin = config.corsOrigin;
   app.enableCors({
@@ -61,6 +69,7 @@ export async function bootstrap(options: { swaggerUi?: boolean } = {}): Promise<
   }
 
   await app.listen(config.port);
+  if (!startupLogs) app.useLogger(app.get(Logger));
 }
 
 /**
