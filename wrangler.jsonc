@@ -20,6 +20,8 @@
     "@nestjs/microservices": "./worker/unsupported.cjs",
     // OpenAPI is generated at build time; skip the @Api* decorators at isolate startup.
     "@nestjs/swagger": "./worker/swagger.cjs",
+    // No DTO uses @IsPhoneNumber; skip its phone metadata at isolate startup (see worker/phone.cjs).
+    "libphonenumber-js/max": "./worker/phone.cjs",
     "class-transformer/storage": "class-transformer/cjs/storage.js"
   },
   "build": {
