@@ -65,7 +65,7 @@ export class IdentityService {
       });
       tenantId = createdTenant.id;
 
-            const verificationToken = crypto.randomBytes(32).toString('hex');
+      const verificationToken = crypto.randomBytes(32).toString('hex');
       const verificationExpiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString();
 
       const profile: UserProfile = {
@@ -99,8 +99,7 @@ export class IdentityService {
         modules,
       });
 
-      const appUrl = process.env.APP_URL || 'https://gym.odivon.com';
-      const verificationLink = `${appUrl}/auth/verify-email?token=${verificationToken}`;
+      const verificationLink = verificationUrl(productModule, verificationToken);
 
       this.mail
         .sendVerificationEmail({
@@ -108,6 +107,7 @@ export class IdentityService {
           displayName: dto.displayName,
           tenantName: dto.tenantName,
           verificationLink,
+          module: productModule,
         })
         ?.catch((err) => {
           this.logger.error(
@@ -225,16 +225,17 @@ export class IdentityService {
     });
 
     const tenant = await this.tenants.getById(profile.tenantId).catch(() => null);
-    const appUrl = process.env.APP_URL || 'https://gym.odivon.com';
-    const verificationLink = `${appUrl}/auth/verify-email?token=${verificationToken}`;
+    const productModule = profile.modules[0] ?? 'vet';
+    const verificationLink = verificationUrl(productModule, verificationToken);
 
     let sent = false;
     try {
       sent = await this.mail.sendVerificationEmail({
         to: profile.email,
         displayName: profile.displayName,
-        tenantName: tenant?.name || 'Spor Salonu',
+        tenantName: tenant?.name || (productModule === 'gym' ? 'Spor Salonu' : 'İşletme'),
         verificationLink,
+        module: productModule,
       });
     } catch (error) {
       this.logger.error(`Doğrulama maili tekrar gönderilemedi (${profile.email}): ${error instanceof Error ? error.message : error}`);
@@ -467,6 +468,19 @@ export class IdentityService {
       }
     }
   }
+}
+
+function verificationUrl(module: ProductModule, token: string): string {
+  const moduleUrl = process.env[`APP_URL_${module.toUpperCase()}`]?.trim();
+  const appUrl = moduleUrl
+    || (module === 'gym' ? process.env.APP_URL?.trim() || 'https://gym.odivon.com' : null)
+    || (module === 'vet' ? 'https://vet.odivon.com' : null)
+    || process.env.APP_URL?.trim();
+  if (!appUrl) {
+    throw new AppException(ErrorCode.VALIDATION_ERROR, `${module} doğrulama adresi yapılandırılmamış.`);
+  }
+  const path = module === 'vet' ? '/verify-email' : '/auth/verify-email';
+  return `${appUrl.replace(/\/+$/, '')}${path}?token=${encodeURIComponent(token)}`;
 }
 
 function mapFirebaseUserError(error: unknown, logger: Logger, fallback = 'User operation failed'): AppException {

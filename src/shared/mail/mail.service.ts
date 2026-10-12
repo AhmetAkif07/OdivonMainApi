@@ -4,6 +4,7 @@ import type { Transporter } from 'nodemailer';
 import * as tls from 'tls';
 import { runInBackground } from '../http/background';
 import { buildModuleWelcomeEmail, ModuleWelcomeInput, WelcomeModule } from './welcome-templates';
+import { ProductModule } from '../authorization/constants';
 
 export interface SendMemberWelcomeInput {
   to: string;
@@ -26,6 +27,7 @@ export interface SendVerificationEmailInput {
   displayName?: string | null;
   tenantName: string;
   verificationLink: string;
+  module: ProductModule;
 }
 
 export interface SendWelcomeGymOwnerInput {
@@ -341,10 +343,13 @@ export class MailService {
       }
     }
 
-    const from = process.env.SMTP_FROM || '"OdivonGYM" <info@odivon.com>';
-    const recipientName = input.displayName?.trim() || 'Salon Yöneticisi';
+    const brand = input.module === 'gym' ? 'OdivonGYM' : MODULE_VERIFICATION_NAMES[input.module];
+    const tenantLabel = input.module === 'gym' ? 'Salon Adı' : input.module === 'vet' ? 'Klinik Adı' : 'İşletme Adı';
+    const accountDescription = input.module === 'gym' ? 'spor salonunuz' : input.module === 'vet' ? 'kliniğiniz' : 'işletmeniz';
+    const from = { name: brand, address: fromAddress() };
+    const recipientName = input.displayName?.trim() || 'İşletme Yöneticisi';
     const tenantName = input.tenantName.trim();
-    const subject = `OdivonGYM Hesabınızı Doğrulayın ✉️ (${tenantName})`;
+    const subject = `${brand} Hesabınızı Doğrulayın ✉️ (${tenantName})`;
 
     const html = `
 <!DOCTYPE html>
@@ -352,7 +357,7 @@ export class MailService {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>OdivonGYM E-posta Doğrulama</title>
+  <title>${brand} E-posta Doğrulama</title>
 </head>
 <body style="margin: 0; padding: 0; background-color: #0b1120; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #f8fafc;">
   <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color: #0b1120; padding: 40px 16px;">
@@ -386,7 +391,7 @@ export class MailService {
                 Sayın ${recipientName},
               </p>
               <p style="margin: 0 0 24px; font-size: 14px; color: #94a3b8; line-height: 1.6;">
-                <strong style="color: #818cf8;">${tenantName}</strong> spor salonunuz için OdivonGYM SaaS hesabınız başarıyla oluşturuldu. Hesabınızı güvenle aktifleştirmek ve yönetim paneline giriş yapabilmek için lütfen aşağıdaki butona tıklayarak e-posta adresinizi doğrulayın.
+                <strong style="color: #818cf8;">${tenantName}</strong> ${accountDescription} için ${brand} hesabınız başarıyla oluşturuldu. Hesabınızı güvenle aktifleştirmek ve yönetim paneline giriş yapabilmek için lütfen aşağıdaki butona tıklayarak e-posta adresinizi doğrulayın.
               </p>
 
               <!-- Highlights Card -->
@@ -398,7 +403,7 @@ export class MailService {
                     </div>
                     <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="font-size: 13px; color: #cbd5e1;">
                       <tr>
-                        <td style="padding: 6px 0; color: #94a3b8;">Salon Adı:</td>
+                        <td style="padding: 6px 0; color: #94a3b8;">${tenantLabel}:</td>
                         <td style="padding: 6px 0; font-weight: 700; color: #ffffff; text-align: right;">${tenantName}</td>
                       </tr>
                       <tr>
@@ -442,10 +447,10 @@ export class MailService {
           <tr>
             <td style="background-color: #090d16; padding: 24px 32px; border-top: 1px solid #1e293b; text-align: center;">
               <p style="margin: 0 0 6px; font-size: 11px; font-weight: 700; color: #94a3b8;">
-                © ${new Date().getFullYear()} OdivonGYM · Tüm Hakları Saklıdır.
+                © ${new Date().getFullYear()} ${brand} · Tüm Hakları Saklıdır.
               </p>
               <p style="margin: 0; font-size: 10px; color: #475569;">
-                Bu e-posta OdivonGYM üyelik kaydınızı doğrulamak amacıyla gönderilmiştir. Eğer bu hesabı siz açmadıysanız dikkate almayınız.
+                Bu e-posta ${brand} hesabınızı doğrulamak amacıyla gönderilmiştir. Eğer bu hesabı siz açmadıysanız dikkate almayınız.
               </p>
             </td>
           </tr>
@@ -688,9 +693,19 @@ export class MailService {
   }
 }
 
+const MODULE_VERIFICATION_NAMES: Record<Exclude<ProductModule, 'gym'>, string> = {
+  vet: 'Odivon Vet',
+  farm: 'OdivonFARM',
+  spa: 'OdivonSPA',
+  hair: 'OdivonPro Hair',
+  beauty: 'Odivon Beauty',
+  apm: 'Odivon APM',
+};
+
 function moduleLoginUrl(module: WelcomeModule): string | null {
   const appUrl = process.env[`APP_URL_${module.toUpperCase()}`]?.trim();
-  return appUrl ? `${appUrl.replace(/\/+$/, '')}/auth/login` : null;
+  const path = module === 'vet' ? '/login' : '/auth/login';
+  return appUrl ? `${appUrl.replace(/\/+$/, '')}${path}` : null;
 }
 
 /** Sender address of `SMTP_FROM` (`"Name" <address>` or a bare address); the display name is per module. */

@@ -53,6 +53,8 @@
     "FIRESTORE_PREFER_REST": "true",
     "FIREBASE_PROJECT_ID": "odivon-main-api-a2095",
     "APP_URL": "https://gym.odivon.com",
+    "APP_URL_GYM": "https://gym.odivon.com",
+    "APP_URL_VET": "https://vet.odivon.com",
     "SMTP_HOST": "smtp.hostinger.com",
     "SMTP_PORT": "465",
     "SMTP_SECURE": "true",

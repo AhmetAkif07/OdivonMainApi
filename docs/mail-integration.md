@@ -56,6 +56,8 @@ SMTP_USER=info@odivon.com
 SMTP_PASS=BURAYA_HOSTINGER_EPOSTA_SIFRENIZI_YAZIN
 SMTP_FROM="OdivonGYM" <info@odivon.com>
 APP_URL=https://gym.odivon.com
+APP_URL_GYM=https://gym.odivon.com
+APP_URL_VET=https://vet.odivon.com
 ```
 
 > [!WARNING]

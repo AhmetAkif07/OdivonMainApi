@@ -36,6 +36,7 @@ describe('MailService', () => {
       displayName: 'Owner',
       tenantName: 'Gym',
       verificationLink: 'https://gym.odivon.com/auth/verify-email?token=test',
+      module: 'gym',
     });
 
     expect(sent).toBe(true);
@@ -58,8 +59,27 @@ describe('MailService', () => {
       to: 'owner@example.com',
       tenantName: 'Gym',
       verificationLink: 'https://gym.odivon.com/auth/verify-email?token=test',
+      module: 'gym',
     });
 
     expect(sent).toBe(false);
+  });
+
+  it('brands a Vet verification mail and links to the Vet client', async () => {
+    process.env.HOSTINGER_MAIL_API_TOKEN = 'test-token';
+    process.env.HOSTINGER_MAILBOX_RESOURCE_ID = 'ACtest';
+    global.fetch = jest.fn().mockResolvedValue({ status: 204 });
+
+    await service.sendVerificationEmail({
+      to: 'vet@example.com',
+      tenantName: 'Vet Clinic',
+      verificationLink: 'https://vet.odivon.com/verify-email?token=test',
+      module: 'vet',
+    });
+
+    const body = JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body);
+    expect(body.subject).toContain('Odivon Vet');
+    expect(body.html).toContain('https://vet.odivon.com/verify-email?token=test');
+    expect(body.html).not.toContain('OdivonGYM');
   });
 });

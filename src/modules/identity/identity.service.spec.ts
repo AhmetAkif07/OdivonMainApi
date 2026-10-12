@@ -74,6 +74,10 @@ describe('IdentityService.register', () => {
       role: 'owner',
       modules: ['vet'],
     });
+    expect(mail.sendVerificationEmail).toHaveBeenCalledWith(expect.objectContaining({
+      module: 'vet',
+      verificationLink: expect.stringContaining('https://vet.odivon.com/verify-email?token='),
+    }));
   });
 
   it('registers a gym tenant with trial membership', async () => {
@@ -104,9 +108,14 @@ describe('IdentityService.register', () => {
       role: 'owner',
       modules: ['gym'],
     });
+    expect(mail.sendVerificationEmail).toHaveBeenCalledWith(expect.objectContaining({
+      module: 'gym',
+      verificationLink: expect.stringContaining('https://gym.odivon.com/auth/verify-email?token='),
+    }));
   });
 
   it('sends the module welcome mail without failing the registration when it rejects', async () => {
+    process.env.APP_URL_SPA = 'https://spa.example.com';
     firebase.auth.createUser.mockResolvedValue({ uid: 'uid-3' });
     tenants.create.mockResolvedValue({ id: 'tenant-3' });
     users.createProfile.mockResolvedValue({});
@@ -131,6 +140,7 @@ describe('IdentityService.register', () => {
     });
     expect(mail.sendWelcomeGymOwner).not.toHaveBeenCalled();
     expect(firebase.auth.deleteUser).not.toHaveBeenCalled();
+    delete process.env.APP_URL_SPA;
   });
 
   it('explains missing Firebase Authentication configuration', async () => {
@@ -177,6 +187,7 @@ describe('IdentityService.resendVerification', () => {
     tenantId: 'tenant-1',
     emailVerified: false,
     displayName: 'Owner',
+    modules: ['vet'],
   };
   const users = {
     findByEmail: jest.fn(),
@@ -207,7 +218,8 @@ describe('IdentityService.resendVerification', () => {
     expect(users.findByEmail).toHaveBeenCalledWith('owner@example.com');
     expect(mail.sendVerificationEmail).toHaveBeenCalledWith(expect.objectContaining({
       to: profile.email,
-      verificationLink: expect.stringContaining('/auth/verify-email?token='),
+      verificationLink: expect.stringContaining('https://vet.odivon.com/verify-email?token='),
+      module: 'vet',
     }));
   });
 
