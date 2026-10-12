@@ -118,7 +118,7 @@ export class SaasBillingService {
   logRun(created: number, gyms: number) {
     this.logger.log(`SaaS reminders: ${created} notices in ${gyms} gyms`);
   }
-  async subscribe(planId: string, billingCycle: 'monthly' | 'yearly', cardHolderName?: string) {
+  async subscribe(planId: string, billingCycle: 'monthly' | 'yearly', _cardHolderName?: string) {
     const tenantId = this.tenant.getTenantId();
     const tenantRef = this.firebase.db.doc(`tenants/${tenantId}`);
     const tenantData = (await tenantRef.get()).data() as TenantBillingState | undefined;

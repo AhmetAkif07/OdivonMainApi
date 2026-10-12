@@ -1,6 +1,6 @@
 import { PurchasingModule } from './purchasing/purchasing.module';
 import { BranchesModule } from './branches/branches.module';
-﻿import { Module } from '@nestjs/common';
+import { Module } from '@nestjs/common';
 import { AppointmentsModule } from './appointments/appointments.module';
 import { CustomersModule } from './customers/customers.module';
 import { DefinitionsModule } from './definitions/definitions.module';

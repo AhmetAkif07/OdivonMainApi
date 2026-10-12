@@ -6,7 +6,6 @@ import { ApprovalWorkflowsService } from '../workflows/approval-workflows.servic
 import { DecideApprovalDto, ListApprovalRequestsQueryDto, SubmitApprovalDto } from './approval-request.dto';
 import {
   ApprovalRequest,
-  ApprovalStatus,
   ApprovalStepExecution,
 } from './approval-request.entity';
 import { ApprovalRequestsRepository } from './approval-requests.repository';

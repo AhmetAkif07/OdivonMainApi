@@ -1,4 +1,4 @@
-import { SmsBalanceResult, SmsProviderType, SmsSendResult } from './sms-provider.types';
+import { SmsBalanceResult, SmsSendResult } from './sms-provider.types';
 
 export interface ISmsAdapter {
   send(options: { recipients: string[]; message: string; header?: string }): Promise<SmsSendResult>;

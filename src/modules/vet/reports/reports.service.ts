@@ -320,7 +320,7 @@ export class VetReportsService {
     if (cached) return cached;
 
     const range = this.resolveDateRange(query);
-    const [exams, patientsSnap, cagesSnap] = await Promise.all([
+    const [, patientsSnap, cagesSnap] = await Promise.all([
       this.queryCollectionInRange(TENANT_COLLECTION.examinations, 'date', range, query.branchId),
       this.col(TENANT_COLLECTION.patients).get(),
       this.col(TENANT_COLLECTION.cages).get(),
@@ -630,7 +630,7 @@ export class VetReportsService {
     if (cached) return cached;
 
     const range = this.resolveDateRange(query);
-    const [sales, collections, cashMovements] = await Promise.all([
+    const [sales] = await Promise.all([
       this.queryCollectionInRange(TENANT_COLLECTION.sales, 'date', range, query.branchId),
       this.queryCollectionInRange(TENANT_COLLECTION.collections, 'date', range, query.branchId),
       this.queryCollectionInRange(TENANT_COLLECTION.cashMovements, 'date', range),

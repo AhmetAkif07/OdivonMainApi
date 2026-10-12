@@ -52,7 +52,6 @@ export class IdentityService {
       const modules: ProductModule[] = [productModule];
       const now = new Date();
       const nowIso = now.toISOString();
-      const isGym = productModule === 'gym';
       const trialEndsAt = new Date(now.getTime() + SAAS_TRIAL_DAYS * 24 * 60 * 60 * 1000).toISOString();
 
       const createdTenant = await this.tenants.create({

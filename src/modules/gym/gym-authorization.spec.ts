@@ -1,4 +1,3 @@
-import { GymDailyCloseController } from './ops/daily-close/daily-close.controller';
 import { ExecutionContext, RequestMethod, Type } from '@nestjs/common';
 import { GUARDS_METADATA, METHOD_METADATA, PATH_METADATA } from '@nestjs/common/constants';
 import { Reflector } from '@nestjs/core';

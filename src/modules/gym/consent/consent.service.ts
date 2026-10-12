@@ -1,6 +1,4 @@
 import { Injectable } from '@nestjs/common';
-import { AppException } from '../../../shared/errors/app.exception';
-import { ErrorCode } from '../../../shared/errors/error-codes';
 import { BaseDocument } from '../../../shared/firestore/base-document';
 import { MembersRepository } from '../members/members.repository';
 import { GymStore } from '../shared/gym-store';
