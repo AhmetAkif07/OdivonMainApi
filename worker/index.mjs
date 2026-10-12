@@ -1,11 +1,11 @@
 import { httpServerHandler } from 'cloudflare:node';
-import { env } from 'cloudflare:workers';
+import { env, waitUntil } from 'cloudflare:workers';
 import './firestore-startup.mjs';
 import bootstrapModule from '../dist/bootstrap.js';
 
 // Initialize Nest during isolate startup, outside the Free plan request CPU budget.
 const configured = Boolean(env.FIREBASE_CLIENT_EMAIL && env.FIREBASE_PRIVATE_KEY);
-if (configured) await bootstrapModule.bootstrap({ swaggerUi: false, startupLogs: false });
+if (configured) await bootstrapModule.bootstrap({ swaggerUi: false, startupLogs: false, waitUntil });
 const handler = httpServerHandler({ port: 3000 });
 
 export default {

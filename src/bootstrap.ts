@@ -9,12 +9,16 @@ import { GymRemindersService } from './modules/gym/reminders/reminders.service';
 import { SaasBillingService } from './modules/payments/saas-billing.service';
 import { PlatformDemosService } from './modules/platform/demos/demos.service';
 import { ErrorLogService } from './shared/errors/error-log.service';
+import { setBackgroundRunner } from './shared/http/background';
 
 let application: INestApplication | null = null;
 
 
-export async function bootstrap(options: { swaggerUi?: boolean; startupLogs?: boolean } = {}): Promise<void> {
+export async function bootstrap(
+  options: { swaggerUi?: boolean; startupLogs?: boolean; waitUntil?: (promise: Promise<unknown>) => void } = {},
+): Promise<void> {
   const config = loadConfiguration();
+  setBackgroundRunner(options.waitUntil ?? null);
   // The Worker boots inside the isolate startup CPU budget: there, Nest's ~1000 "dependencies
   // initialized" / "Mapped route" lines are dropped instead of being serialized one by one.
   const startupLogs = options.startupLogs !== false;

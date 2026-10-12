@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import * as net from 'net';
 import type { Transporter } from 'nodemailer';
 import * as tls from 'tls';
+import { runInBackground } from '../http/background';
 import { buildModuleWelcomeEmail, ModuleWelcomeInput, WelcomeModule } from './welcome-templates';
 
 export interface SendMemberWelcomeInput {
@@ -88,7 +89,11 @@ export class MailService {
     }
   }
 
-  async sendWelcomeGymOwner(input: SendWelcomeGymOwnerInput): Promise<boolean> {
+  sendWelcomeGymOwner(input: SendWelcomeGymOwnerInput): Promise<boolean> {
+    return runInBackground(this.deliverWelcomeGymOwner(input));
+  }
+
+  private async deliverWelcomeGymOwner(input: SendWelcomeGymOwnerInput): Promise<boolean> {
     if (!this.transporter) {
       await this.initTransporter();
       if (!this.transporter) {
@@ -241,7 +246,11 @@ export class MailService {
    * Owner welcome mail for every module except gym (see `sendWelcomeGymOwner`). The panel button
    * needs `APP_URL_<MODULE>` (e.g. `APP_URL_VET`); without it the mail goes out with no button.
    */
-  async sendModuleWelcome(input: SendModuleWelcomeInput): Promise<boolean> {
+  sendModuleWelcome(input: SendModuleWelcomeInput): Promise<boolean> {
+    return runInBackground(this.deliverModuleWelcome(input));
+  }
+
+  private async deliverModuleWelcome(input: SendModuleWelcomeInput): Promise<boolean> {
     if (!this.transporter) {
       await this.initTransporter();
       if (!this.transporter) {
@@ -275,7 +284,11 @@ export class MailService {
     }
   }
 
-  async sendVerificationEmail(input: SendVerificationEmailInput): Promise<boolean> {
+  sendVerificationEmail(input: SendVerificationEmailInput): Promise<boolean> {
+    return runInBackground(this.deliverVerificationEmail(input));
+  }
+
+  private async deliverVerificationEmail(input: SendVerificationEmailInput): Promise<boolean> {
     if (!this.transporter) {
       await this.initTransporter();
       if (!this.transporter) {
@@ -418,7 +431,11 @@ export class MailService {
     }
   }
 
-  async sendMemberWelcomeEmail(input: SendMemberWelcomeInput): Promise<boolean> {
+  sendMemberWelcomeEmail(input: SendMemberWelcomeInput): Promise<boolean> {
+    return runInBackground(this.deliverMemberWelcomeEmail(input));
+  }
+
+  private async deliverMemberWelcomeEmail(input: SendMemberWelcomeInput): Promise<boolean> {
     if (!this.transporter) {
       await this.initTransporter();
       if (!this.transporter) {
