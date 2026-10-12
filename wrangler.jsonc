@@ -4,10 +4,14 @@
   "main": "worker/index.mjs",
   "account_id": "3c85686b125d141ad80870db15cabded",
   "compatibility_date": "2026-09-21",
-  "compatibility_flags": ["nodejs_compat"],
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
   "workers_dev": true,
   "minify": true,
-  "define": { "process.env.NODE_ENV": "\"production\"" },
+  "define": {
+    "process.env.NODE_ENV": "\"production\""
+  },
   "alias": {
     "pino": "./node_modules/pino/pino.js",
     "node-fetch": "./worker/node-fetch.mjs",
@@ -18,16 +22,42 @@
     "@nestjs/swagger": "./worker/swagger.cjs",
     "class-transformer/storage": "class-transformer/cjs/storage.js"
   },
-  "build": { "command": "npm run build && node scripts/worker-assets.mjs && node scripts/generate-openapi.mjs", "watch_dir": ["src", "worker", "scripts"] },
-  "assets": { "directory": ".wrangler/assets" },
-  "routes": [{ "pattern": "mainapi.odivon.com", "custom_domain": true }],
+  "build": {
+    "command": "npm run build && node scripts/worker-assets.mjs && node scripts/generate-openapi.mjs",
+    "watch_dir": [
+      "src",
+      "worker",
+      "scripts"
+    ]
+  },
+  "assets": {
+    "directory": ".wrangler/assets"
+  },
+  "routes": [
+    {
+      "pattern": "mainapi.odivon.com",
+      "custom_domain": true
+    }
+  ],
   // 05:00 UTC = 08:00 Europe/Istanbul: daily gym reminders (see runScheduledJobs).
-  "triggers": { "crons": ["0 5 * * *"] },
+  "triggers": {
+    "crons": [
+      "0 5 * * *"
+    ]
+  },
   "vars": {
     "NODE_ENV": "production",
     "PORT": "3000",
     "FIRESTORE_PREFER_REST": "true",
-    "FIREBASE_PROJECT_ID": "odivon-main-api-a2095"
+    "FIREBASE_PROJECT_ID": "odivon-main-api-a2095",
+    "APP_URL": "https://odivongym.app",
+    "SMTP_HOST": "smtp.hostinger.com",
+    "SMTP_PORT": "465",
+    "SMTP_SECURE": "true",
+    "SMTP_USER": "info@odivon.com",
+    "SMTP_FROM": "\"OdivonGYM\" <info@odivon.com>"
   },
-  "observability": { "enabled": true }
+  "observability": {
+    "enabled": true
+  }
 }
