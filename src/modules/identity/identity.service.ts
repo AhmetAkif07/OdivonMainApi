@@ -1,5 +1,5 @@
 import * as crypto from 'crypto';
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { AppException } from '../../shared/errors/app.exception';
 import { ErrorCode } from '../../shared/errors/error-codes';
 import { FirebaseService } from '../../shared/firebase/firebase.service';
@@ -227,16 +227,20 @@ export class IdentityService {
     const appUrl = process.env.APP_URL || 'https://odivongym.app';
     const verificationLink = `${appUrl}/auth/verify-email?token=${verificationToken}`;
 
-    this.mail
-      .sendVerificationEmail({
+    let sent = false;
+    try {
+      sent = await this.mail.sendVerificationEmail({
         to: profile.email,
         displayName: profile.displayName,
         tenantName: tenant?.name || 'Spor Salonu',
         verificationLink,
-      })
-      ?.catch((err) => {
-        this.logger.error(`Doğrulama maili tekrar gönderilemedi (${profile.email}): ${err?.message || err}`);
       });
+    } catch (error) {
+      this.logger.error(`Doğrulama maili tekrar gönderilemedi (${profile.email}): ${error instanceof Error ? error.message : error}`);
+    }
+    if (!sent) {
+      throw new ServiceUnavailableException('Doğrulama e-postası şu anda gönderilemiyor. Lütfen daha sonra tekrar deneyin.');
+    }
 
     return { success: true };
   }

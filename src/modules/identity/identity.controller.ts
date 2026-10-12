@@ -34,10 +34,9 @@ export class IdentityController {
     return this.identity.verifyEmail(dto.token);
   }
 
-  // TODO: temporarily unthrottled for mail testing. Restore before real traffic:
-  //   @UseGuards(RegisterThrottlerGuard)
-  //   @Throttle({ default: { limit: 5, ttl: 900_000 } })
   @Post('resend-verification')
+  @UseGuards(RegisterThrottlerGuard)
+  @Throttle({ default: { limit: 5, ttl: 900_000 } })
   @ApiOperation({ summary: 'Resend email verification link' })
   resendVerification(@Body() dto: ResendVerificationDto) {
     return this.identity.resendVerification(dto.email);

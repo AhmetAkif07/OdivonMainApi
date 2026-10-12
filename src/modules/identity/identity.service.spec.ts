@@ -170,6 +170,61 @@ describe('IdentityService.register', () => {
 });
 
 
+describe('IdentityService.resendVerification', () => {
+  const profile = {
+    uid: 'uid-1',
+    email: 'owner@example.com',
+    tenantId: 'tenant-1',
+    emailVerified: false,
+    displayName: 'Owner',
+  };
+  const users = {
+    findByEmail: jest.fn(),
+    updateProfile: jest.fn().mockResolvedValue(undefined),
+  };
+  const tenants = { getById: jest.fn().mockResolvedValue({ name: 'Gym' }) };
+  const mail = { sendVerificationEmail: jest.fn() };
+  const service = new IdentityService(
+    {} as never,
+    tenants as never,
+    users as never,
+    {} as never,
+    {} as never,
+    mail as never,
+  );
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    users.findByEmail.mockResolvedValue(profile);
+    users.updateProfile.mockResolvedValue(undefined);
+    tenants.getById.mockResolvedValue({ name: 'Gym' });
+  });
+
+  it('waits for SMTP acceptance before reporting success', async () => {
+    mail.sendVerificationEmail.mockResolvedValue(true);
+
+    await expect(service.resendVerification(' OWNER@example.com ')).resolves.toEqual({ success: true });
+    expect(users.findByEmail).toHaveBeenCalledWith('owner@example.com');
+    expect(mail.sendVerificationEmail).toHaveBeenCalledWith(expect.objectContaining({
+      to: profile.email,
+      verificationLink: expect.stringContaining('/auth/verify-email?token='),
+    }));
+  });
+
+  it('reports a service error when SMTP rejects the message', async () => {
+    mail.sendVerificationEmail.mockResolvedValue(false);
+
+    await expect(service.resendVerification(profile.email)).rejects.toMatchObject({ status: 503 });
+  });
+
+  it('keeps the generic response for an unknown address', async () => {
+    users.findByEmail.mockResolvedValue(null);
+
+    await expect(service.resendVerification('unknown@example.com')).resolves.toEqual({ success: true });
+    expect(mail.sendVerificationEmail).not.toHaveBeenCalled();
+  });
+});
+
   describe('IdentityService.verifyEmail', () => {
   it('verifies user and updates auth + firestore profile', async () => {
     const firebase = { auth: { updateUser: jest.fn().mockResolvedValue({}) } };
