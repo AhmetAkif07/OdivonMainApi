@@ -76,7 +76,7 @@ describe('IdentityService.register', () => {
     });
     expect(mail.sendVerificationEmail).toHaveBeenCalledWith(expect.objectContaining({
       module: 'vet',
-      verificationLink: expect.stringContaining('https://vet.odivon.com/verify-email?token='),
+      verificationLink: expect.stringContaining('https://mainapi.odivon.com/api/v1/identity/verification?token='),
     }));
   });
 
@@ -110,7 +110,7 @@ describe('IdentityService.register', () => {
     });
     expect(mail.sendVerificationEmail).toHaveBeenCalledWith(expect.objectContaining({
       module: 'gym',
-      verificationLink: expect.stringContaining('https://gym.odivon.com/auth/verify-email?token='),
+      verificationLink: expect.stringContaining('https://mainapi.odivon.com/api/v1/identity/verification?token='),
     }));
   });
 
@@ -240,7 +240,7 @@ describe('IdentityService.resendVerification', () => {
     expect(users.findByEmail).toHaveBeenCalledWith('owner@example.com');
     expect(mail.sendVerificationEmail).toHaveBeenCalledWith(expect.objectContaining({
       to: profile.email,
-      verificationLink: expect.stringContaining('https://vet.odivon.com/verify-email?token='),
+      verificationLink: expect.stringContaining('https://mainapi.odivon.com/api/v1/identity/verification?token='),
       module: 'vet',
     }));
   });

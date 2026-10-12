@@ -99,7 +99,7 @@ export class IdentityService {
         modules,
       });
 
-      const verificationLink = verificationUrl(productModule, verificationToken);
+      const verificationLink = verificationUrl(verificationToken);
 
       this.mail
         .sendVerificationEmail({
@@ -227,7 +227,7 @@ export class IdentityService {
 
     const tenant = await this.tenants.getById(profile.tenantId).catch(() => null);
     const productModule = profile.modules[0] ?? 'vet';
-    const verificationLink = verificationUrl(productModule, verificationToken);
+    const verificationLink = verificationUrl(verificationToken);
 
     let sent = false;
     try {
@@ -471,15 +471,7 @@ export class IdentityService {
   }
 }
 
-function verificationUrl(module: ProductModule, token: string): string {
-  if (module === 'gym') {
-    const url = process.env.APP_URL_GYM?.trim() || process.env.APP_URL?.trim() || 'https://gym.odivon.com';
-    return `${url.replace(/\/+$/, '')}/auth/verify-email?token=${encodeURIComponent(token)}`;
-  }
-  if (module === 'vet') {
-    const url = process.env.APP_URL_VET?.trim() || 'https://vet.odivon.com';
-    return `${url.replace(/\/+$/, '')}/verify-email?token=${encodeURIComponent(token)}`;
-  }
+function verificationUrl(token: string): string {
   const apiUrl = process.env.PUBLIC_API_URL?.trim() || 'https://mainapi.odivon.com';
   return `${apiUrl.replace(/\/+$/, '')}/api/v1/identity/verification?token=${encodeURIComponent(token)}`;
 }

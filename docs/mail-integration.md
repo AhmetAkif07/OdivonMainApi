@@ -61,11 +61,12 @@ APP_URL_VET=https://vet.odivon.com
 PUBLIC_API_URL=https://mainapi.odivon.com
 ```
 
-Doğrulama bağlantıları kayıtlı modüle göre oluşturulur. GYM ve VET kendi doğrulama
-ekranlarını kullanır. FARM, SPA, Hair, Beauty ve APM bağlantıları MainApi'nin ortak
-`/api/v1/identity/verification` sayfasına gider; sayfa açıldığında hesap değişmez,
-kullanıcı onay düğmesine bastığında doğrulama yapılır. Bu modüllerde özel bir istemci
-doğrulama ekranı yayımlanana kadar bağlantı GYM alan adına yönlendirilmez.
+MainApi üzerinden açılan bütün hesapların doğrulama bağlantısı ortak
+`/api/v1/identity/verification` sayfasına gider. Sayfa açıldığında hesap değişmez;
+kullanıcı onay düğmesine bastığında doğrulama yapılır. Ürün adı e-postanın
+başlığında ve içeriğinde kullanılır. Doğrudan Firebase Auth ile kayıt yapan
+istemciler bu akışa otomatik olarak dahil değildir; onların kayıt işlemi de
+MainApi kimlik sözleşmesini kullanmalıdır.
 
 > [!WARNING]
 > **Güvenlik Uyarısı:** E-posta şifresi (`SMTP_PASS`) kesinlikle Git kaynak kodlarına, PR açıklamalarına veya sohbet ekranlarına eklenmemelidir. Sadece sunucu ortamındaki `.env` dosyası içinde tutulmalıdır.
