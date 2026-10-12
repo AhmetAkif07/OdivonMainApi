@@ -58,7 +58,14 @@ SMTP_FROM="OdivonGYM" <info@odivon.com>
 APP_URL=https://gym.odivon.com
 APP_URL_GYM=https://gym.odivon.com
 APP_URL_VET=https://vet.odivon.com
+PUBLIC_API_URL=https://mainapi.odivon.com
 ```
+
+Doğrulama bağlantıları kayıtlı modüle göre oluşturulur. GYM ve VET kendi doğrulama
+ekranlarını kullanır. FARM, SPA, Hair, Beauty ve APM bağlantıları MainApi'nin ortak
+`/api/v1/identity/verification` sayfasına gider; sayfa açıldığında hesap değişmez,
+kullanıcı onay düğmesine bastığında doğrulama yapılır. Bu modüllerde özel bir istemci
+doğrulama ekranı yayımlanana kadar bağlantı GYM alan adına yönlendirilmez.
 
 > [!WARNING]
 > **Güvenlik Uyarısı:** E-posta şifresi (`SMTP_PASS`) kesinlikle Git kaynak kodlarına, PR açıklamalarına veya sohbet ekranlarına eklenmemelidir. Sadece sunucu ortamındaki `.env` dosyası içinde tutulmalıdır.

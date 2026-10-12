@@ -55,6 +55,7 @@
     "APP_URL": "https://gym.odivon.com",
     "APP_URL_GYM": "https://gym.odivon.com",
     "APP_URL_VET": "https://vet.odivon.com",
+    "PUBLIC_API_URL": "https://mainapi.odivon.com",
     "SMTP_HOST": "smtp.hostinger.com",
     "SMTP_PORT": "465",
     "SMTP_SECURE": "true",

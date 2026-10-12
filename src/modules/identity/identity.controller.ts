@@ -1,4 +1,5 @@
-import { Body, Controller, Delete, Get, Injectable, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpException, Injectable, Param, Patch, Post, Query, Res, UseGuards } from '@nestjs/common';
+import type { Response } from 'express';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { FirebaseAuthGuard } from '../../shared/auth/firebase-auth.guard';
 import { PermissionGuard } from '../../shared/authorization/permission.guard';
@@ -32,6 +33,31 @@ export class IdentityController {
   @ApiOperation({ summary: 'Verify email address with token' })
   verifyEmail(@Body() dto: VerifyEmailDto) {
     return this.identity.verifyEmail(dto.token);
+  }
+
+  /** Shared confirmation page for products that do not yet have their own verification screen. */
+  @Get('verification')
+  verificationPage(@Query('token') token: string | undefined, @Res() response: Response) {
+    setVerificationHeaders(response);
+    const validToken = typeof token === 'string' && /^[a-f0-9]{64}$/i.test(token);
+    return response.status(validToken ? 200 : 400).type('html').send(
+      verificationHtml(validToken ? 'pending' : 'invalid', validToken ? token : undefined),
+    );
+  }
+
+  @Post('verification/confirm')
+  async confirmVerification(@Query('token') token: string | undefined, @Res() response: Response) {
+    setVerificationHeaders(response);
+    if (typeof token !== 'string' || !/^[a-f0-9]{64}$/i.test(token)) {
+      return response.status(400).type('html').send(verificationHtml('invalid'));
+    }
+    try {
+      await this.identity.verifyEmail(token);
+      return response.status(200).type('html').send(verificationHtml('verified'));
+    } catch (error) {
+      const status = error instanceof HttpException ? error.getStatus() : 500;
+      return response.status(status).type('html').send(verificationHtml(status === 503 ? 'temporary-error' : 'invalid'));
+    }
   }
 
   @Post('resend-verification')
@@ -110,4 +136,22 @@ export class IdentityController {
     await this.identity.deactivateUser(uid);
     return { uid };
   }
+}
+
+function setVerificationHeaders(response: Response): void {
+  response.set('Cache-Control', 'no-store');
+  response.set('Referrer-Policy', 'no-referrer');
+}
+
+function verificationHtml(state: 'pending' | 'verified' | 'invalid' | 'temporary-error', token?: string): string {
+  const content = {
+    pending: '<h1>E-posta adresinizi doğrulayın</h1><p>Hesabınızın e-posta adresini onaylamak için aşağıdaki düğmeye basın.</p>',
+    verified: '<h1>E-posta adresiniz doğrulandı</h1><p>Artık kayıt olduğunuz Odivon uygulamasına dönüp giriş yapabilirsiniz.</p>',
+    invalid: '<h1>Bağlantı geçersiz veya süresi dolmuş</h1><p>Uygulamanızdan yeni bir doğrulama bağlantısı isteyin.</p>',
+    'temporary-error': '<h1>Doğrulama tamamlanamadı</h1><p>Lütfen biraz sonra aynı bağlantıyı yeniden deneyin.</p>',
+  }[state];
+  const form = state === 'pending' && token
+    ? `<form method="post" action="/api/v1/identity/verification/confirm?token=${encodeURIComponent(token)}"><button type="submit">E-postamı doğrula</button></form>`
+    : '';
+  return `<!doctype html><html lang="tr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Odivon | E-posta doğrulama</title></head><body><main>${content}${form}</main></body></html>`;
 }

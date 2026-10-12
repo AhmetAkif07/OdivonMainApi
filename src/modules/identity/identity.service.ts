@@ -472,16 +472,16 @@ export class IdentityService {
 }
 
 function verificationUrl(module: ProductModule, token: string): string {
-  const moduleUrl = process.env[`APP_URL_${module.toUpperCase()}`]?.trim();
-  const appUrl = moduleUrl
-    || (module === 'gym' ? process.env.APP_URL?.trim() || 'https://gym.odivon.com' : null)
-    || (module === 'vet' ? 'https://vet.odivon.com' : null)
-    || process.env.APP_URL?.trim();
-  if (!appUrl) {
-    throw new AppException(ErrorCode.VALIDATION_ERROR, `${module} doğrulama adresi yapılandırılmamış.`);
+  if (module === 'gym') {
+    const url = process.env.APP_URL_GYM?.trim() || process.env.APP_URL?.trim() || 'https://gym.odivon.com';
+    return `${url.replace(/\/+$/, '')}/auth/verify-email?token=${encodeURIComponent(token)}`;
   }
-  const path = module === 'vet' ? '/verify-email' : '/auth/verify-email';
-  return `${appUrl.replace(/\/+$/, '')}${path}?token=${encodeURIComponent(token)}`;
+  if (module === 'vet') {
+    const url = process.env.APP_URL_VET?.trim() || 'https://vet.odivon.com';
+    return `${url.replace(/\/+$/, '')}/verify-email?token=${encodeURIComponent(token)}`;
+  }
+  const apiUrl = process.env.PUBLIC_API_URL?.trim() || 'https://mainapi.odivon.com';
+  return `${apiUrl.replace(/\/+$/, '')}/api/v1/identity/verification?token=${encodeURIComponent(token)}`;
 }
 
 function mapFirebaseUserError(error: unknown, logger: Logger, fallback = 'User operation failed'): AppException {

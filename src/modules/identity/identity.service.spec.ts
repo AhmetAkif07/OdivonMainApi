@@ -114,6 +114,28 @@ describe('IdentityService.register', () => {
     }));
   });
 
+  it.each(['farm', 'spa', 'hair', 'beauty', 'apm'] as const)(
+    'uses the shared confirmation page for %s instead of the Gym site',
+    async (module) => {
+      firebase.auth.createUser.mockResolvedValue({ uid: 'uid-3' });
+      tenants.create.mockResolvedValue({ id: 'tenant-3' });
+      users.createProfile.mockResolvedValue({});
+      firebase.auth.setCustomUserClaims.mockResolvedValue(undefined);
+
+      await service.register({
+        email: `${module}@example.com`,
+        password: 'password1',
+        tenantName: 'Business',
+        module,
+      });
+
+      expect(mail.sendVerificationEmail).toHaveBeenCalledWith(expect.objectContaining({
+        module,
+        verificationLink: expect.stringContaining('https://mainapi.odivon.com/api/v1/identity/verification?token='),
+      }));
+    },
+  );
+
   it('sends the module welcome mail without failing the registration when it rejects', async () => {
     process.env.APP_URL_SPA = 'https://spa.example.com';
     firebase.auth.createUser.mockResolvedValue({ uid: 'uid-3' });
