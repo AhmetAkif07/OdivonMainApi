@@ -99,7 +99,7 @@ export class IdentityService {
         modules,
       });
 
-      const verificationLink = verificationUrl(verificationToken);
+      const verificationLink = verificationUrl(productModule, verificationToken);
 
       this.mail
         .sendVerificationEmail({
@@ -114,34 +114,6 @@ export class IdentityService {
             `Doğrulama maili gönderilemedi (${dto.email}): ${err?.message || err}`,
           );
         });
-
-      if (modules.includes('gym')) {
-        this.mail
-          .sendWelcomeGymOwner({
-            to: dto.email,
-            displayName: dto.displayName,
-            tenantName: dto.tenantName,
-          })
-          ?.catch((err) => {
-            this.logger.error(
-              `Hoş geldin maili gönderilemedi (${dto.email}): ${err?.message || err}`,
-            );
-          });
-      } else {
-        this.mail
-          .sendModuleWelcome({
-            module: productModule as WelcomeModule,
-            to: dto.email,
-            displayName: dto.displayName,
-            tenantName: dto.tenantName,
-            trialDays: SAAS_TRIAL_DAYS,
-          })
-          ?.catch((err) => {
-            this.logger.error(
-              `Hoş geldin maili gönderilemedi (${dto.email}): ${err?.message || err}`,
-            );
-          });
-      }
 
       return {
         uid,
@@ -193,13 +165,28 @@ export class IdentityService {
       updatedAt: nowIso,
     });
 
+    const tenant = await this.tenants.getById(profile.tenantId).catch(() => null);
+    const tenantName = tenant?.name || (profile.modules.includes('gym') ? 'Spor Salonu' : 'İşletme');
+
     if (profile.modules.includes('gym')) {
-      const tenant = await this.tenants.getById(profile.tenantId).catch(() => null);
       this.mail
         .sendWelcomeGymOwner({
           to: profile.email,
           displayName: profile.displayName,
-          tenantName: tenant?.name || 'Spor Salonu',
+          tenantName,
+        })
+        ?.catch((err) => {
+          this.logger.error(`Hoş geldin maili gönderilemedi (${profile.email}): ${err?.message || err}`);
+        });
+    } else {
+      const primaryModule = (profile.modules[0] || 'vet') as WelcomeModule;
+      this.mail
+        .sendModuleWelcome({
+          module: primaryModule,
+          to: profile.email,
+          displayName: profile.displayName,
+          tenantName,
+          trialDays: SAAS_TRIAL_DAYS,
         })
         ?.catch((err) => {
           this.logger.error(`Hoş geldin maili gönderilemedi (${profile.email}): ${err?.message || err}`);
@@ -227,7 +214,7 @@ export class IdentityService {
 
     const tenant = await this.tenants.getById(profile.tenantId).catch(() => null);
     const productModule = profile.modules[0] ?? 'vet';
-    const verificationLink = verificationUrl(verificationToken);
+    const verificationLink = verificationUrl(productModule, verificationToken);
 
     let sent = false;
     try {
@@ -471,7 +458,15 @@ export class IdentityService {
   }
 }
 
-function verificationUrl(token: string): string {
+function verificationUrl(module: ProductModule, token: string): string {
+  if (module === 'gym') {
+    const url = process.env.APP_URL_GYM?.trim() || process.env.APP_URL?.trim() || 'https://gym.odivon.com';
+    return `${url.replace(/\/+$/, '')}/auth/verify-email?token=${encodeURIComponent(token)}`;
+  }
+  if (module === 'vet') {
+    const url = process.env.APP_URL_VET?.trim() || 'https://vet.odivon.com';
+    return `${url.replace(/\/+$/, '')}/verify-email?token=${encodeURIComponent(token)}`;
+  }
   const apiUrl = process.env.PUBLIC_API_URL?.trim() || 'https://mainapi.odivon.com';
   return `${apiUrl.replace(/\/+$/, '')}/api/v1/identity/verification?token=${encodeURIComponent(token)}`;
 }

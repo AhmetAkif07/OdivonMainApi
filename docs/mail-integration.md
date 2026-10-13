@@ -10,7 +10,7 @@ OdivonGYM'e yeni kayıt olan işletme/salon sahiplerine (`role: owner`), hesapla
 
 - **Gönderici Adresi:** `info@odivon.com` ("OdivonGYM")
 - **Kapsam:** Yalnızca OdivonGYM SaaS kaydı gerçekleştiren salon sahipleri.
-- **Tetiklenme Noktası:** Backend tarafındaki `IdentityService.register()` metodu (Tenant ve yetki tanımları tamamlandıktan hemen sonra).
+- **Tetiklenme Noktası:** Backend tarafındaki `IdentityService.verifyEmail()` metodu (E-posta doğrulaması başarıyla tamamlandıktan hemen sonra). Kayıt anında üst üste mail gitmemesi için yalnızca doğrulama e-postası gönderilir; "Hoş Geldiniz" bildirimi e-posta doğrulandığı an iletilir.
 
 ---
 
@@ -61,12 +61,10 @@ APP_URL_VET=https://vet.odivon.com
 PUBLIC_API_URL=https://mainapi.odivon.com
 ```
 
-MainApi üzerinden açılan bütün hesapların doğrulama bağlantısı ortak
-`/api/v1/identity/verification` sayfasına gider. Sayfa açıldığında hesap değişmez;
-kullanıcı onay düğmesine bastığında doğrulama yapılır. Ürün adı e-postanın
-başlığında ve içeriğinde kullanılır. Doğrudan Firebase Auth ile kayıt yapan
-istemciler bu akışa otomatik olarak dahil değildir; onların kayıt işlemi de
-MainApi kimlik sözleşmesini kullanmalıdır.
+Doğrulama bağlantıları modüle göre dinamik olarak oluşturulur:
+- **GYM:** `https://gym.odivon.com/auth/verify-email?token=...`
+- **VET:** `https://vet.odivon.com/verify-email?token=...`
+- **Diğer Modüller / Yedek:** MainApi'nin OdivonGYM tasarım diliyle yenilenen ortak `/api/v1/identity/verification` sayfasına gider. Sayfada modern karanlık tema, ambient glow orblar ve cam (glassmorphism) kart tasarımı yer alır; onay düğmesine basıldığında hesap doğrulanır ve hoş geldin e-postası iletilir.
 
 > [!WARNING]
 > **Güvenlik Uyarısı:** E-posta şifresi (`SMTP_PASS`) kesinlikle Git kaynak kodlarına, PR açıklamalarına veya sohbet ekranlarına eklenmemelidir. Sadece sunucu ortamındaki `.env` dosyası içinde tutulmalıdır.

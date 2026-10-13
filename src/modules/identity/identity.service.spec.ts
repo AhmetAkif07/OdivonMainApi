@@ -76,7 +76,7 @@ describe('IdentityService.register', () => {
     });
     expect(mail.sendVerificationEmail).toHaveBeenCalledWith(expect.objectContaining({
       module: 'vet',
-      verificationLink: expect.stringContaining('https://mainapi.odivon.com/api/v1/identity/verification?token='),
+      verificationLink: expect.stringContaining('https://vet.odivon.com/verify-email?token='),
     }));
   });
 
@@ -110,7 +110,7 @@ describe('IdentityService.register', () => {
     });
     expect(mail.sendVerificationEmail).toHaveBeenCalledWith(expect.objectContaining({
       module: 'gym',
-      verificationLink: expect.stringContaining('https://mainapi.odivon.com/api/v1/identity/verification?token='),
+      verificationLink: expect.stringContaining('https://gym.odivon.com/auth/verify-email?token='),
     }));
   });
 
@@ -136,13 +136,11 @@ describe('IdentityService.register', () => {
     },
   );
 
-  it('sends the module welcome mail without failing the registration when it rejects', async () => {
-    process.env.APP_URL_SPA = 'https://spa.example.com';
+  it('does not send welcome mail on registration before email is verified', async () => {
     firebase.auth.createUser.mockResolvedValue({ uid: 'uid-3' });
     tenants.create.mockResolvedValue({ id: 'tenant-3' });
     users.createProfile.mockResolvedValue({});
     firebase.auth.setCustomUserClaims.mockResolvedValue(undefined);
-    mail.sendModuleWelcome.mockRejectedValue(new Error('smtp down'));
 
     const result = await service.register({
       email: 'spa@example.com',
@@ -153,16 +151,9 @@ describe('IdentityService.register', () => {
     });
 
     expect(result.modules).toEqual(['spa']);
-    expect(mail.sendModuleWelcome).toHaveBeenCalledWith({
-      module: 'spa',
-      to: 'spa@example.com',
-      displayName: 'Owner',
-      tenantName: 'Spa',
-      trialDays: 14,
-    });
+    expect(mail.sendModuleWelcome).not.toHaveBeenCalled();
     expect(mail.sendWelcomeGymOwner).not.toHaveBeenCalled();
     expect(firebase.auth.deleteUser).not.toHaveBeenCalled();
-    delete process.env.APP_URL_SPA;
   });
 
   it('explains missing Firebase Authentication configuration', async () => {
@@ -240,7 +231,7 @@ describe('IdentityService.resendVerification', () => {
     expect(users.findByEmail).toHaveBeenCalledWith('owner@example.com');
     expect(mail.sendVerificationEmail).toHaveBeenCalledWith(expect.objectContaining({
       to: profile.email,
-      verificationLink: expect.stringContaining('https://mainapi.odivon.com/api/v1/identity/verification?token='),
+      verificationLink: expect.stringContaining('https://vet.odivon.com/verify-email?token='),
       module: 'vet',
     }));
   });
@@ -294,6 +285,46 @@ describe('IdentityService.resendVerification', () => {
       'uid-1',
       expect.objectContaining({ emailVerified: true, emailVerificationToken: null })
     );
+    expect(mail.sendWelcomeGymOwner).toHaveBeenCalledWith(expect.objectContaining({
+      to: 'test@example.com',
+      tenantName: 'Gym 1',
+    }));
+  });
+
+  it('sends module welcome email for non-gym owner after email verification', async () => {
+    const firebase = { auth: { updateUser: jest.fn().mockResolvedValue({}) } };
+    const tenants = { getById: jest.fn().mockResolvedValue({ id: 't-2', name: 'Vet Clinic' }) };
+    const users = {
+      findByVerificationToken: jest.fn().mockResolvedValue({
+        uid: 'uid-2',
+        email: 'vet@example.com',
+        tenantId: 't-2',
+        modules: ['vet'],
+        displayName: 'Vet Doctor',
+        emailVerificationExpiresAt: new Date(Date.now() + 100000).toISOString(),
+      }),
+      updateProfile: jest.fn().mockResolvedValue(undefined),
+    };
+    const mail = { sendModuleWelcome: jest.fn().mockResolvedValue(true) };
+
+    const service = new IdentityService(
+      firebase as never,
+      tenants as never,
+      users as never,
+      {} as never,
+      {} as never,
+      mail as never,
+    );
+
+    const result = await service.verifyEmail('valid-token-vet');
+    expect(result).toEqual({ success: true, email: 'vet@example.com' });
+    expect(mail.sendModuleWelcome).toHaveBeenCalledWith(expect.objectContaining({
+      module: 'vet',
+      to: 'vet@example.com',
+      displayName: 'Vet Doctor',
+      tenantName: 'Vet Clinic',
+      trialDays: 14,
+    }));
   });
 
   it('throws VERIFICATION_TOKEN_INVALID for invalid token', async () => {
