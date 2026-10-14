@@ -56,6 +56,7 @@
     "APP_URL_GYM": "https://gym.odivon.com",
     "APP_URL_VET": "https://vet.odivon.com",
     "APP_URL_RENTACAR": "https://rentacar.odivon.com",
+    "APP_URL_SPA": "https://spa.odivon.com",
     "PUBLIC_API_URL": "https://mainapi.odivon.com",
     "SMTP_HOST": "smtp.hostinger.com",
     "SMTP_PORT": "465",

@@ -480,6 +480,10 @@ function verificationUrl(module: ProductModule, token: string): string {
     const url = process.env.APP_URL_GYM?.trim() || process.env.APP_URL?.trim() || 'https://gym.odivon.com';
     return `${url.replace(/\/+$/, '')}/auth/verify-email?token=${encodeURIComponent(token)}`;
   }
+  if (module === 'spa') {
+    const url = process.env.APP_URL_SPA?.trim() || 'https://spa.odivon.com';
+    return `${url.replace(/\/+$/, '')}/auth/verify-email?token=${encodeURIComponent(token)}`;
+  }
   if (module === 'vet') {
     const url = process.env.APP_URL_VET?.trim() || 'https://vet.odivon.com';
     return `${url.replace(/\/+$/, '')}/verify-email?token=${encodeURIComponent(token)}`;
