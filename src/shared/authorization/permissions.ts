@@ -1,9 +1,9 @@
 ﻿import { PRODUCT_MODULES, ProductModule } from './constants';
 
-export const PERMISSION_ACTIONS = ['view', 'create', 'update', 'delete'] as const;
+export const PERMISSION_ACTIONS = ['view', 'create', 'update', 'delete', 'export', 'approve', 'refund'] as const;
 export type PermissionAction = (typeof PERMISSION_ACTIONS)[number];
 
-export type PermissionGroup = 'clinic' | 'finance' | 'stock' | 'definitions' | 'admin' | 'gym' | 'spa' | 'hair' | 'beauty' | 'apm';
+export type PermissionGroup = 'clinic' | 'finance' | 'stock' | 'definitions' | 'admin' | 'gym' | 'spa' | 'hair' | 'beauty' | 'apm' | 'rentacar';
 
 export interface PermissionResourceDefinition {
   key: string;
@@ -122,6 +122,18 @@ export const PERMISSION_RESOURCES = [
   { key: 'beautyAudit', label: 'Beauty işlem geçmişi', group: 'beauty', modules: ['beauty'] },
   { key: 'apmDashboard', label: 'APM gösterge paneli', group: 'apm', modules: ['apm'] },
   { key: 'apmAppointments', label: 'APM randevuları', group: 'apm', modules: ['apm'] },
+  { key: 'rentDashboard', label: 'Rent A Car gösterge paneli', group: 'rentacar', modules: ['rentacar'] },
+  { key: 'rentBranches', label: 'Şubeler', group: 'rentacar', modules: ['rentacar'] },
+  { key: 'rentVehicles', label: 'Araçlar ve filo', group: 'rentacar', modules: ['rentacar'] },
+  { key: 'rentMaintenance', label: 'Bakım ve hasar', group: 'rentacar', modules: ['rentacar'] },
+  { key: 'rentCustomers', label: 'Müşteriler', group: 'rentacar', modules: ['rentacar'] },
+  { key: 'rentReservations', label: 'Rezervasyonlar', group: 'rentacar', modules: ['rentacar'] },
+  { key: 'rentRentals', label: 'Kiralamalar ve transferler', group: 'rentacar', modules: ['rentacar'] },
+  { key: 'rentRates', label: 'Tarife ve fiyatlar', group: 'rentacar', modules: ['rentacar'] },
+  { key: 'rentFinance', label: 'Finans ve ödemeler', group: 'rentacar', modules: ['rentacar'] },
+  { key: 'rentCrm', label: 'CRM ve kampanyalar', group: 'rentacar', modules: ['rentacar'] },
+  { key: 'rentReports', label: 'Raporlar', group: 'rentacar', modules: ['rentacar'] },
+  { key: 'rentSettings', label: 'Rent A Car ayarları', group: 'rentacar', modules: ['rentacar'] },
 ] as const satisfies readonly PermissionResourceDefinition[];
 
 export type PermissionResource = (typeof PERMISSION_RESOURCES)[number]['key'];
@@ -139,6 +151,7 @@ export const PERMISSION_GROUP_LABELS: Record<PermissionGroup, string> = {
   hair: 'Kuaför',
   beauty: 'Güzellik Merkezi',
   apm: 'Randevu Yönetimi',
+  rentacar: 'Rent A Car',
 };
 
 export function resourcesForModules(

@@ -32,6 +32,13 @@ export class CreateUserDto {
   @ArrayUnique()
   @IsString({ each: true })
   roleIds!: string[];
+
+  @ApiPropertyOptional({ type: [String], description: 'Rent A Car branch scope' })
+  @IsOptional()
+  @IsArray()
+  @ArrayUnique()
+  @IsString({ each: true })
+  branchIds?: string[];
 }
 
 export class UpdateMeDto {
@@ -63,6 +70,13 @@ export class UpdateUserDto {
   @ArrayUnique()
   @IsString({ each: true })
   roleIds?: string[];
+
+  @ApiPropertyOptional({ type: [String], description: 'Rent A Car branch scope' })
+  @IsOptional()
+  @IsArray()
+  @ArrayUnique()
+  @IsString({ each: true })
+  branchIds?: string[];
 
   @ApiPropertyOptional({ enum: ['active', 'inactive'] })
   @IsOptional()

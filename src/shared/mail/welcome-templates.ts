@@ -94,6 +94,19 @@ export const MODULE_WELCOME_CONTENT: Record<WelcomeModule, ModuleWelcomeContent>
       { title: 'Paketler', text: 'Deneme süreniz bitmeden size uygun paketi abonelik sayfasından seçin.' },
     ],
   },
+  rentacar: {
+    brand: 'Odivon Rent A Car',
+    badge: 'OTO KİRALAMA VE FİLO YÖNETİM PLATFORMU',
+    heading: 'Filonuz Dijitalleşmeye Hazır! 🚘',
+    recipientFallback: 'Filo Yöneticisi',
+    tenantNoun: 'işletmeniz',
+    tenantLabel: 'Firma Adı',
+    steps: [
+      { title: 'Şube ve Filo', text: 'İlk şubenizi ve kiralanabilir araçlarınızı tanımlayın.' },
+      { title: 'Tarifeler', text: 'Sezon, süre ve araç sınıfına göre fiyatlarınızı oluşturun.' },
+      { title: 'Rezervasyon', text: 'Operasyon çizelgesinden ilk rezervasyonunuzu planlayın.' },
+    ],
+  },
 };
 
 export interface ModuleWelcomeInput {

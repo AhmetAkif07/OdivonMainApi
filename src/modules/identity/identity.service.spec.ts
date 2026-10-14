@@ -397,7 +397,7 @@ describe('IdentityService.resendVerification', () => {
       tenant: { id: 't1', name: 'Clinic', status: 'active' },
     });
     const result = await service.me();
-    expect(result.permissions.customers).toEqual(['view', 'create', 'update', 'delete']);
+    expect(result.permissions.customers).toEqual(['view', 'create', 'update', 'delete', 'export', 'approve', 'refund']);
     expect(result.permissions.members).toBeUndefined();
   });
 
@@ -429,7 +429,7 @@ describe('IdentityService.resendVerification', () => {
     );
 
     const result = await service.me();
-    expect(result.permissions.members).toEqual(['view', 'create', 'update', 'delete']);
+    expect(result.permissions.members).toEqual(['view', 'create', 'update', 'delete', 'export', 'approve', 'refund']);
     expect(result.permissions.customers).toBeUndefined();
     expect(result.onboardingCompleted).toBe(false);
     expect(result.membershipStatus).toBe('trial');

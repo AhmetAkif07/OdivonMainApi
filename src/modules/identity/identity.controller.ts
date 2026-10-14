@@ -68,6 +68,15 @@ export class IdentityController {
     return this.identity.resendVerification(dto.email);
   }
 
+  @Post('logout')
+  @ApiOperation({ summary: 'Expire server-side product session cookies' })
+  logout(@Res({ passthrough: true }) response: Response) {
+    for (const cookie of ['odivon-rentacar-session', 'odivon-rentacar-csrf']) {
+      response.clearCookie(cookie, { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax', path: '/' });
+    }
+    return { loggedOut: true };
+  }
+
   @Get('me')
   @UseGuards(FirebaseAuthGuard, TenantGuard)
   @ApiBearerAuth()

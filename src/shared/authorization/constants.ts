@@ -1,4 +1,4 @@
-export const PRODUCT_MODULES = ['vet', 'farm', 'gym', 'spa', 'hair', 'beauty', 'apm'] as const;
+export const PRODUCT_MODULES = ['vet', 'farm', 'gym', 'spa', 'hair', 'beauty', 'apm', 'rentacar'] as const;
 export type ProductModule = (typeof PRODUCT_MODULES)[number];
 
 export const USER_ROLES = ['owner', 'admin', 'user'] as const;

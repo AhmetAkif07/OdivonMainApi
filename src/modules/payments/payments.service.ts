@@ -28,6 +28,7 @@ const DEFAULT_RETURN_ORIGINS = [
   'https://odivon-gym-client.dogangns-98.workers.dev',
   'https://odivon-panel.dogangns-98.workers.dev',
   'https://odivonapm.dogangns-98.workers.dev',
+  'https://rentacar.odivon.com',
   'http://localhost:4200',
 ];
 
@@ -224,6 +225,12 @@ export class PaymentsService {
       url.searchParams.set('status', outcome);
       return url.toString();
     }
+    if (session.source === 'rentacar_reservation') {
+      const url = new URL(`${session.returnOrigin ?? DEFAULT_RETURN_ORIGINS[0]}/app/rezervasyonlar`);
+      url.searchParams.set('paymentSession', id);
+      url.searchParams.set('status', outcome);
+      return url.toString();
+    }
     if (!isGymSource(session.source)) return null;
     const url = new URL(`${session.returnOrigin ?? DEFAULT_RETURN_ORIGINS[0]}/payment-result`);
     url.searchParams.set('paymentSession', id);
@@ -337,11 +344,26 @@ export class PaymentsService {
         }
       }
       const at = new Date().toISOString();
+      if (verified.status === 'succeeded' && current.source === 'rentacar_reservation' && !current.fulfilledAt) {
+        const reservationRef = this.firebase.db.doc(`${tenantCollectionPath(current.tenantId, TENANT_COLLECTION.rentReservations)}/${current.sourceId}`);
+        const reservationSnapshot = await tx.get(reservationRef);
+        const rentReservation = reservationSnapshot.data();
+        if (!rentReservation || rentReservation.deletedAt || Math.round(Number(rentReservation.price?.totalAmount ?? 0) * 100) !== current.amountKurus) {
+          throw new AppException(ErrorCode.FINANCE_INVALID, 'Rezervasyon ödeme tutarı doğrulanamadı.');
+        }
+        tx.update(reservationRef, { status: 'confirmed', updatedAt: at, updatedBy: 'system:payments', version: Number(rentReservation.version ?? 0) + 1 });
+        tx.set(this.firebase.db.doc(`${tenantCollectionPath(current.tenantId, TENANT_COLLECTION.rentTransactions)}/${current.id}`), {
+          id: current.id, tenantId: current.tenantId, branchId: rentReservation.branchId, customerId: rentReservation.customerId,
+          reservationId: current.sourceId, rentalId: null, kind: 'payment', method: 'online', amount: current.amountKurus / 100,
+          currency: 'TRY', status: 'completed', reference: verified.providerPaymentId, reversalOf: null,
+          createdAt: at, createdBy: 'system:payments', updatedAt: at, updatedBy: 'system:payments', deletedAt: null, version: 1,
+        });
+      }
       tx.update(ref, {
         status: verified.status === 'pending' ? current.status : verified.status,
         providerPaymentId: verified.providerPaymentId,
         ...(verified.status === 'pending' ? { reviewPending: true } : {}),
-        ...(fulfil ? { fulfilledAt: at } : {}),
+        ...(fulfil || (verified.status === 'succeeded' && current.source === 'rentacar_reservation') ? { fulfilledAt: at } : {}),
         updatedAt: at,
       });
       if (reservation.data()?.sessionId === id) tx.update(lock, { status: verified.status });
@@ -468,6 +490,16 @@ export class PaymentsService {
       const order = snapshot.data();
       if (!order || order.status !== 'open') throw new AppException(ErrorCode.FINANCE_INVALID, 'SaaS order is not open');
       return { amountKurus: Number(order.amountKurus), buyerId: tenantId };
+    }
+    if (source === 'rentacar_reservation') {
+      const snapshot = await this.firebase.db.doc(`${tenantCollectionPath(tenantId, TENANT_COLLECTION.rentReservations)}/${id}`).get();
+      const reservation = snapshot.data();
+      if (!reservation || reservation.deletedAt || !['pending_payment', 'confirmed'].includes(String(reservation.status))) {
+        throw new AppException(ErrorCode.FINANCE_INVALID, 'Rezervasyon ödeme için uygun değil.');
+      }
+      const amountKurus = Math.round(Number(reservation.price?.totalAmount ?? 0) * 100);
+      if (!Number.isFinite(amountKurus) || amountKurus <= 0) throw new AppException(ErrorCode.FINANCE_INVALID, 'Ödenecek tutar bulunamadı.');
+      return { amountKurus, buyerId: String(reservation.customerId) };
     }
     if (source !== 'vet_sale' && source !== 'gym_receivable') {
       throw new AppException(ErrorCode.VALIDATION_ERROR, 'Use the member checkout for this payment');

@@ -18,6 +18,8 @@ export interface UserProfile {
   emailVerificationExpiresAt?: string | null;
   displayName?: string | null;
   roleIds?: string[];
+  branchIds?: string[];
+  allBranches?: boolean;
   status: UserStatus;
   suspendedByPlatform?: boolean;
   phone?: string | null;

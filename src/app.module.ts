@@ -23,6 +23,7 @@ import { PaymentsModule } from './modules/payments/payments.module';
 import { ApmModule } from './modules/apm/apm.module';
 import { PlatformModule } from './modules/platform/platform.module';
 import { BeautyModule } from './modules/beauty/beauty.module';
+import { RentacarModule } from './modules/rentacar/rentacar.module';
 
 @Module({
   imports: [
@@ -40,6 +41,7 @@ import { BeautyModule } from './modules/beauty/beauty.module';
     SpaModule,
     HairModule,
     BeautyModule,
+    RentacarModule,
     PaymentsModule,
     ApmModule,
     PlatformModule,

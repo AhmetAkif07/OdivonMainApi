@@ -254,6 +254,9 @@ export class IdentityService {
       accountType: profile.accountType ?? null,
       modules: profile.modules,
       roleIds: profile.roleIds ?? [],
+      emailVerified: profile.emailVerified ?? null,
+      branchIds: profile.branchIds ?? [],
+      allBranches: profile.role === 'owner' || profile.allBranches === true,
       membershipStatus: tenant.membershipStatus ? billing.membershipStatus : (profile.membershipStatus ?? 'active'),
       trialEndsAt: tenant.trialEndsAt ?? profile.trialEndsAt ?? null,
       onboardingCompleted: tenant.onboardingCompleted ?? false,
@@ -293,7 +296,13 @@ export class IdentityService {
   async listUsers(): Promise<UserProfile[]> {
     const users = await this.users.listByCurrentTenant();
     return users
-      .map((user) => ({ ...user, displayName: user.displayName ?? null, roleIds: user.roleIds ?? [] }))
+      .map((user) => ({
+        ...user,
+        displayName: user.displayName ?? null,
+        roleIds: user.roleIds ?? [],
+        branchIds: user.branchIds ?? [],
+        allBranches: user.role === 'owner' || user.allBranches === true,
+      }))
       .sort((left, right) => left.createdAt.localeCompare(right.createdAt));
   }
 
@@ -341,6 +350,8 @@ export class IdentityService {
         email: dto.email,
         displayName: dto.displayName.trim(),
         roleIds,
+        branchIds: dto.branchIds ?? [],
+        allBranches: false,
         status: 'active',
         createdAt: now,
         updatedAt: now,
@@ -374,6 +385,7 @@ export class IdentityService {
     const patch: Partial<UserProfile> = {
       ...(dto.displayName !== undefined ? { displayName: dto.displayName.trim() } : {}),
       ...(roleIds !== undefined ? { roleIds } : {}),
+      ...(dto.branchIds !== undefined ? { branchIds: [...new Set(dto.branchIds)] } : {}),
       ...(dto.status !== undefined ? { status: dto.status } : {}),
       updatedAt: new Date().toISOString(),
     };
@@ -400,6 +412,7 @@ export class IdentityService {
       ...patch,
       displayName: patch.displayName ?? current.displayName ?? null,
       roleIds: patch.roleIds ?? current.roleIds ?? [],
+      branchIds: patch.branchIds ?? current.branchIds ?? [],
     };
   }
 
@@ -459,6 +472,10 @@ export class IdentityService {
 }
 
 function verificationUrl(module: ProductModule, token: string): string {
+  if (module === 'rentacar') {
+    const url = process.env.APP_URL_RENTACAR?.trim() || 'https://rentacar.odivon.com';
+    return `${url.replace(/\/+$/, '')}/auth/verify-email?token=${encodeURIComponent(token)}`;
+  }
   if (module === 'gym') {
     const url = process.env.APP_URL_GYM?.trim() || process.env.APP_URL?.trim() || 'https://gym.odivon.com';
     return `${url.replace(/\/+$/, '')}/auth/verify-email?token=${encodeURIComponent(token)}`;

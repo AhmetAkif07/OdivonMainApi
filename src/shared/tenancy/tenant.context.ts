@@ -15,6 +15,9 @@ export interface TenantStore {
   roleIds?: string[];
   displayName?: string | null;
   phone?: string | null;
+  emailVerified?: boolean;
+  branchIds?: string[];
+  allBranches?: boolean;
   permissions?: PermissionMap;
 }
 
