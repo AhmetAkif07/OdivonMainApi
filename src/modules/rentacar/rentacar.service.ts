@@ -201,7 +201,13 @@ export class RentacarService {
     const nextBranch = dto.branchId ?? current.branchId;
     const nextReturnBranch = dto.returnBranchId ?? current.returnBranchId;
     this.assertBranch(nextBranch); this.assertBranch(nextReturnBranch);
-    const price = await this.quote(dto);
+    const discountBase = current.price.baseAmount + current.price.extrasAmount + current.price.oneWayFee;
+    const price = await this.quote({
+      ...dto,
+      extrasAmount: dto.extrasAmount ?? current.price.extrasAmount,
+      oneWayFee: dto.oneWayFee ?? current.price.oneWayFee,
+      discountPercent: dto.discountPercent ?? (discountBase > 0 ? (current.price.discountAmount / discountBase) * 100 : 0),
+    });
     const next: RentReservation = {
       ...current, ...omitUndefined(dto), branchId: nextBranch, returnBranchId: nextReturnBranch,
       vehicleId: dto.vehicleId ?? current.vehicleId, extraIds: dto.extraIds ?? current.extraIds,
@@ -249,7 +255,17 @@ export class RentacarService {
       from, to, vehicles: vehicles.items,
       items: [
         ...reservations.items.filter((item) => item.status !== 'cancelled' && Date.parse(item.pickupAt) < Date.parse(to) && Date.parse(item.returnAt) > Date.parse(from))
-          .map((item) => ({ id: item.id, vehicleId: item.vehicleId, type: 'reservation', startAt: item.pickupAt, endAt: item.returnAt, status: item.status, label: item.customerId })),
+          .map((item) => ({
+            id: item.id,
+            vehicleId: item.vehicleId,
+            type: 'reservation',
+            startAt: item.pickupAt,
+            endAt: item.returnAt,
+            status: item.status,
+            label: item.customerId,
+            ratePlanId: item.ratePlanId,
+            version: item.version,
+          })),
         ...blocks.items.map((item) => item as RentDocument & Record<string, unknown>)
           .filter((item) => typeof item['startAt'] === 'string' && typeof item['endAt'] === 'string' && Date.parse(String(item['startAt'])) < Date.parse(to) && Date.parse(String(item['endAt'])) > Date.parse(from))
           .map((item) => ({ id: item.id, vehicleId: item['vehicleId'], type: 'maintenance', startAt: item['startAt'], endAt: item['endAt'], status: item['status'], label: item['title'] })),
