@@ -7,6 +7,9 @@ export const SAAS_SANDBOX_PRICES = {
   // Odivon APM packages (see modules/apm/apm-plans.ts); monthly only, real prices in TL.
   apm_limited: { monthly: 39.99 },
   apm_premium: { monthly: 59.99 },
+  rent_starter: { monthly: 990, yearly: 9900 },
+  rent_business: { monthly: 2990, yearly: 29900 },
+  rent_professional: { monthly: 5990, yearly: 59900 },
 } as const;
 
 type SaasPlanPrices = Record<string, Partial<Record<'monthly' | 'yearly', number>>>;
@@ -17,4 +20,10 @@ export function saasPlanPrice(planId: string, billingCycle: 'monthly' | 'yearly'
 }
 
 /** Packages that belong to one product module; every other plan is the shared Odivon plan set. */
-export const SAAS_PLAN_MODULE: Record<string, 'apm'> = { apm_limited: 'apm', apm_premium: 'apm' };
+export const SAAS_PLAN_MODULE: Record<string, 'apm' | 'rentacar'> = {
+  apm_limited: 'apm',
+  apm_premium: 'apm',
+  rent_starter: 'rentacar',
+  rent_business: 'rentacar',
+  rent_professional: 'rentacar',
+};

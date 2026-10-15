@@ -114,7 +114,26 @@ describe('IdentityService.register', () => {
     }));
   });
 
-  it.each(['farm', 'spa', 'hair', 'beauty', 'apm'] as const)(
+    it('uses the spa site for spa module email verification', async () => {
+    firebase.auth.createUser.mockResolvedValue({ uid: 'uid-spa' });
+    tenants.create.mockResolvedValue({ id: 'tenant-spa' });
+    users.createProfile.mockResolvedValue({});
+    firebase.auth.setCustomUserClaims.mockResolvedValue(undefined);
+
+    await service.register({
+      email: 'owner@spa.com',
+      password: 'password1',
+      tenantName: 'Odivon Spa',
+      module: 'spa',
+    });
+
+    expect(mail.sendVerificationEmail).toHaveBeenCalledWith(expect.objectContaining({
+      module: 'spa',
+      verificationLink: expect.stringContaining('https://spa.odivon.com/auth/verify-email?token='),
+    }));
+  });
+
+  it.each(['farm', 'hair', 'beauty', 'apm'] as const)(
     'uses the shared confirmation page for %s instead of the Gym site',
     async (module) => {
       firebase.auth.createUser.mockResolvedValue({ uid: 'uid-3' });
@@ -397,7 +416,7 @@ describe('IdentityService.resendVerification', () => {
       tenant: { id: 't1', name: 'Clinic', status: 'active' },
     });
     const result = await service.me();
-    expect(result.permissions.customers).toEqual(['view', 'create', 'update', 'delete']);
+    expect(result.permissions.customers).toEqual(['view', 'create', 'update', 'delete', 'export', 'approve', 'refund']);
     expect(result.permissions.members).toBeUndefined();
   });
 
@@ -429,7 +448,7 @@ describe('IdentityService.resendVerification', () => {
     );
 
     const result = await service.me();
-    expect(result.permissions.members).toEqual(['view', 'create', 'update', 'delete']);
+    expect(result.permissions.members).toEqual(['view', 'create', 'update', 'delete', 'export', 'approve', 'refund']);
     expect(result.permissions.customers).toBeUndefined();
     expect(result.onboardingCompleted).toBe(false);
     expect(result.membershipStatus).toBe('trial');

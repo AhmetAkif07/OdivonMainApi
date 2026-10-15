@@ -55,12 +55,36 @@
     "APP_URL": "https://gym.odivon.com",
     "APP_URL_GYM": "https://gym.odivon.com",
     "APP_URL_VET": "https://vet.odivon.com",
+    "APP_URL_RENTACAR": "https://rentacar.odivon.com",
+    "APP_URL_SPA": "https://spa.odivon.com",
     "PUBLIC_API_URL": "https://mainapi.odivon.com",
     "SMTP_HOST": "smtp.hostinger.com",
     "SMTP_PORT": "465",
     "SMTP_SECURE": "true",
     "SMTP_USER": "info@odivon.com",
     "SMTP_FROM": "\"OdivonGYM\" <info@odivon.com>"
+  },
+  "previews": {
+    "vars": {
+      "NODE_ENV": "test",
+      "PORT": "3000",
+      "FIRESTORE_PREFER_REST": "true",
+      "FIREBASE_PROJECT_ID": "demo-odivon",
+      "APP_URL": "https://preview.invalid",
+      "APP_URL_GYM": "https://preview.invalid",
+      "APP_URL_VET": "https://preview.invalid",
+      "APP_URL_RENTACAR": "https://preview.invalid",
+      "APP_URL_SPA": "https://preview.invalid",
+      "PUBLIC_API_URL": "https://preview.invalid",
+      "SMTP_HOST": "localhost",
+      "SMTP_PORT": "1025",
+      "SMTP_SECURE": "false",
+      "SMTP_USER": "preview@example.invalid",
+      "SMTP_FROM": "\"Odivon Preview\" <preview@example.invalid>"
+    },
+    "define": {
+      "process.env.NODE_ENV": "\"test\""
+    }
   },
   "observability": {
     "enabled": true

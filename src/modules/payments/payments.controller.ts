@@ -73,3 +73,15 @@ export class PaymentCallbackController {
     return response.status(outcome === 'error' ? 400 : 200).json({ status: outcome });
   }
 }
+
+@ApiTags('payment-webhooks')
+@Controller('webhooks/payments')
+export class PaymentWebhookController {
+  constructor(private readonly payments: PaymentsService) {}
+
+  @Post('iyzico/:id')
+  @ApiOperation({ summary: 'Idempotent iyzico webhook/callback verification' })
+  webhook(@Param('id') id: string, @Body('token') token: string) {
+    return this.payments.handleCallback(id, String(token ?? ''));
+  }
+}

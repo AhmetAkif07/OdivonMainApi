@@ -28,6 +28,9 @@ interface UserProfileDoc {
   accountType?: 'gym_member' | 'staff';
   displayName?: string | null;
   phone?: string | null;
+  emailVerified?: boolean;
+  branchIds?: string[];
+  allBranches?: boolean;
 }
 
 interface RoleDoc {
@@ -75,6 +78,9 @@ export class TenantGuard implements CanActivate {
       roleIds: profile.roleIds ?? [],
       displayName: profile.displayName ?? null,
       phone: profile.phone ?? decoded.phone_number ?? null,
+      emailVerified: profile.emailVerified,
+      branchIds: profile.branchIds ?? [],
+      allBranches: profile.role === 'owner' || profile.allBranches === true,
       permissions:
         role === 'owner'
           ? fullPermissionMap(profile.modules ?? [])

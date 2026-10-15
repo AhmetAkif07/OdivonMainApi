@@ -1,11 +1,13 @@
 import { httpServerHandler } from 'cloudflare:node';
 import { env, waitUntil } from 'cloudflare:workers';
 import './firestore-startup.mjs';
-import bootstrapModule from '../dist/bootstrap.js';
 
 // Initialize Nest during isolate startup, outside the Free plan request CPU budget.
 const configured = Boolean(env.FIREBASE_CLIENT_EMAIL && env.FIREBASE_PRIVATE_KEY);
-if (configured) await bootstrapModule.bootstrap({ swaggerUi: false, startupLogs: false, waitUntil });
+// Secret-free PR previews intentionally stay lightweight and return 503. Deferring the large
+// Nest bundle keeps those validation deployments below Cloudflare's startup CPU limit.
+const bootstrapModule = configured ? (await import('../dist/bootstrap.js')).default : null;
+if (bootstrapModule) await bootstrapModule.bootstrap({ swaggerUi: false, startupLogs: false, waitUntil });
 const handler = httpServerHandler({ port: 3000 });
 
 export default {
@@ -21,7 +23,7 @@ export default {
 
   // Daily cron (wrangler.jsonc triggers): membership, overdue-installment and absence reminders.
   async scheduled(controller, env, ctx) {
-    if (!configured) return;
+    if (!bootstrapModule) return;
     ctx.waitUntil(bootstrapModule.runScheduledJobs());
   },
 };

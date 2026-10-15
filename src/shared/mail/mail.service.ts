@@ -691,6 +691,26 @@ export class MailService {
       return false;
     }
   }
+
+  /** Short-lived code used by the public Rent A Car booking portal. */
+  async sendRentacarOtp(to: string, code: string, tenantName: string): Promise<boolean> {
+    if (!this.transporter && !this.hostingerApiConfigured()) {
+      await this.initTransporter();
+      if (!this.transporter) return false;
+    }
+    try {
+      await this.sendMessage({
+        from: { name: 'Odivon Rent A Car', address: fromAddress() },
+        to,
+        subject: `${tenantName} rezervasyon doğrulama kodunuz`,
+        html: `<div style="background:#0b1120;color:#f8fafc;padding:32px;font-family:Arial,sans-serif"><div style="max-width:480px;margin:auto;background:#0f172a;border:1px solid #334155;border-radius:24px;padding:32px;text-align:center"><div style="font-size:12px;color:#a5b4fc;font-weight:800;letter-spacing:.08em">ODIVON RENT A CAR</div><h1 style="font-size:22px">Rezervasyon doğrulama kodu</h1><div style="font-size:36px;letter-spacing:.25em;font-weight:900;color:#c4b5fd;margin:24px 0">${code}</div><p style="color:#94a3b8;font-size:13px">Kod 10 dakika geçerlidir. Bu kodu kimseyle paylaşmayın.</p></div></div>`,
+      });
+      return true;
+    } catch (error) {
+      this.logger.error(`Rent A Car OTP e-postası gönderilemedi (${to})`, error as Error);
+      return false;
+    }
+  }
 }
 
 const MODULE_VERIFICATION_NAMES: Record<Exclude<ProductModule, 'gym'>, string> = {
@@ -700,6 +720,7 @@ const MODULE_VERIFICATION_NAMES: Record<Exclude<ProductModule, 'gym'>, string> =
   hair: 'OdivonPro Hair',
   beauty: 'Odivon Beauty',
   apm: 'Odivon APM',
+  rentacar: 'Odivon Rent A Car',
 };
 
 function moduleLoginUrl(module: WelcomeModule): string | null {

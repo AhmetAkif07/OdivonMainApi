@@ -5,12 +5,13 @@ import { GymPaymentSettingsController } from './gym-payment-settings.controller'
 import { IyzicoProvider } from './iyzico.provider';
 import { SaasBillingController } from './saas-billing.controller';
 import { SaasBillingService } from './saas-billing.service';
-import { PaymentCallbackController, PaymentsController } from './payments.controller';
+import { PaymentCallbackController, PaymentWebhookController, PaymentsController } from './payments.controller';
 import { PaymentsService } from './payments.service';
+import { RentacarPaymentsController } from './rentacar-payments.controller';
 
 @Module({
   imports: [GymAccessModule],
-  controllers: [PaymentsController, PaymentCallbackController, GymPaymentSettingsController, SaasBillingController],
+  controllers: [PaymentsController, PaymentCallbackController, PaymentWebhookController, GymPaymentSettingsController, RentacarPaymentsController, SaasBillingController],
   providers: [IyzicoProvider, PaymentsService, GymPaymentCredentialsService, SaasBillingService],
   exports: [PaymentsService, SaasBillingService],
 })
