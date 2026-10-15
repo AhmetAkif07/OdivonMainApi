@@ -28,7 +28,7 @@ const DEFAULT_RETURN_ORIGINS = [
   'https://odivon-gym-client.dogangns-98.workers.dev',
   'https://odivon-panel.dogangns-98.workers.dev',
   'https://odivonapm.dogangns-98.workers.dev',
-  'https://rentacar.odivon.com',
+  'https://rent.odivon.com',
   'http://localhost:4200',
 ];
 

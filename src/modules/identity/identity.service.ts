@@ -473,7 +473,7 @@ export class IdentityService {
 
 function verificationUrl(module: ProductModule, token: string): string {
   if (module === 'rentacar') {
-    const url = process.env.APP_URL_RENTACAR?.trim() || 'https://rentacar.odivon.com';
+    const url = process.env.APP_URL_RENTACAR?.trim() || 'https://rent.odivon.com';
     return `${url.replace(/\/+$/, '')}/auth/verify-email?token=${encodeURIComponent(token)}`;
   }
   if (module === 'gym') {
