@@ -116,7 +116,8 @@ describe('hair module flows (FakeFirestore)', () => {
 
   it('keeps customer phones unique per salon and moves the lock on change', async () => {
     await expect(asOwner(() => customers.create({ firstName: 'Başka', lastName: '', phone: '+905321112233' }))).rejects.toMatchObject({
-      code: ErrorCode.HAIR_PRECONDITION,
+      code: ErrorCode.DUPLICATE_PHONE,
+      details: { customerId, customerName: 'Zeynep Kara' },
     });
     await asOwner(() => customers.update(customerId, { phone: '0533 000 00 00' }));
     expect(db.docs.has('tenants/t1/hairCustomerPhones/+905321112233')).toBe(false);

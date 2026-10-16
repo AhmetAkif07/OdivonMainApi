@@ -87,7 +87,7 @@ export class HairCatalogService {
 
   async createService(dto: CreateHairServiceDto) {
     await this.assertServiceRefs(dto);
-    assertProcessing(dto.durationMinutes, dto.processingMinutes);
+    assertServiceNumbers(dto.durationMinutes, dto.processingMinutes, dto.price, dto.depositAmount);
     return this.store.create(TENANT_COLLECTION.hairServices, 'hairServices', {
       ...dto,
       name: dto.name.trim(),
@@ -104,9 +104,11 @@ export class HairCatalogService {
   async updateService(id: string, dto: UpdateHairServiceDto) {
     const current = await this.getService(id);
     await this.assertServiceRefs(dto);
-    assertProcessing(
+    assertServiceNumbers(
       dto.durationMinutes ?? num(current['durationMinutes']),
       dto.processingMinutes ?? num(current['processingMinutes']),
+      dto.price ?? num(current['price']),
+      dto.depositAmount ?? num(current['depositAmount']),
     );
     return this.store.update(
       TENANT_COLLECTION.hairServices,
@@ -205,8 +207,12 @@ export class HairCatalogService {
   }
 }
 
-function assertProcessing(duration: number, processing: number | undefined) {
+/** Duration is a multiple of 5 in 5–600 (DTO); processing stays inside it and the deposit within the price. */
+export function assertServiceNumbers(duration: number, processing: number | undefined, price: number, deposit: number | undefined) {
   if (processing && processing >= duration) {
     throw hairInvalid('Bekleme süresi hizmet süresinden kısa olmalıdır.');
+  }
+  if (deposit && deposit > price) {
+    throw hairInvalid('Kapora tutarı hizmet fiyatını aşamaz.');
   }
 }

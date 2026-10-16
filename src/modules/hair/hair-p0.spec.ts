@@ -1,4 +1,7 @@
+import { plainToInstance } from 'class-transformer';
+import { validate } from 'class-validator';
 import { ErrorCode } from '../../shared/errors/error-codes';
+import { CreateHairProductDto, CreateHairServiceDto } from './catalog/catalog.dto';
 import { TenantContext, TenantStore } from '../../shared/tenancy/tenant.context';
 import { FakeFirestore } from '../../shared/testing/fake-firestore';
 import { HairAppointmentsService } from './appointments/hair-appointments.service';
@@ -216,6 +219,57 @@ describe('hair P0 rules (FakeFirestore)', () => {
       await expect(asOwner(() => appointments.remove('a1'))).rejects.toMatchObject(related({ payments: 1 }));
       db.docs.delete('tenants/t1/hairPayments/dep');
       await expect(asOwner(() => appointments.remove('a1'))).resolves.toEqual({ id: 'a1' });
+    });
+  });
+
+  // ── 4. Validation ──
+
+  describe('validation', () => {
+    const invalidFields = async (cls: new () => object, body: object) =>
+      (await validate(plainToInstance(cls, body))).map((error) => error.property);
+
+    it('rejects a duplicate phone in any format with the holder', async () => {
+      await expect(asOwner(() => customers.create({ firstName: 'B', lastName: '', phone: '+90 (532) 111-2233' }))).rejects.toMatchObject({
+        code: ErrorCode.DUPLICATE_PHONE,
+        details: { customerId, customerName: 'Zeynep Kara' },
+      });
+      const other = await asOwner(() => customers.create({ firstName: 'B', lastName: '', phone: '5320000000' }));
+      expect(other['phone']).toBe('+905320000000');
+      await expect(asOwner(() => customers.update(other.id, { phone: '0532 111 22 33' }))).rejects.toMatchObject({
+        code: ErrorCode.DUPLICATE_PHONE,
+      });
+    });
+
+    it('rejects a birth date in the future or not on the calendar', async () => {
+      await expect(asOwner(() => customers.create({ firstName: 'B', lastName: '', phone: '05320000001', birthDate: '2999-01-01' }))).rejects.toMatchObject({
+        code: ErrorCode.HAIR_INVALID,
+      });
+      await expect(asOwner(() => customers.update(customerId, { birthDate: '1990-02-30' }))).rejects.toMatchObject({
+        code: ErrorCode.HAIR_INVALID,
+      });
+      await expect(asOwner(() => customers.update(customerId, { birthDate: '1990-02-28' }))).resolves.toMatchObject({ birthDate: '1990-02-28' });
+    });
+
+    it('checks service durations, VAT rates, money decimals and the deposit', async () => {
+      const base = { categoryId: 'c', name: 'S', durationMinutes: 30, price: 100 };
+      expect(await invalidFields(CreateHairServiceDto, base)).toEqual([]);
+      expect(await invalidFields(CreateHairServiceDto, { ...base, durationMinutes: 32 })).toEqual(['durationMinutes']);
+      expect(await invalidFields(CreateHairServiceDto, { ...base, durationMinutes: 605 })).toEqual(['durationMinutes']);
+      expect(await invalidFields(CreateHairServiceDto, { ...base, vatRate: 18 })).toEqual(['vatRate']);
+      expect(await invalidFields(CreateHairServiceDto, { ...base, price: 10.555 })).toEqual(['price']);
+      expect(await invalidFields(CreateHairServiceDto, { ...base, price: -1 })).toEqual(['price']);
+      expect(await invalidFields(CreateHairProductDto, { name: 'P', category: 'c', unit: 'adet', purchasePrice: 1, salePrice: 2, minStock: 0, vatRate: 10 })).toEqual([]);
+
+      const category = rows('hairServiceCategories')[0];
+      await expect(asOwner(() => catalog.createService({ ...base, categoryId: category.id, depositAmount: 150 }))).rejects.toMatchObject({
+        code: ErrorCode.HAIR_INVALID,
+      });
+      await expect(asOwner(() => catalog.updateService(cutId, { price: 50, depositAmount: 60 }))).rejects.toMatchObject({
+        code: ErrorCode.HAIR_INVALID,
+      });
+      await expect(asOwner(() => catalog.updateService(cutId, { processingMinutes: 30 }))).rejects.toMatchObject({
+        code: ErrorCode.HAIR_INVALID,
+      });
     });
   });
 });

@@ -1,11 +1,15 @@
 import { Injectable } from '@nestjs/common';
+import { DocumentReference, Transaction } from 'firebase-admin/firestore';
+import { AppException } from '../../../shared/errors/app.exception';
+import { ErrorCode } from '../../../shared/errors/error-codes';
 import { TENANT_COLLECTION } from '../../../shared/firebase/firestore-path';
 import { touchBaseFields } from '../../../shared/firestore/base-document';
-import { assertNoRelated, hairInvalid, hairNotFound, hairPrecondition } from '../shared/hair-errors';
+import { assertNoRelated, hairInvalid, hairNotFound } from '../shared/hair-errors';
 import { HairListQueryDto, searchTerm } from '../shared/hair-list.dto';
-import { round2 } from '../shared/hair-money';
+import { isDateId, round2 } from '../shared/hair-money';
 import { normalizePhone } from '../shared/hair-phone';
 import { HairDoc, HairStore } from '../shared/hair-store';
+import { dateIdInTz } from '../shared/hair-time';
 import { fullName, live, matchesSearch, num, str } from '../shared/hair-tx';
 import { CreateHairCustomerDto, MergeHairCustomerDto, UpdateHairCustomerDto } from './customer.dto';
 
@@ -50,11 +54,11 @@ export class HairCustomersService {
   /** Creates the customer and reserves its phone (`hairCustomerPhones/{e164}`) atomically. */
   async create(dto: CreateHairCustomerDto, defaults: Partial<HairDoc> = {}) {
     const phone = requirePhone(dto.phone);
+    await this.assertBirthDate(dto.birthDate);
     const ref = this.store.newRef(TENANT_COLLECTION.hairCustomers);
     const doc = await this.store.runTransaction(async (tx) => {
       const lockRef = this.store.ref(TENANT_COLLECTION.hairCustomerPhones, phone);
-      const lock = await tx.get(lockRef);
-      if (lock.exists) throw hairPrecondition(PHONE_TAKEN);
+      await this.assertPhoneFree(tx, lockRef, null);
       const item = this.store.stamp(ref, {
         firstName: dto.firstName.trim(),
         lastName: (dto.lastName ?? '').trim(),
@@ -111,6 +115,7 @@ export class HairCustomersService {
 
   async update(id: string, dto: UpdateHairCustomerDto) {
     const current = await this.get(id);
+    await this.assertBirthDate(dto.birthDate);
     const patch: Record<string, unknown> = { ...dto };
     if (dto.firstName !== undefined) patch['firstName'] = dto.firstName.trim();
     if (dto.lastName !== undefined) patch['lastName'] = dto.lastName.trim();
@@ -125,8 +130,7 @@ export class HairCustomersService {
     const ref = this.store.ref(TENANT_COLLECTION.hairCustomers, id);
     const updated = await this.store.runTransaction(async (tx) => {
       const newLockRef = this.store.ref(TENANT_COLLECTION.hairCustomerPhones, newPhone);
-      const newLock = await tx.get(newLockRef);
-      if (newLock.exists && newLock.data()?.['customerId'] !== id) throw hairPrecondition(PHONE_TAKEN);
+      await this.assertPhoneFree(tx, newLockRef, id);
       const doc = { ...current, ...stripUndefined(patch), ...touchBaseFields(this.store.userId()) };
       tx.set(ref, doc);
       tx.set(newLockRef, { phone: newPhone, customerId: id });
@@ -230,6 +234,27 @@ export class HairCustomersService {
     await this.releasePhone(str(source['phone']), dto.sourceId);
     await this.store.audit('hairCustomers', 'callable', targetId, { mergedFrom: dto.sourceId }, { movedRows: moved });
     return { customer: merged, movedRows: moved };
+  }
+
+  /**
+   * 409 DUPLICATE_PHONE (with the holder's id and name) when another live customer owns the phone.
+   * A lock left behind by a removed customer is simply taken over.
+   */
+  private async assertPhoneFree(tx: Transaction, lockRef: DocumentReference, selfId: string | null) {
+    const lock = await tx.get(lockRef);
+    const holderId = lock.exists ? str(lock.data()?.['customerId']) : '';
+    if (!holderId || holderId === selfId) return;
+    const holder = live(await tx.get(this.store.ref(TENANT_COLLECTION.hairCustomers, holderId)));
+    if (holder) {
+      throw new AppException(ErrorCode.DUPLICATE_PHONE, PHONE_TAKEN, { customerId: holder.id, customerName: fullName(holder) });
+    }
+  }
+
+  /** Birth date must be a real calendar day that is not in the future (salon time zone). */
+  private async assertBirthDate(value: string | undefined) {
+    if (value === undefined) return;
+    if (!isDateId(value)) throw hairInvalid('Geçersiz doğum tarihi.');
+    if (value > dateIdInTz(await this.store.timeZone())) throw hairInvalid('Doğum tarihi gelecekte olamaz.');
   }
 
   private async releasePhone(phone: string, customerId: string) {
