@@ -61,7 +61,8 @@ export class HairCatalogService {
 
   // ── Services ──
 
-  listServices(query: HairListQueryDto) {
+  async listServices(query: HairListQueryDto) {
+    if (query.branchId) this.store.assertBranchAccess(await this.store.actorOrThrow(), query.branchId);
     const term = searchTerm(query);
     return this.store.list(TENANT_COLLECTION.hairServices, {
       equals: { categoryId: query.categoryId },

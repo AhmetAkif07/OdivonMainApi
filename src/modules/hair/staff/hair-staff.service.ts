@@ -112,6 +112,8 @@ export class HairStaffService {
     if (dto.active === false && userId === this.store.userId()) {
       throw hairPrecondition('Kendi kaydınızı pasifleştiremezsiniz.');
     }
+    const losesAdmin = (roleChanges && dto.role !== 'admin') || (dto.active === false && current['active'] !== false);
+    if (current['role'] === 'admin' && losesAdmin) await this.assertNotLastAdmin(id);
 
     const updated = await this.store.update(
       TENANT_COLLECTION.hairStaff,
@@ -140,6 +142,7 @@ export class HairStaffService {
     if (userId && (userId === this.store.userId() || (await this.isOwnerUser(userId)))) {
       throw hairForbidden('Bu personel kaydı silinemez.');
     }
+    if (current['role'] === 'admin') await this.assertNotLastAdmin(id);
     const result = await this.store.softDelete(TENANT_COLLECTION.hairStaff, 'hairStaff', id, STAFF_NOT_FOUND);
     if (userId) await this.syncActive(userId, false);
     return result;
@@ -350,6 +353,14 @@ export class HairStaffService {
   private assertCanAssignRole(actor: HairActor, role: HairStaffRole) {
     if (actor.role !== 'admin' && (role === 'admin' || role === 'manager')) {
       throw hairForbidden('Yönetici veya müdür rolünü yalnızca yöneticiler atayabilir.');
+    }
+  }
+
+  /** The salon must keep at least one active admin (the owner's card counts as one). */
+  private async assertNotLastAdmin(staffId: string) {
+    const admins = await this.store.rows(TENANT_COLLECTION.hairStaff, { field: 'role', op: '==', value: 'admin' });
+    if (!admins.some((admin) => admin.id !== staffId && admin['active'] !== false)) {
+      throw hairPrecondition('Salonda en az bir aktif yönetici kalmalıdır; son yöneticinin rolü değiştirilemez.');
     }
   }
 

@@ -73,10 +73,19 @@ export class HairPackagesService {
 
   /** Sold packages; past `endDate` rows still marked active are reported as `expired`. */
   async listCustomerPackages(query: HairListQueryDto) {
+    const actor = await this.store.actorOrThrow();
+    const branch = this.store.branchFilter(actor, query.branchId);
     const today = dateIdInTz(await this.store.timeZone());
     const page = await this.store.list(TENANT_COLLECTION.hairCustomerPackages, {
       equals: { customerId: query.customerId },
-      match: (item) => !query.status || effectiveStatus(item, today) === query.status,
+      match: (item) => {
+        // Packages sold without a branch are usable everywhere.
+        const itemBranch = str(item['branchId']);
+        const inBranch = branch.equals
+          ? itemBranch === branch.equals || !itemBranch
+          : !branch.anyOf || !itemBranch || branch.anyOf.includes(itemBranch);
+        return inBranch && (!query.status || effectiveStatus(item, today) === query.status);
+      },
       orderBy: { field: 'startDate', dir: 'desc' },
       limit: query.limit,
       cursor: query.cursor,
