@@ -15,6 +15,10 @@ import { DATE_ID } from '../shared/hair-dto';
 
 export const CUSTOMER_SOURCES = ['walk-in', 'online', 'referral', 'phone'] as const;
 export const GENDERS = ['male', 'female', 'other'] as const;
+/** Where a consent was given or withdrawn (KVKK proof). `anonymization` is set by the server. */
+export const CONSENT_CHANNELS = ['panel', 'in-person', 'phone', 'online', 'whatsapp', 'paper', 'anonymization'] as const;
+export type ConsentChannel = (typeof CONSENT_CHANNELS)[number];
+export const CONSENT_FIELDS = ['consentSms', 'consentEmail', 'consentWhatsapp', 'consentCommercialIys', 'consentPhotos'] as const;
 
 export class CreateHairCustomerDto {
   @ApiProperty()
@@ -112,6 +116,14 @@ export class CreateHairCustomerDto {
   @IsOptional()
   @IsBoolean()
   consentPhotos?: boolean;
+
+  @ApiPropertyOptional({
+    enum: CONSENT_CHANNELS.filter((c) => c !== 'anonymization'),
+    description: 'How consent changes in this request were collected; default panel',
+  })
+  @IsOptional()
+  @IsIn(CONSENT_CHANNELS.filter((c) => c !== 'anonymization'))
+  consentChannel?: ConsentChannel;
 
   @ApiPropertyOptional()
   @IsOptional()

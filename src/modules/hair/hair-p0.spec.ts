@@ -614,4 +614,60 @@ describe('hair P0 rules (FakeFirestore)', () => {
       expect(call('s3cret-value')).toBe(true);
     });
   });
+  // ── 9. KVKK ──
+
+  describe('KVKK', () => {
+    it('records consent changes with time, user and channel', async () => {
+      const created = await asOwner(() =>
+        customers.create({ firstName: 'K', lastName: 'V', phone: '05320000009', consentSms: true, consentChannel: 'paper' }),
+      );
+      await asOwner(() => customers.update(created.id, { consentSms: false, consentEmail: true, consentChannel: 'phone' }));
+      await asOwner(() => customers.update(created.id, { notes: 'no consent change' }));
+      const log = await asOwner(() => customers.consents(created.id));
+      expect(log.map((l) => [l['consent'], l['granted'], l['channel'], l['by']])).toEqual(
+        expect.arrayContaining([
+          ['consentSms', true, 'paper', OWNER.userId],
+          ['consentSms', false, 'phone', OWNER.userId],
+          ['consentEmail', true, 'phone', OWNER.userId],
+        ]),
+      );
+      expect(log).toHaveLength(3);
+      expect(db.docs.get(`tenants/t1/hairCustomers/${created.id}`)).not.toHaveProperty('consentChannel');
+    });
+
+    it('anonymises a customer (admin only) but keeps the money', async () => {
+      put('hairPayments', { id: 'pay', customerId, customerName: 'Zeynep Kara', branchId: 'main', totalAmount: 300, lines: [], date: '2026-10-01' });
+      put('hairAppointments', { id: 'apt', customerId, customerName: 'Zeynep Kara', customerPhone: '+905321112233', branchId: 'main', date: '2026-10-01', status: 'completed', notes: 'kişisel not' });
+      put('hairFormulas', { id: 'f1', customerId, formula: '6/0' });
+      put('hairMedia', { id: 'm1', customerId, storagePath: 'tenants/t1/customers/x/photo.jpg' });
+      put('hairNotifications', { id: 'n1', kind: 'smsLog', customerId, to: '+905321112233', body: 'Sayın Zeynep Kara' });
+
+      await expect(as(asUser('u-mg1'), () => customers.anonymize(customerId))).rejects.toMatchObject({ code: ErrorCode.HAIR_FORBIDDEN });
+      const result = await asOwner(() => customers.anonymize(customerId));
+      expect(result).toMatchObject({
+        id: customerId,
+        firstName: 'Anonim Müşteri',
+        lastName: '',
+        phone: '',
+        email: null,
+        active: false,
+        consentSms: false,
+        anonymization: { formulasDeleted: 1, mediaDeleted: 1, storagePaths: ['tenants/t1/customers/x/photo.jpg'] },
+      });
+      expect(result['anonymizedAt']).toBeTruthy();
+      expect(db.docs.get('tenants/t1/hairPayments/pay')).toMatchObject({ totalAmount: 300, customerName: 'Anonim Müşteri' });
+      expect(db.docs.get('tenants/t1/hairAppointments/apt')).toMatchObject({ customerPhone: '', notes: '' });
+      expect(db.docs.has('tenants/t1/hairFormulas/f1')).toBe(false);
+      expect(db.docs.has('tenants/t1/hairMedia/m1')).toBe(false);
+      expect(db.docs.has('tenants/t1/hairCustomerPhones/+905321112233')).toBe(false);
+      const leftovers = JSON.stringify([...db.docs.entries()].filter(([key]) => !key.includes('hairConsentLogs')));
+      expect(leftovers).not.toContain('Zeynep');
+      expect(leftovers).not.toContain('5321112233');
+      expect(rows('hairAuditLogs').some((a) => a['entityId'] === customerId && a['action'] === 'callable')).toBe(true);
+
+      // The number is free for a new customer; the anonymised one can no longer be edited.
+      await expect(asOwner(() => customers.create({ firstName: 'Yeni', lastName: '', phone: '05321112233' }))).resolves.toBeDefined();
+      await expect(asOwner(() => customers.update(customerId, { firstName: 'X' }))).rejects.toMatchObject({ code: ErrorCode.HAIR_FORBIDDEN });
+    });
+  });
 });

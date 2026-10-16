@@ -151,7 +151,7 @@ export const TENANT_COLLECTION = {
   hairCounters: 'hairCounters',
   hairBookingOtps: 'hairBookingOtps',
   hairBookingGuards: 'hairBookingGuards',
-  hairJobRuns: 'hairJobRuns',
+  hairConsentLogs: 'hairConsentLogs',
   hairAuditLogs: 'hairAuditLogs',
   farmAccountingItems: 'farmAccountingItems',
   farmAccountingTransactions: 'farmAccountingTransactions',

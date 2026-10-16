@@ -4,14 +4,20 @@ import { AppException } from '../../../shared/errors/app.exception';
 import { ErrorCode } from '../../../shared/errors/error-codes';
 import { TENANT_COLLECTION } from '../../../shared/firebase/firestore-path';
 import { touchBaseFields } from '../../../shared/firestore/base-document';
-import { assertNoRelated, hairInvalid, hairNotFound } from '../shared/hair-errors';
+import { assertNoRelated, hairForbidden, hairInvalid, hairNotFound, hairPrecondition } from '../shared/hair-errors';
 import { HairListQueryDto, searchTerm } from '../shared/hair-list.dto';
 import { isDateId, round2 } from '../shared/hair-money';
 import { normalizePhone } from '../shared/hair-phone';
 import { HairDoc, HairStore } from '../shared/hair-store';
 import { dateIdInTz } from '../shared/hair-time';
 import { fullName, live, matchesSearch, num, str } from '../shared/hair-tx';
-import { CreateHairCustomerDto, MergeHairCustomerDto, UpdateHairCustomerDto } from './customer.dto';
+import {
+  CONSENT_FIELDS,
+  ConsentChannel,
+  CreateHairCustomerDto,
+  MergeHairCustomerDto,
+  UpdateHairCustomerDto,
+} from './customer.dto';
 
 const NOT_FOUND = 'Müşteri bulunamadı.';
 const PHONE_TAKEN = 'Bu telefon numarasıyla kayıtlı bir müşteri zaten var.';
@@ -27,6 +33,17 @@ const CUSTOMER_LINKED = [
   TENANT_COLLECTION.hairReviews,
 ];
 const BATCH_SIZE = 400;
+/** Shown instead of the name on an anonymised customer and on the records that still point at it. */
+export const ANONYMOUS_NAME = 'Anonim Müşteri';
+/** Rows that keep (financial) history but carry a copy of the customer's name / phone. */
+const NAME_COPIES = [
+  TENANT_COLLECTION.hairAppointments,
+  TENANT_COLLECTION.hairSessions,
+  TENANT_COLLECTION.hairPayments,
+  TENANT_COLLECTION.hairCustomerPackages,
+  TENANT_COLLECTION.hairWaitlist,
+  TENANT_COLLECTION.hairReviews,
+];
 
 @Injectable()
 export class HairCustomersService {
@@ -90,6 +107,7 @@ export class HairCustomersService {
       return item;
     });
     await this.store.audit('hairCustomers', 'create', ref.id, null, doc);
+    await this.logConsents(ref.id, null, doc, dto.consentChannel ?? (doc['source'] === 'online' ? 'online' : 'panel'));
     return doc;
   }
 
@@ -113,10 +131,20 @@ export class HairCustomersService {
     }
   }
 
+  /** Profile edit; consent flag changes are recorded with time, user and channel (KVKK). */
   async update(id: string, dto: UpdateHairCustomerDto) {
+    const before = await this.get(id);
+    if (before['anonymizedAt']) throw hairForbidden('Anonimleştirilmiş müşteri düzenlenemez.');
+    const updated = await this.applyUpdate(id, dto);
+    await this.logConsents(id, before, updated, dto.consentChannel ?? 'panel');
+    return updated;
+  }
+
+  private async applyUpdate(id: string, dto: UpdateHairCustomerDto): Promise<HairDoc> {
     const current = await this.get(id);
     await this.assertBirthDate(dto.birthDate);
     const patch: Record<string, unknown> = { ...dto };
+    delete patch['consentChannel'];
     if (dto.firstName !== undefined) patch['firstName'] = dto.firstName.trim();
     if (dto.lastName !== undefined) patch['lastName'] = dto.lastName.trim();
     if (dto.email !== undefined) patch['email'] = dto.email.trim().toLowerCase();
@@ -162,6 +190,91 @@ export class HairCustomersService {
     const result = await this.store.softDelete(TENANT_COLLECTION.hairCustomers, 'hairCustomers', id, NOT_FOUND);
     await this.releasePhone(str(current['phone']), id);
     return result;
+  }
+
+  /** Consent changes of one customer, newest first. */
+  async consents(id: string) {
+    await this.get(id);
+    const rows = await this.store.rows(TENANT_COLLECTION.hairConsentLogs, { field: 'customerId', op: '==', value: id });
+    return rows.sort((a, b) => str(b['at']).localeCompare(str(a['at'])));
+  }
+
+  /**
+   * KVKK erasure (admin only): blanks the customer's personal data, frees the phone, scrubs the
+   * name/phone copies on appointments, sessions, payments, packages and the SMS log, hard-deletes
+   * formulas and media, and redacts earlier audit snapshots. Amounts and dates stay for the books.
+   * Media files in Storage are not reachable from the API: their paths are returned for the client.
+   */
+  async anonymize(id: string) {
+    const actor = await this.store.actorOrThrow();
+    if (actor.role !== 'admin') throw hairForbidden('Müşteri anonimleştirme yalnızca yönetici tarafından yapılabilir.');
+    const current = await this.get(id);
+    if (current['anonymizedAt']) throw hairPrecondition('Müşteri zaten anonimleştirilmiş.');
+    const now = new Date().toISOString();
+    const userId = this.store.userId();
+    const phone = str(current['phone']);
+
+    const byCustomer = (name: string) => this.store.collection(name).where('customerId', '==', id).get();
+    for (const name of NAME_COPIES) {
+      const snapshot = await byCustomer(name);
+      await this.inBatches(snapshot.docs, (batch, doc) => {
+        const data = doc.data();
+        batch.update(doc.ref, {
+          ...('customerName' in data ? { customerName: ANONYMOUS_NAME } : {}),
+          ...('customerPhone' in data ? { customerPhone: '' } : {}),
+          ...('notes' in data && name === TENANT_COLLECTION.hairAppointments ? { notes: '' } : {}),
+          updatedAt: now,
+          updatedBy: userId,
+        });
+      });
+    }
+    const smsLog = await byCustomer(TENANT_COLLECTION.hairNotifications);
+    await this.inBatches(smsLog.docs, (batch, doc) => batch.update(doc.ref, { to: '', toMasked: '', body: '[anonimleştirildi]' }));
+
+    const [formulas, media] = await Promise.all([byCustomer(TENANT_COLLECTION.hairFormulas), byCustomer(TENANT_COLLECTION.hairMedia)]);
+    const storagePaths = media.docs.map((doc) => str(doc.data()['storagePath'])).filter(Boolean);
+    await this.inBatches([...formulas.docs, ...media.docs], (batch, doc) => batch.delete(doc.ref));
+
+    const audits = await this.store
+      .collection(TENANT_COLLECTION.hairAuditLogs)
+      .where('entityId', '==', id)
+      .get();
+    await this.inBatches(
+      audits.docs.filter((doc) => doc.data()['entity'] === 'hairCustomers'),
+      (batch, doc) => batch.update(doc.ref, { before: null, after: { redacted: true } }),
+    );
+
+    const anonymized = {
+      firstName: ANONYMOUS_NAME,
+      lastName: '',
+      phone: '',
+      email: null,
+      gender: null,
+      birthDate: null,
+      notes: null,
+      allergies: null,
+      lastPatchTestDate: null,
+      tags: [],
+      photoUrl: null,
+      preferredStaffId: null,
+      consentSms: false,
+      consentEmail: false,
+      consentWhatsapp: false,
+      consentCommercialIys: false,
+      consentPhotos: false,
+      active: false,
+      anonymizedAt: now,
+      anonymizedBy: userId,
+      updatedAt: now,
+      updatedBy: userId,
+    };
+    await this.store.doc(TENANT_COLLECTION.hairCustomers, id).update(anonymized);
+    await this.releasePhone(phone, id);
+    if (phone) await this.store.doc(TENANT_COLLECTION.hairBookingOtps, phone).delete();
+    await this.logConsents(id, current, { ...current, ...anonymized }, 'anonymization');
+    const result = { formulasDeleted: formulas.size, mediaDeleted: media.size, storagePaths };
+    await this.store.audit('hairCustomers', 'callable', id, null, { anonymized: true, ...result, storagePaths: storagePaths.length });
+    return { ...(await this.get(id)), anonymization: result } as HairDoc & { anonymization: typeof result };
   }
 
   /** Appointment, payment and package history of one customer (newest first). */
@@ -236,6 +349,29 @@ export class HairCustomersService {
     await this.releasePhone(str(source['phone']), dto.sourceId);
     await this.store.audit('hairCustomers', 'callable', targetId, { mergedFrom: dto.sourceId }, { movedRows: moved });
     return { customer: merged, movedRows: moved };
+  }
+
+  /** One `hairConsentLogs` row per consent flag that changed (created: every granted flag). */
+  private async logConsents(customerId: string, before: HairDoc | null, after: HairDoc, channel: ConsentChannel) {
+    const at = new Date().toISOString();
+    const changes = CONSENT_FIELDS.filter((field) => (before ? before[field] === true : false) !== (after[field] === true));
+    for (const field of changes) {
+      const ref = this.store.newRef(TENANT_COLLECTION.hairConsentLogs);
+      await ref.set(
+        this.store.stamp(ref, { customerId, consent: field, granted: after[field] === true, channel, at, by: this.store.userId() }),
+      );
+    }
+  }
+
+  private async inBatches<T extends { ref: DocumentReference }>(
+    docs: T[],
+    write: (batch: FirebaseFirestore.WriteBatch, doc: T) => void,
+  ) {
+    for (let i = 0; i < docs.length; i += BATCH_SIZE) {
+      const batch = this.store.db.batch();
+      for (const doc of docs.slice(i, i + BATCH_SIZE)) write(batch, doc);
+      await batch.commit();
+    }
   }
 
   /**

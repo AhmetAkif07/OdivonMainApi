@@ -35,6 +35,22 @@ export class HairCustomersController {
     return this.customers.history(id);
   }
 
+  @Get(':id/consents')
+  @RequirePermission('hairCustomers', 'view')
+  @ApiOperation({ summary: 'Consent changes { consent, granted, channel, at, by }, newest first' })
+  consents(@Param('id') id: string) {
+    return this.customers.consents(id);
+  }
+
+  @Post(':id/anonymize')
+  @RequirePermission('hairCustomers', 'delete')
+  @ApiOperation({
+    summary: 'KVKK: erase personal data (admin only); keeps financial records, deletes formulas and media',
+  })
+  anonymize(@Param('id') id: string) {
+    return this.customers.anonymize(id);
+  }
+
   @Post()
   @RequirePermission('hairCustomers', 'create')
   @ApiOperation({ summary: 'Create a customer (phone unique per salon)' })
