@@ -56,6 +56,11 @@ export class UpdateHairSettingsDto {
   @Type(() => MaxDiscountPercentDto)
   maxDiscountPercent?: MaxDiscountPercentDto;
 
+  @ApiPropertyOptional({ description: 'Online booking asks for an SMS code (needs a configured SMS provider)' })
+  @IsOptional()
+  @IsBoolean()
+  requireBookingOtp?: boolean;
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()

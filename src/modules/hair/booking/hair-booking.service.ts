@@ -1,6 +1,7 @@
-import { createHash, randomBytes, timingSafeEqual } from 'crypto';
+import { createHash, randomBytes, randomInt, timingSafeEqual } from 'crypto';
 import { Injectable, Logger } from '@nestjs/common';
 import { AppException } from '../../../shared/errors/app.exception';
+import { ErrorCode } from '../../../shared/errors/error-codes';
 import { TENANT_COLLECTION } from '../../../shared/firebase/firestore-path';
 import { TenantContext } from '../../../shared/tenancy/tenant.context';
 import { TenantService } from '../../tenant/tenant.service';
@@ -8,18 +9,26 @@ import { HairAppointmentsService, isOnlineBookable } from '../appointments/hair-
 import { PUBLIC_SLUGS_COLLECTION } from '../core/hair-core.service';
 import { HairCustomersService } from '../customers/hair-customers.service';
 import { HairNotificationsService } from '../notifications/hair-notifications.service';
+import { HairSmsService } from '../notifications/sms/hair-sms.service';
 import { addDays, isOpenStatus } from '../shared/appointment-plan';
-import { hairForbidden, hairInvalid, hairNotFound, hairPrecondition } from '../shared/hair-errors';
+import { hairInvalid, hairNotFound, hairPrecondition } from '../shared/hair-errors';
 import { maskPhone, normalizePhone } from '../shared/hair-phone';
 import { HairDoc, HairSettingsDoc, HairStore } from '../shared/hair-store';
 import { dateIdInTz } from '../shared/hair-time';
-import { num, str } from '../shared/hair-tx';
-import { PublicBookAppointmentDto } from './booking.dto';
+import { live, num, str } from '../shared/hair-tx';
+import { PublicBookAppointmentDto, PublicOtpRequestDto } from './booking.dto';
 
 /** How far ahead customers may book online. */
 const MAX_DAYS_AHEAD = 90;
-/** Max. not-yet-confirmed online bookings per phone and day (plan §4.13 rate limit). */
-const MAX_PENDING_PER_PHONE = 3;
+/** Online bookings per phone and salon day (plan §4.13 rate limit). */
+const MAX_BOOKINGS_PER_PHONE_PER_DAY = 3;
+/** Per client IP and salon day — on top of the per-isolate request throttle. */
+const MAX_BOOKINGS_PER_IP_PER_DAY = 10;
+const MAX_OTP_PER_IP_PER_DAY = 10;
+const MAX_OTP_PER_PHONE_PER_DAY = 5;
+const OTP_RESEND_SECONDS = 60;
+const OTP_TTL_SECONDS = 300;
+const OTP_MAX_ATTEMPTS = 5;
 const PUBLIC_USER = 'public-booking';
 const TURNSTILE_VERIFY_URL = 'https://challenges.cloudflare.com/turnstile/v0/siteverify';
 
@@ -46,6 +55,7 @@ export class HairBookingService {
     private readonly appointments: HairAppointmentsService,
     private readonly customers: HairCustomersService,
     private readonly notifications: HairNotificationsService,
+    private readonly sms: HairSmsService,
   ) {}
 
   info(slug: string) {
@@ -66,6 +76,8 @@ export class HairBookingService {
       currency: salon.settings.currency,
       cancellationHoursBefore: salon.settings.cancellationHoursBefore,
       onlineBookingEnabled: salon.settings.onlineBookingEnabled,
+      requireBookingOtp: this.otpRequired(salon),
+      captchaRequired: Boolean(captchaSecret()),
       maxDaysAhead: MAX_DAYS_AHEAD,
     }));
   }
@@ -118,6 +130,8 @@ export class HairBookingService {
       const phone = normalizePhone(dto.phone);
       if (!phone) throw hairInvalid('Geçerli bir telefon numarası girin (ör. 0532 123 45 67).');
       await this.assertPhoneQuota(phone, salon.settings.timezone);
+      await this.countClient('book', clientIp, salon.settings.timezone, MAX_BOOKINGS_PER_IP_PER_DAY);
+      if (this.otpRequired(salon)) await this.consumeOtp(phone, dto.otpCode);
 
       const slots = await this.freeSlots(salon.branch.id, dto.date, dto.serviceIds, dto.staffId);
       const slot = slots.find((s) => s.time === dto.startTime);
@@ -151,6 +165,53 @@ export class HairBookingService {
         link: `/appointments?id=${appointment.id}`,
       }); // N-004
       return this.view(appointment, salon, token);
+    });
+  }
+
+  /**
+   * Sends a 6-digit booking code by SMS when the salon requires it (`requireBookingOtp` and a
+   * configured SMS provider); otherwise answers `{ required: false }` and sends nothing.
+   */
+  requestOtp(slug: string, dto: PublicOtpRequestDto, clientIp: string) {
+    return this.withSalon(slug, true, async (salon) => {
+      if (!this.otpRequired(salon)) return { required: false, sent: false };
+      await this.verifyCaptcha(dto.captchaToken, clientIp);
+      const phone = normalizePhone(dto.phone);
+      if (!phone) throw hairInvalid('Geçerli bir telefon numarası girin (ör. 0532 123 45 67).');
+      const timeZone = salon.settings.timezone;
+      await this.countClient('otp', clientIp, timeZone, MAX_OTP_PER_IP_PER_DAY);
+      const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
+      const today = dateIdInTz(timeZone);
+      const ref = this.store.ref(TENANT_COLLECTION.hairBookingOtps, phone);
+      await this.store.runTransaction(async (tx) => {
+        const current = live(await tx.get(ref));
+        const sentToday = current && current['day'] === today ? num(current['sentToday']) : 0;
+        const waited = current ? (Date.now() - Date.parse(str(current['sentAt']))) / 1000 : Infinity;
+        if (waited < OTP_RESEND_SECONDS) {
+          throw bookingLimit(`Yeni kod için ${Math.ceil(OTP_RESEND_SECONDS - waited)} saniye bekleyin.`);
+        }
+        if (sentToday >= MAX_OTP_PER_PHONE_PER_DAY) throw bookingLimit('Bu numaraya bugün çok fazla kod gönderildi.');
+        const now = new Date();
+        tx.set(ref, {
+          id: phone,
+          codeHash: hashToken(`${phone}:${code}`),
+          attempts: 0,
+          day: today,
+          sentToday: sentToday + 1,
+          sentAt: now.toISOString(),
+          expiresAt: new Date(now.getTime() + OTP_TTL_SECONDS * 1000).toISOString(),
+          deletedAt: null,
+        });
+      });
+      const sent = await this.sms.send({
+        to: phone,
+        text: `${salon.tenantName} randevu doğrulama kodunuz: ${code}. Kod ${OTP_TTL_SECONDS / 60} dakika geçerlidir.`,
+        type: 'bookingOtp',
+        branchId: salon.branch.id,
+        redact: true,
+      });
+      if (!sent.ok) throw hairPrecondition('Doğrulama kodu gönderilemedi, lütfen daha sonra tekrar deneyin.');
+      return { required: true, sent: true, expiresInSeconds: OTP_TTL_SECONDS, phoneMasked: maskPhone(phone) };
     });
   }
 
@@ -268,15 +329,55 @@ export class HairBookingService {
     }
   }
 
+  /** At most MAX_BOOKINGS_PER_PHONE_PER_DAY online bookings per phone and salon day (429 BOOKING_LIMIT). */
   private async assertPhoneQuota(phone: string, timeZone: string) {
     const today = dateIdInTz(timeZone);
     const mine = await this.store.rows(TENANT_COLLECTION.hairAppointments, { field: 'customerPhone', op: '==', value: phone });
-    const pendingToday = mine.filter(
-      (a) => a['source'] === 'online' && a['status'] === 'pending' && str(a.createdAt).slice(0, 10) >= addDays(today, -1),
+    const bookedToday = mine.filter(
+      (a) => a['source'] === 'online' && str(a.createdAt) && dateIdInTz(timeZone, new Date(str(a.createdAt))) === today,
     );
-    if (pendingToday.length >= MAX_PENDING_PER_PHONE) {
-      throw hairPrecondition('Bu telefon numarasıyla onay bekleyen çok fazla randevu var. Lütfen salonu arayın.');
+    if (bookedToday.length >= MAX_BOOKINGS_PER_PHONE_PER_DAY) {
+      throw bookingLimit('Bu telefon numarasıyla bugün çok fazla online randevu alındı. Lütfen salonu arayın.');
     }
+  }
+
+  /** Per-IP daily counter in Firestore (the HTTP throttle is per isolate only). */
+  private async countClient(action: 'book' | 'otp', clientIp: string, timeZone: string, max: number) {
+    const day = dateIdInTz(timeZone);
+    const id = `${action}_${day}_${hashToken(clientIp).slice(0, 32)}`;
+    const ref = this.store.ref(TENANT_COLLECTION.hairBookingGuards, id);
+    await this.store.runTransaction(async (tx) => {
+      const count = num((await tx.get(ref)).data()?.['count']);
+      if (count >= max) throw bookingLimit('Çok fazla deneme yapıldı, lütfen daha sonra tekrar deneyin.');
+      tx.set(ref, { id, action, day, count: count + 1, updatedAt: new Date().toISOString(), deletedAt: null });
+    });
+  }
+
+  private otpRequired(salon: SalonContext): boolean {
+    return salon.settings.requireBookingOtp === true && this.sms.isConfigured();
+  }
+
+  /** Checks and consumes the booking code; wrong codes count towards OTP_MAX_ATTEMPTS. */
+  private async consumeOtp(phone: string, code: string | undefined) {
+    if (!code) throw new AppException(ErrorCode.OTP_REQUIRED, 'Telefonunuza gönderilen doğrulama kodunu girin.');
+    const ref = this.store.ref(TENANT_COLLECTION.hairBookingOtps, phone);
+    const outcome = await this.store.runTransaction(async (tx) => {
+      const current = live(await tx.get(ref));
+      if (!current || str(current['expiresAt']) < new Date().toISOString()) return 'expired' as const;
+      if (num(current['attempts']) >= OTP_MAX_ATTEMPTS) return 'locked' as const;
+      if (!sameHash(str(current['codeHash']), hashToken(`${phone}:${code}`))) {
+        tx.update(ref, { attempts: num(current['attempts']) + 1 });
+        return 'wrong' as const;
+      }
+      tx.delete(ref);
+      return 'ok' as const;
+    });
+    const messages = {
+      expired: 'Doğrulama kodunun süresi doldu, yeni kod isteyin.',
+      locked: 'Çok fazla hatalı deneme yapıldı, yeni kod isteyin.',
+      wrong: 'Doğrulama kodu hatalı.',
+    };
+    if (outcome !== 'ok') throw new AppException(ErrorCode.OTP_INVALID, messages[outcome]);
   }
 
   private async authorized(id: string, token: string, salon: SalonContext): Promise<HairDoc> {
@@ -315,24 +416,33 @@ export class HairBookingService {
   }
 
   /**
-   * Verifies a Turnstile token when `HAIR_CAPTCHA_SECRET` is configured; without a secret the
-   * check is skipped so the flow works in development (plan §4.13 asks for it in production).
+   * Verifies a Cloudflare Turnstile token when `TURNSTILE_SECRET` (legacy: `HAIR_CAPTCHA_SECRET`) is
+   * set; without a secret the check is skipped so the flow works in development. 403 CAPTCHA_FAILED.
    */
   private async verifyCaptcha(token: string | undefined, clientIp: string) {
-    const secret = process.env['HAIR_CAPTCHA_SECRET'];
+    const secret = captchaSecret();
     if (!secret) return;
-    if (!token) throw hairForbidden('Doğrulama (captcha) gerekli.');
+    const fail = (message: string) => new AppException(ErrorCode.CAPTCHA_FAILED, message);
+    if (!token) throw fail('Doğrulama (captcha) gerekli.');
     try {
       const body = new URLSearchParams({ secret, response: token, remoteip: clientIp });
       const response = await fetch(TURNSTILE_VERIFY_URL, { method: 'POST', body });
       const result = (await response.json()) as { success?: boolean };
-      if (!result.success) throw hairForbidden('Doğrulama (captcha) başarısız.');
+      if (!result.success) throw fail('Doğrulama (captcha) başarısız.');
     } catch (error) {
       if (error instanceof AppException) throw error;
       this.logger.error('Captcha verification failed', error as Error);
-      throw hairForbidden('Doğrulama (captcha) yapılamadı, lütfen tekrar deneyin.');
+      throw fail('Doğrulama (captcha) yapılamadı, lütfen tekrar deneyin.');
     }
   }
+}
+
+function captchaSecret(): string | undefined {
+  return process.env['TURNSTILE_SECRET'] || process.env['HAIR_CAPTCHA_SECRET'] || undefined;
+}
+
+function bookingLimit(message: string): AppException {
+  return new AppException(ErrorCode.BOOKING_LIMIT, message);
 }
 
 function hashToken(token: string): string {

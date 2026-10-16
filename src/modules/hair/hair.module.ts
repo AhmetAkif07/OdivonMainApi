@@ -31,6 +31,7 @@ import { HairInventoryController } from './inventory/hair-inventory.controller';
 import { HairInventoryService } from './inventory/hair-inventory.service';
 import { HairNotificationsController } from './notifications/hair-notifications.controller';
 import { HairNotificationsService } from './notifications/hair-notifications.service';
+import { HairSmsService } from './notifications/sms/hair-sms.service';
 import {
   HairCustomerPackagesController,
   HairPackagesController,
@@ -96,6 +97,7 @@ import { HairWaitlistService } from './waitlist/hair-waitlist.service';
     HairPackagesService,
     HairReportsService,
     HairNotificationsService,
+    HairSmsService,
     HairWaitlistService,
     HairBookingService,
     HairBookingThrottlerGuard,

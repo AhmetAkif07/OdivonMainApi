@@ -60,10 +60,13 @@ export interface HairSettingsDoc extends BaseDocument {
   emailConfigured: boolean;
   /** Checkout discount ceiling per role (admin is always 100). */
   maxDiscountPercent: MaxDiscountPercent;
+  /** Online booking needs an SMS code (only enforced when an SMS provider is configured). */
+  requireBookingOtp: boolean;
 }
 
 export const DEFAULT_HAIR_SETTINGS = {
   maxDiscountPercent: { ...DEFAULT_MAX_DISCOUNT_PERCENT } as MaxDiscountPercent,
+  requireBookingOtp: false,
   timezone: DEFAULT_TIMEZONE,
   currency: 'TRY',
   workDayStart: '09:00',

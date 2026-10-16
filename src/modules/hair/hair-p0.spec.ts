@@ -5,15 +5,20 @@ import { CreateHairProductDto, CreateHairServiceDto } from './catalog/catalog.dt
 import { TenantContext, TenantStore } from '../../shared/tenancy/tenant.context';
 import { FakeFirestore } from '../../shared/testing/fake-firestore';
 import { HairAppointmentsService } from './appointments/hair-appointments.service';
+import { HairBookingService } from './booking/hair-booking.service';
 import { HairCatalogService } from './catalog/hair-catalog.service';
 import { HairCoreService } from './core/hair-core.service';
 import { HairCustomersService } from './customers/hair-customers.service';
 import { HairFinanceService } from './finance/hair-finance.service';
 import { HairNotificationsService } from './notifications/hair-notifications.service';
+import { HairSmsService } from './notifications/sms/hair-sms.service';
+import { SmsProvider } from './notifications/sms/sms-provider';
 import { HairPackagesService } from './packages/hair-packages.service';
 import { HairPosService } from './pos/hair-pos.service';
 import { HairReportsService } from './reports/hair-reports.service';
+import { addDays, weekday } from './shared/appointment-plan';
 import { HairDoc, HairStore } from './shared/hair-store';
+import { dateIdInTz } from './shared/hair-time';
 import { HairStaffService } from './staff/hair-staff.service';
 
 const OWNER: TenantStore = {
@@ -55,6 +60,17 @@ describe('hair P0 rules (FakeFirestore)', () => {
   let reports: HairReportsService;
   let staff: HairStaffService;
   let pos: HairPosService;
+  let sms: HairSmsService;
+  let booking: HairBookingService;
+  const sent: { to: string; text: string }[] = [];
+  const fakeSms = (configured: boolean): SmsProvider => ({
+    name: 'fake',
+    isConfigured: () => configured,
+    send: async (to, text) => {
+      sent.push({ to, text });
+      return { ok: true, providerMessageId: `m${sent.length}` };
+    },
+  });
   let appointments: HairAppointmentsService;
   let packages: HairPackagesService;
   const tenants = {
@@ -86,11 +102,15 @@ describe('hair P0 rules (FakeFirestore)', () => {
     catalog = new HairCatalogService(store);
     const notifications = new HairNotificationsService(store);
     pos = new HairPosService(store, notifications);
+    sms = new HairSmsService(store);
+    sms.useProvider(fakeSms(false));
+    sent.length = 0;
     finance = new HairFinanceService(store);
     reports = new HairReportsService(store);
     staff = new HairStaffService(store, context, users as never);
     appointments = new HairAppointmentsService(store);
     packages = new HairPackagesService(store);
+    booking = new HairBookingService(store, context, tenants as never, appointments, customers, notifications, sms);
 
     await asOwner(async () => {
       await core.ensureDefaults();
@@ -416,6 +436,99 @@ describe('hair P0 rules (FakeFirestore)', () => {
       expect(twice).toMatchObject({ refundedAmount: 100, status: 'partialRefund' });
       expect(once['refundedAmount']).toBe(100);
       expect(rows('hairPayments').filter((p) => p['isRefund'])).toHaveLength(1);
+    });
+  });
+  // ── 7. Public booking protection ──
+
+  describe('public booking protection', () => {
+    let date: string;
+    const slug = 'salon-test';
+    const request = (phone: string, startTime: string, extra: Record<string, unknown> = {}) => ({
+      serviceIds: [cutId],
+      date,
+      startTime,
+      firstName: 'Ali',
+      lastName: 'Veli',
+      phone,
+      ...extra,
+    });
+
+    beforeEach(async () => {
+      date = addDays(dateIdInTz('Europe/Istanbul'), 7);
+      while (weekday(date) === 0) date = addDays(date, 1);
+      await asOwner(() => core.updateSettings({ onlineBookingEnabled: true }));
+    });
+
+    afterEach(() => {
+      delete process.env['TURNSTILE_SECRET'];
+    });
+
+    it('limits online bookings per phone and per client IP', async () => {
+      for (const time of ['10:00', '11:00', '12:00']) {
+        await booking.book(slug, request('05559998877', time), '10.0.0.1');
+      }
+      await expect(booking.book(slug, request('0555 999 88 77', '13:00'), '10.0.0.2')).rejects.toMatchObject({
+        code: ErrorCode.BOOKING_LIMIT,
+      });
+      const guard = rows('hairBookingGuards').find((g) => g['action'] === 'book' && g['count'] === 3)!;
+      db.docs.set(`tenants/t1/hairBookingGuards/${guard.id}`, { ...guard, count: 10 });
+      await expect(booking.book(slug, request('05551112233', '14:00'), '10.0.0.1')).rejects.toMatchObject({
+        code: ErrorCode.BOOKING_LIMIT,
+      });
+    });
+
+    it('requires a Turnstile token when TURNSTILE_SECRET is set', async () => {
+      process.env['TURNSTILE_SECRET'] = 'secret';
+      expect(await booking.info(slug)).toMatchObject({ captchaRequired: true });
+      await expect(booking.book(slug, request('05559998877', '10:00'), '10.0.0.1')).rejects.toMatchObject({
+        code: ErrorCode.CAPTCHA_FAILED,
+      });
+      const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue({ json: async () => ({ success: false }) } as Response);
+      await expect(
+        booking.book(slug, request('05559998877', '10:00', { captchaToken: 'bad' }), '10.0.0.1'),
+      ).rejects.toMatchObject({ code: ErrorCode.CAPTCHA_FAILED });
+      fetchSpy.mockResolvedValue({ json: async () => ({ success: true }) } as Response);
+      await expect(
+        booking.book(slug, request('05559998877', '10:00', { captchaToken: 'good' }), '10.0.0.1'),
+      ).resolves.toMatchObject({ status: 'pending' });
+      fetchSpy.mockRestore();
+    });
+
+    it('asks for an SMS code only when the salon requires it and SMS is configured', async () => {
+      await asOwner(() => core.updateSettings({ requireBookingOtp: true }));
+      expect(await booking.info(slug)).toMatchObject({ requireBookingOtp: false }); // no SMS provider
+      await expect(booking.requestOtp(slug, { phone: '05559998877' }, '10.0.0.1')).resolves.toEqual({ required: false, sent: false });
+
+      sms.useProvider(fakeSms(true));
+      expect(await booking.info(slug)).toMatchObject({ requireBookingOtp: true });
+      await expect(booking.book(slug, request('05559998877', '10:00'), '10.0.0.1')).rejects.toMatchObject({
+        code: ErrorCode.OTP_REQUIRED,
+      });
+      await expect(booking.requestOtp(slug, { phone: '0555 999 88 77' }, '10.0.0.1')).resolves.toMatchObject({
+        required: true,
+        sent: true,
+        phoneMasked: '+90 5** *** **77',
+      });
+      await expect(booking.requestOtp(slug, { phone: '05559998877' }, '10.0.0.1')).rejects.toMatchObject({
+        code: ErrorCode.BOOKING_LIMIT,
+      }); // resend cooldown
+      expect(sent).toHaveLength(1);
+      expect(sent[0].to).toBe('+905559998877');
+      const code = /(\d{6})/.exec(sent[0].text)![1];
+      const log = rows('hairNotifications').find((n) => n['kind'] === 'smsLog')!;
+      expect(log).toMatchObject({ type: 'bookingOtp', status: 'sent', channel: 'sms' });
+      expect(JSON.stringify(log)).not.toContain(code);
+
+      const wrong = code === '000000' ? '111111' : '000000';
+      await expect(booking.book(slug, request('05559998877', '10:00', { otpCode: wrong }), '10.0.0.1')).rejects.toMatchObject({
+        code: ErrorCode.OTP_INVALID,
+      });
+      await expect(booking.book(slug, request('05559998877', '10:00', { otpCode: code }), '10.0.0.1')).resolves.toMatchObject({
+        status: 'pending',
+      });
+      await expect(booking.book(slug, request('05559998877', '11:00', { otpCode: code }), '10.0.0.1')).rejects.toMatchObject({
+        code: ErrorCode.OTP_INVALID,
+      }); // a code works once
     });
   });
 });

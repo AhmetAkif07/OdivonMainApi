@@ -5,6 +5,7 @@ import { HairListQueryDto } from '../shared/hair-list.dto';
 import { HairActor, HairDoc, HairStore } from '../shared/hair-store';
 import { str } from '../shared/hair-tx';
 import { SendHairNotificationDto } from './notification.dto';
+import { SMS_LOG_KIND } from './sms/hair-sms.service';
 
 const NOT_FOUND = 'Bildirim bulunamadı.';
 
@@ -24,6 +25,7 @@ export class HairNotificationsService {
     return this.store.list(TENANT_COLLECTION.hairNotifications, {
       equals: { type: query.type },
       match: (item) =>
+        item['kind'] !== SMS_LOG_KIND &&
         this.visibleTo(actor, item) &&
         (query.status !== 'unread' || !item['readAt']) &&
         (query.status !== 'read' || !!item['readAt']),
