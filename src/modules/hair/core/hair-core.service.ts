@@ -5,7 +5,9 @@ import { createBaseFields, touchBaseFields } from '../../../shared/firestore/bas
 import { TenantContext } from '../../../shared/tenancy/tenant.context';
 import { IdentityRepository } from '../../identity/identity.repository';
 import { TenantService } from '../../tenant/tenant.service';
-import { hairInvalid, hairPrecondition } from '../shared/hair-errors';
+import { AppException } from '../../../shared/errors/app.exception';
+import { ErrorCode } from '../../../shared/errors/error-codes';
+import { assertNoRelated, hairInvalid, hairPrecondition } from '../shared/hair-errors';
 import {
   HAIR_ROLE_PERMISSIONS,
   HAIR_STAFF_ROLE_LABELS,
@@ -190,6 +192,23 @@ export class HairCoreService {
       'Şube bulunamadı',
     );
     await this.assertNotLastActiveBranch(id);
+    const byBranch = { field: 'branchId', op: '==' as const, value: id };
+    const [appointments, sessions, payments, expenses, products, staff] = await Promise.all([
+      this.store.rows(TENANT_COLLECTION.hairAppointments, byBranch),
+      this.store.rows(TENANT_COLLECTION.hairSessions, byBranch),
+      this.store.rows(TENANT_COLLECTION.hairPayments, byBranch),
+      this.store.rows(TENANT_COLLECTION.hairExpenses, byBranch),
+      this.store.rows(TENANT_COLLECTION.hairProducts, byBranch),
+      this.store.rows(TENANT_COLLECTION.hairStaff),
+    ]);
+    assertNoRelated('Şubeye ait kayıtlar var; silmek yerine şubeyi pasifleştirin.', {
+      appointments: appointments.length,
+      sessions: sessions.length,
+      payments: payments.length,
+      expenses: expenses.length,
+      products: products.length,
+      staff: staff.filter((s) => Array.isArray(s['branchIds']) && (s['branchIds'] as string[]).includes(id)).length,
+    });
     const result = await this.store.softDelete(
       TENANT_COLLECTION.hairBranches,
       'hairBranches',
@@ -343,7 +362,7 @@ export class HairCoreService {
     });
     const others = page.items.filter((branch) => branch.id !== id && branch['active'] !== false);
     if (others.length === 0) {
-      throw hairPrecondition('En az bir aktif şube kalmalıdır.');
+      throw new AppException(ErrorCode.LAST_ACTIVE_BRANCH, 'En az bir aktif şube kalmalıdır.');
     }
   }
 

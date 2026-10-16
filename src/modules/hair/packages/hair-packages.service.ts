@@ -4,7 +4,7 @@ import { createBaseFields } from '../../../shared/firestore/base-document';
 import { addDays } from '../shared/appointment-plan';
 import { assertCashAllowed } from '../shared/cash-register';
 import { MONEY_EPSILON } from '../shared/checkout-pricing';
-import { hairInvalid, hairNotFound, hairPrecondition } from '../shared/hair-errors';
+import { assertNoRelated, hairInvalid, hairNotFound, hairPrecondition } from '../shared/hair-errors';
 import { HairListQueryDto, searchTerm } from '../shared/hair-list.dto';
 import { assertPayments, round2 } from '../shared/hair-money';
 import { HairStore } from '../shared/hair-store';
@@ -65,7 +65,11 @@ export class HairPackagesService {
     );
   }
 
-  removePackage(id: string) {
+  /** A plan that was ever sold stays (sold packages point at it); deactivate it instead. */
+  async removePackage(id: string) {
+    await this.getPackage(id);
+    const sold = await this.store.rows(TENANT_COLLECTION.hairCustomerPackages, { field: 'packageId', op: '==', value: id });
+    assertNoRelated('Bu paket satılmış; silmek yerine satışa kapatın (pasifleştirin).', { customerPackages: sold.length });
     return this.store.softDelete(TENANT_COLLECTION.hairPackages, 'hairPackages', id, PACKAGE_NOT_FOUND);
   }
 

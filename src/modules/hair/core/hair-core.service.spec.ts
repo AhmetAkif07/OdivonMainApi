@@ -103,7 +103,7 @@ describe('HairCoreService', () => {
   it('keeps at least one active branch and frees the slug on delete', async () => {
     await asOwner(() => service.ensureDefaults());
     await expect(asOwner(() => service.deleteBranch('main'))).rejects.toMatchObject({
-      code: ErrorCode.HAIR_PRECONDITION,
+      code: ErrorCode.LAST_ACTIVE_BRANCH,
     });
     await expect(asOwner(() => service.updateBranch('main', { active: false }))).rejects.toBeInstanceOf(AppException);
 

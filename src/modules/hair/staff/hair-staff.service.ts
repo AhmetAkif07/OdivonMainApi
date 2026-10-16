@@ -5,8 +5,9 @@ import { TenantContext } from '../../../shared/tenancy/tenant.context';
 import { UserProfile } from '../../identity/entities/user-profile.entity';
 import { IdentityRepository } from '../../identity/identity.repository';
 import { DEFAULT_STAFF_COLOR } from '../core/hair-core.service';
-import { addDays, weekday } from '../shared/appointment-plan';
-import { hairForbidden, hairInvalid, hairNotFound, hairPrecondition } from '../shared/hair-errors';
+import { involvesStaff } from '../appointments/hair-appointments.service';
+import { addDays, isOpenStatus, weekday } from '../shared/appointment-plan';
+import { assertNoRelated, hairForbidden, hairInvalid, hairNotFound, hairPrecondition } from '../shared/hair-errors';
 import { HairListQueryDto, searchTerm } from '../shared/hair-list.dto';
 import { normalizePhone } from '../shared/hair-phone';
 import { HAIR_STAFF_ROLES, hairRoleId, HairStaffRole } from '../shared/hair-roles';
@@ -143,6 +144,11 @@ export class HairStaffService {
       throw hairForbidden('Bu personel kaydı silinemez.');
     }
     if (current['role'] === 'admin') await this.assertNotLastAdmin(id);
+    const today = dateIdInTz(await this.store.timeZone());
+    const upcoming = await this.store.rows(TENANT_COLLECTION.hairAppointments, undefined, { field: 'date', from: today });
+    assertNoRelated('Personelin ileri tarihli randevuları var; önce randevuları devredin veya personeli pasifleştirin.', {
+      futureAppointments: upcoming.filter((a) => isOpenStatus(a['status']) && involvesStaff(a, id)).length,
+    });
     const result = await this.store.softDelete(TENANT_COLLECTION.hairStaff, 'hairStaff', id, STAFF_NOT_FOUND);
     if (userId) await this.syncActive(userId, false);
     return result;

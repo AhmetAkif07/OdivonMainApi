@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { TENANT_COLLECTION } from '../../../shared/firebase/firestore-path';
-import { hairInvalid, hairNotFound, hairPrecondition } from '../shared/hair-errors';
+import { assertNoRelated, hairInvalid, hairNotFound } from '../shared/hair-errors';
 import { HairListQueryDto, searchTerm } from '../shared/hair-list.dto';
 import { HairStore } from '../shared/hair-store';
 import { dateIdInTz } from '../shared/hair-time';
@@ -17,6 +17,7 @@ import {
 const CATEGORY_NOT_FOUND = 'Hizmet kategorisi bulunamadı.';
 const SERVICE_NOT_FOUND = 'Hizmet bulunamadı.';
 const PRODUCT_NOT_FOUND = 'Ürün bulunamadı.';
+const OPENING_STOCK_REASON = 'Açılış stoğu';
 
 @Injectable()
 export class HairCatalogService {
@@ -53,9 +54,9 @@ export class HairCatalogService {
 
   async removeCategory(id: string) {
     const used = await this.store.rows(TENANT_COLLECTION.hairServices, { field: 'categoryId', op: '==', value: id });
-    if (used.length > 0) {
-      throw hairPrecondition(`Bu kategoride ${used.length} hizmet var; önce hizmetleri taşıyın veya silin.`);
-    }
+    assertNoRelated(`Bu kategoride ${used.length} hizmet var; önce hizmetleri taşıyın veya kategoriyi pasifleştirin.`, {
+      services: used.length,
+    });
     return this.store.softDelete(TENANT_COLLECTION.hairServiceCategories, 'hairServiceCategories', id, CATEGORY_NOT_FOUND);
   }
 
@@ -163,7 +164,7 @@ export class HairCatalogService {
         quantity: dto.currentStock,
         delta: dto.currentStock,
         stockAfter: dto.currentStock,
-        reason: 'Açılış stoğu',
+        reason: OPENING_STOCK_REASON,
         branchId: dto.branchId,
         date: dateIdInTz(await this.store.timeZone()),
       });
@@ -181,7 +182,15 @@ export class HairCatalogService {
     );
   }
 
-  removeProduct(id: string) {
+  /** A product with stock movements (beyond its opening stock) or sales stays; deactivate it instead. */
+  async removeProduct(id: string) {
+    await this.getProduct(id);
+    const movements = await this.store.rows(TENANT_COLLECTION.hairInventoryTransactions, { field: 'productId', op: '==', value: id });
+    const real = movements.filter((m) => m['reason'] !== OPENING_STOCK_REASON);
+    assertNoRelated('Ürünün stok hareketleri veya satışları var; silmek yerine pasifleştirin.', {
+      sales: real.filter((m) => m['sessionId']).length,
+      inventoryTransactions: real.filter((m) => !m['sessionId']).length,
+    });
     return this.store.softDelete(TENANT_COLLECTION.hairProducts, 'hairProducts', id, PRODUCT_NOT_FOUND);
   }
 

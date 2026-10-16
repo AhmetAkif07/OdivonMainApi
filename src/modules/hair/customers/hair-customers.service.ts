@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { TENANT_COLLECTION } from '../../../shared/firebase/firestore-path';
 import { touchBaseFields } from '../../../shared/firestore/base-document';
-import { hairInvalid, hairNotFound, hairPrecondition } from '../shared/hair-errors';
+import { assertNoRelated, hairInvalid, hairNotFound, hairPrecondition } from '../shared/hair-errors';
 import { HairListQueryDto, searchTerm } from '../shared/hair-list.dto';
 import { round2 } from '../shared/hair-money';
 import { normalizePhone } from '../shared/hair-phone';
@@ -137,8 +137,22 @@ export class HairCustomersService {
     return updated;
   }
 
+  /** Only a customer without history can be removed; otherwise 409 HAS_RELATED_RECORDS (deactivate instead). */
   async remove(id: string) {
     const current = await this.get(id);
+    const byCustomer = { field: 'customerId', op: '==' as const, value: id };
+    const [appointments, sessions, payments, packages] = await Promise.all([
+      this.store.rows(TENANT_COLLECTION.hairAppointments, byCustomer),
+      this.store.rows(TENANT_COLLECTION.hairSessions, byCustomer),
+      this.store.rows(TENANT_COLLECTION.hairPayments, byCustomer),
+      this.store.rows(TENANT_COLLECTION.hairCustomerPackages, byCustomer),
+    ]);
+    assertNoRelated('Müşterinin geçmiş kayıtları var; silmek yerine pasifleştirin.', {
+      appointments: appointments.length,
+      sessions: sessions.length,
+      payments: payments.length,
+      customerPackages: packages.length,
+    });
     const result = await this.store.softDelete(TENANT_COLLECTION.hairCustomers, 'hairCustomers', id, NOT_FOUND);
     await this.releasePhone(str(current['phone']), id);
     return result;

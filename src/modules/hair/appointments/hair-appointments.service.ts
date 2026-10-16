@@ -18,7 +18,7 @@ import {
   staffAvailabilityViolation,
   toClock,
 } from '../shared/appointment-plan';
-import { hairInvalid, hairNotFound, hairPrecondition } from '../shared/hair-errors';
+import { assertNoRelated, hairInvalid, hairNotFound, hairPrecondition } from '../shared/hair-errors';
 import { HairListQueryDto } from '../shared/hair-list.dto';
 import { HairActor, HairDoc, HairStore } from '../shared/hair-store';
 import { dateIdInTz, localClockInTz, parseClock } from '../shared/hair-time';
@@ -247,9 +247,20 @@ export class HairAppointmentsService {
     return result.after;
   }
 
-  /** Soft-delete for erroneous records only — cancelling goes through the status endpoint (R-014). */
+  /**
+   * Soft-delete of a cancelled appointment without any payment (R-014); everything else is cancelled
+   * through the status endpoint, and paid ones stay for the books (409 HAS_RELATED_RECORDS).
+   */
   async remove(id: string) {
-    await this.get(id);
+    const appointment = await this.get(id);
+    if (appointment['status'] !== 'cancelled') {
+      throw hairPrecondition('Yalnızca iptal edilmiş randevular silinebilir; önce randevuyu iptal edin.');
+    }
+    const payments = await this.store.rows(TENANT_COLLECTION.hairPayments, { field: 'appointmentId', op: '==', value: id });
+    assertNoRelated('Randevuya bağlı ödeme var; randevu silinemez.', {
+      payments: payments.length,
+      sessions: appointment['sessionId'] ? 1 : 0,
+    });
     return this.store.softDelete(TENANT_COLLECTION.hairAppointments, 'hairAppointments', id, NOT_FOUND);
   }
 

@@ -1,12 +1,13 @@
 import { ErrorCode } from '../../shared/errors/error-codes';
 import { TenantContext, TenantStore } from '../../shared/tenancy/tenant.context';
 import { FakeFirestore } from '../../shared/testing/fake-firestore';
+import { HairAppointmentsService } from './appointments/hair-appointments.service';
 import { HairCatalogService } from './catalog/hair-catalog.service';
 import { HairCoreService } from './core/hair-core.service';
 import { HairCustomersService } from './customers/hair-customers.service';
 import { HairFinanceService } from './finance/hair-finance.service';
 import { HairNotificationsService } from './notifications/hair-notifications.service';
-import { HairPosService } from './pos/hair-pos.service';
+import { HairPackagesService } from './packages/hair-packages.service';
 import { HairReportsService } from './reports/hair-reports.service';
 import { HairDoc, HairStore } from './shared/hair-store';
 import { HairStaffService } from './staff/hair-staff.service';
@@ -46,10 +47,11 @@ describe('hair P0 rules (FakeFirestore)', () => {
   let core: HairCoreService;
   let customers: HairCustomersService;
   let catalog: HairCatalogService;
-  let pos: HairPosService;
   let finance: HairFinanceService;
   let reports: HairReportsService;
   let staff: HairStaffService;
+  let appointments: HairAppointmentsService;
+  let packages: HairPackagesService;
   const tenants = {
     getById: jest.fn(async () => ({ id: 't1', name: 'Salon Test', modules: ['hair'], status: 'active' })),
     update: jest.fn(async () => undefined),
@@ -78,10 +80,12 @@ describe('hair P0 rules (FakeFirestore)', () => {
     customers = new HairCustomersService(store);
     catalog = new HairCatalogService(store);
     const notifications = new HairNotificationsService(store);
-    pos = new HairPosService(store, notifications);
+    void notifications;
     finance = new HairFinanceService(store);
     reports = new HairReportsService(store);
     staff = new HairStaffService(store, context, users as never);
+    appointments = new HairAppointmentsService(store);
+    packages = new HairPackagesService(store);
 
     await asOwner(async () => {
       await core.ensureDefaults();
@@ -93,6 +97,11 @@ describe('hair P0 rules (FakeFirestore)', () => {
       cutId = (await catalog.createService({ categoryId: category.id, name: 'Kesim', durationMinutes: 30, price: 300 })).id;
       customerId = (await customers.create({ firstName: 'Zeynep', lastName: 'Kara', phone: '0532 111 22 33' })).id;
     });
+  });
+
+  const related = (counts: Record<string, number>) => ({
+    code: ErrorCode.HAS_RELATED_RECORDS,
+    details: { counts },
   });
 
   // ── 2. Permission scope ──
@@ -152,6 +161,61 @@ describe('hair P0 rules (FakeFirestore)', () => {
         code: ErrorCode.HAIR_PRECONDITION,
       });
       await expect(as(asUser('u-ad3'), () => staff.remove('ad3'))).rejects.toBeDefined();
+    });
+  });
+
+  // ── 3. Delete rules ──
+
+  describe('delete rules', () => {
+    const future = '2099-01-05';
+
+    it('keeps customers with history and frees the phone of one without', async () => {
+      put('hairAppointments', { id: 'a1', customerId, staffId: 'st1', branchId: 'main', date: future, status: 'confirmed' });
+      await expect(asOwner(() => customers.remove(customerId))).rejects.toMatchObject(related({ appointments: 1 }));
+      const fresh = await asOwner(() => customers.create({ firstName: 'Yeni', lastName: '', phone: '05550000001' }));
+      await expect(asOwner(() => customers.remove(fresh.id))).resolves.toEqual({ id: fresh.id });
+      expect(db.docs.get(`tenants/t1/hairCustomers/${fresh.id}`)?.['deletedAt']).toBeTruthy();
+      expect(db.docs.has('tenants/t1/hairCustomerPhones/+905550000001')).toBe(false);
+    });
+
+    it('keeps staff with future appointments', async () => {
+      put('hairAppointments', { id: 'a1', customerId, staffId: 'mg1', branchId: 'main', date: future, status: 'confirmed', services: [{ staffId: 'st1' }] });
+      await expect(asOwner(() => staff.remove('st1'))).rejects.toMatchObject(related({ futureAppointments: 1 }));
+      put('hairAppointments', { id: 'a1', customerId, staffId: 'st1', branchId: 'main', date: future, status: 'cancelled' });
+      await expect(asOwner(() => staff.remove('st1'))).resolves.toEqual({ id: 'st1' });
+    });
+
+    it('keeps categories with services, products with movements and sold package plans', async () => {
+      const category = rows('hairServiceCategories')[0];
+      await expect(asOwner(() => catalog.removeCategory(category.id))).rejects.toMatchObject(related({ services: 1 }));
+
+      const opened = await asOwner(() => catalog.createProduct({ name: 'Sprey', category: 'Bakım', unit: 'adet', purchasePrice: 1, salePrice: 2, minStock: 0, currentStock: 5 }));
+      await expect(asOwner(() => catalog.removeProduct(opened.id))).resolves.toEqual({ id: opened.id });
+      const sold = await asOwner(() => catalog.createProduct({ name: 'Wax', category: 'Bakım', unit: 'adet', purchasePrice: 1, salePrice: 2, minStock: 0 }));
+      put('hairInventoryTransactions', { id: 'm1', productId: sold.id, type: 'out', reason: 'Satış', sessionId: 's1' });
+      await expect(asOwner(() => catalog.removeProduct(sold.id))).rejects.toMatchObject(related({ sales: 1 }));
+
+      const plan = await asOwner(() => packages.createPackage({ name: '5 Kesim', services: [{ serviceId: cutId }], totalSessions: 5, price: 1000, validityDays: 90 }));
+      put('hairCustomerPackages', { id: 'cp1', packageId: plan.id, customerId, status: 'active' });
+      await expect(asOwner(() => packages.removePackage(plan.id))).rejects.toMatchObject(related({ customerPackages: 1 }));
+    });
+
+    it('keeps branches with data and the last active branch', async () => {
+      put('hairPayments', { id: 'p9', branchId: 'b2', totalAmount: 10, date: '2026-10-01', lines: [] });
+      await expect(asOwner(() => core.deleteBranch('b2'))).rejects.toMatchObject(related({ payments: 1 }));
+      db.docs.delete('tenants/t1/hairPayments/p9');
+      await expect(asOwner(() => core.deleteBranch('b2'))).resolves.toEqual({ id: 'b2' });
+      await expect(asOwner(() => core.deleteBranch('main'))).rejects.toMatchObject({ code: ErrorCode.LAST_ACTIVE_BRANCH });
+    });
+
+    it('deletes only cancelled appointments without payments', async () => {
+      put('hairAppointments', { id: 'a1', customerId, staffId: 'st1', branchId: 'main', date: future, status: 'confirmed' });
+      await expect(asOwner(() => appointments.remove('a1'))).rejects.toMatchObject({ code: ErrorCode.HAIR_PRECONDITION });
+      put('hairAppointments', { id: 'a1', customerId, staffId: 'st1', branchId: 'main', date: future, status: 'cancelled' });
+      put('hairPayments', { id: 'dep', appointmentId: 'a1', branchId: 'main', totalAmount: 50, lines: [] });
+      await expect(asOwner(() => appointments.remove('a1'))).rejects.toMatchObject(related({ payments: 1 }));
+      db.docs.delete('tenants/t1/hairPayments/dep');
+      await expect(asOwner(() => appointments.remove('a1'))).resolves.toEqual({ id: 'a1' });
     });
   });
 });
