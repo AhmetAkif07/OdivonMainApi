@@ -145,17 +145,19 @@ export class HairCustomersService {
   async remove(id: string) {
     const current = await this.get(id);
     const byCustomer = { field: 'customerId', op: '==' as const, value: id };
-    const [appointments, sessions, payments, packages] = await Promise.all([
+    const [appointments, sessions, payments, packages, formulas] = await Promise.all([
       this.store.rows(TENANT_COLLECTION.hairAppointments, byCustomer),
       this.store.rows(TENANT_COLLECTION.hairSessions, byCustomer),
       this.store.rows(TENANT_COLLECTION.hairPayments, byCustomer),
       this.store.rows(TENANT_COLLECTION.hairCustomerPackages, byCustomer),
+      this.store.rows(TENANT_COLLECTION.hairFormulas, byCustomer),
     ]);
     assertNoRelated('Müşterinin geçmiş kayıtları var; silmek yerine pasifleştirin.', {
       appointments: appointments.length,
       sessions: sessions.length,
       payments: payments.length,
       customerPackages: packages.length,
+      formulas: formulas.length,
     });
     const result = await this.store.softDelete(TENANT_COLLECTION.hairCustomers, 'hairCustomers', id, NOT_FOUND);
     await this.releasePhone(str(current['phone']), id);

@@ -104,7 +104,7 @@ describe('hair P0 rules (FakeFirestore)', () => {
 
   const related = (counts: Record<string, number>) => ({
     code: ErrorCode.HAS_RELATED_RECORDS,
-    details: { counts },
+    details: counts,
   });
 
   // ── 2. Permission scope ──
@@ -196,7 +196,7 @@ describe('hair P0 rules (FakeFirestore)', () => {
       await expect(asOwner(() => catalog.removeProduct(opened.id))).resolves.toEqual({ id: opened.id });
       const sold = await asOwner(() => catalog.createProduct({ name: 'Wax', category: 'Bakım', unit: 'adet', purchasePrice: 1, salePrice: 2, minStock: 0 }));
       put('hairInventoryTransactions', { id: 'm1', productId: sold.id, type: 'out', reason: 'Satış', sessionId: 's1' });
-      await expect(asOwner(() => catalog.removeProduct(sold.id))).rejects.toMatchObject(related({ sales: 1 }));
+      await expect(asOwner(() => catalog.removeProduct(sold.id))).rejects.toMatchObject(related({ movements: 1 }));
 
       const plan = await asOwner(() => packages.createPackage({ name: '5 Kesim', services: [{ serviceId: cutId }], totalSessions: 5, price: 1000, validityDays: 90 }));
       put('hairCustomerPackages', { id: 'cp1', packageId: plan.id, customerId, status: 'active' });

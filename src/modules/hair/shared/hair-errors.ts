@@ -10,11 +10,11 @@ export const hairForbidden = (message: string) => new AppException(ErrorCode.HAI
 
 /**
  * 409 `HAS_RELATED_RECORDS` when any count is above zero: the record is still referenced, so the
- * client offers "deactivate" instead. `details.counts` lists only the non-zero relations.
+ * client offers "deactivate" instead. `details` maps each non-zero relation to its count.
  */
 export function assertNoRelated(message: string, counts: Record<string, number>): void {
   const related = Object.fromEntries(Object.entries(counts).filter(([, count]) => count > 0));
   if (Object.keys(related).length > 0) {
-    throw new AppException(ErrorCode.HAS_RELATED_RECORDS, message, { counts: related });
+    throw new AppException(ErrorCode.HAS_RELATED_RECORDS, message, related);
   }
 }

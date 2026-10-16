@@ -190,8 +190,7 @@ export class HairCatalogService {
     const movements = await this.store.rows(TENANT_COLLECTION.hairInventoryTransactions, { field: 'productId', op: '==', value: id });
     const real = movements.filter((m) => m['reason'] !== OPENING_STOCK_REASON);
     assertNoRelated('Ürünün stok hareketleri veya satışları var; silmek yerine pasifleştirin.', {
-      sales: real.filter((m) => m['sessionId']).length,
-      inventoryTransactions: real.filter((m) => !m['sessionId']).length,
+      movements: real.length,
     });
     return this.store.softDelete(TENANT_COLLECTION.hairProducts, 'hairProducts', id, PRODUCT_NOT_FOUND);
   }
