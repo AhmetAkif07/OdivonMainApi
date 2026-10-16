@@ -4,6 +4,7 @@ import helmet from 'helmet';
 import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module';
 import { loadConfiguration } from './config/configuration';
+import { allowedCorsOrigins, isCorsOriginAllowed } from './config/cors';
 import { GymClassBookingService } from './modules/gym/ops/class-booking.service';
 import { GymRemindersService } from './modules/gym/reminders/reminders.service';
 import { SaasBillingService } from './modules/payments/saas-billing.service';
@@ -31,22 +32,10 @@ export async function bootstrap(
   application = app;
   if (startupLogs) app.useLogger(app.get(Logger));
   app.use(helmet());
-  const configuredOrigin = config.corsOrigin;
+  const allowedOrigins = allowedCorsOrigins(config.corsOrigin);
   app.enableCors({
-    origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
-      if (!origin) return callback(null, true);
-      if (origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:')) {
-        return callback(null, true);
-      }
-      if (!configuredOrigin || configuredOrigin === '*' || origin === configuredOrigin) {
-        return callback(null, true);
-      }
-      const allowedList = configuredOrigin.split(',').map((o) => o.trim());
-      if (allowedList.includes(origin)) {
-        return callback(null, true);
-      }
-      return callback(null, false);
-    },
+    origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) =>
+      callback(null, isCorsOriginAllowed(origin, allowedOrigins)),
     credentials: true,
     maxAge: 7200,
   });
