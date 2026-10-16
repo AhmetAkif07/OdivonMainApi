@@ -32,6 +32,9 @@ import { HairInventoryService } from './inventory/hair-inventory.service';
 import { HairNotificationsController } from './notifications/hair-notifications.controller';
 import { HairNotificationsService } from './notifications/hair-notifications.service';
 import { HairSmsService } from './notifications/sms/hair-sms.service';
+import { HairAppointmentSmsService } from './notifications/sms/hair-appointment-sms.service';
+import { HairJobsController, HairJobSecretGuard } from './jobs/hair-jobs.controller';
+import { HairJobsService } from './jobs/hair-jobs.service';
 import {
   HairCustomerPackagesController,
   HairPackagesController,
@@ -81,6 +84,7 @@ import { HairWaitlistService } from './waitlist/hair-waitlist.service';
     HairNotificationsController,
     HairWaitlistController,
     HairBookingController,
+    HairJobsController,
   ],
   providers: [
     HairStore,
@@ -98,6 +102,9 @@ import { HairWaitlistService } from './waitlist/hair-waitlist.service';
     HairReportsService,
     HairNotificationsService,
     HairSmsService,
+    HairAppointmentSmsService,
+    HairJobsService,
+    HairJobSecretGuard,
     HairWaitlistService,
     HairBookingService,
     HairBookingThrottlerGuard,

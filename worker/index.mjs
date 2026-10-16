@@ -9,6 +9,8 @@ const configured = Boolean(env.FIREBASE_CLIENT_EMAIL && env.FIREBASE_PRIVATE_KEY
 const bootstrapModule = configured ? (await import('../dist/bootstrap.js')).default : null;
 if (bootstrapModule) await bootstrapModule.bootstrap({ swaggerUi: false, startupLogs: false, waitUntil });
 const handler = httpServerHandler({ port: 3000 });
+/** Must match the hourly entry in wrangler.jsonc `triggers.crons`. */
+const HAIR_HOURLY_CRON = '15 * * * *';
 
 export default {
   async fetch(request, env, ctx) {
@@ -21,9 +23,12 @@ export default {
     return handler.fetch(request, env, ctx);
   },
 
-  // Daily cron (wrangler.jsonc triggers): membership, overdue-installment and absence reminders.
+  // Crons (wrangler.jsonc triggers): the hourly one runs hair reminders / package expiry; the daily
+  // one runs membership, overdue-installment and absence reminders.
   async scheduled(controller, env, ctx) {
     if (!bootstrapModule) return;
-    ctx.waitUntil(bootstrapModule.runScheduledJobs());
+    ctx.waitUntil(
+      controller.cron === HAIR_HOURLY_CRON ? bootstrapModule.runHairJobs() : bootstrapModule.runScheduledJobs(),
+    );
   },
 };

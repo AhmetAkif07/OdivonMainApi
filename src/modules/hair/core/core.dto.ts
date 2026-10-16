@@ -49,7 +49,48 @@ export class MaxDiscountPercentDto {
   stylist?: number;
 }
 
+export class SmsTemplateDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  enabled?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Placeholders: {customerName} {salonName} {branchName} {date} {time} {staffName} {services}',
+  })
+  @IsOptional()
+  @IsString()
+  @Length(1, 480)
+  text?: string;
+}
+
+export class SmsTemplatesDto {
+  @ApiPropertyOptional({ type: SmsTemplateDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => SmsTemplateDto)
+  confirmation?: SmsTemplateDto;
+
+  @ApiPropertyOptional({ type: SmsTemplateDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => SmsTemplateDto)
+  reminder?: SmsTemplateDto;
+
+  @ApiPropertyOptional({ type: SmsTemplateDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => SmsTemplateDto)
+  cancellation?: SmsTemplateDto;
+}
+
 export class UpdateHairSettingsDto {
+  @ApiPropertyOptional({ type: SmsTemplatesDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => SmsTemplatesDto)
+  smsTemplates?: SmsTemplatesDto;
+
   @ApiPropertyOptional({ type: MaxDiscountPercentDto })
   @IsOptional()
   @ValidateNested()

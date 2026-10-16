@@ -35,6 +35,19 @@ export class HairNotificationsService {
     });
   }
 
+  /** SMS attempts recorded by HairSmsService (`kind: smsLog`). */
+  smsLog(query: HairListQueryDto) {
+    return this.store.list(TENANT_COLLECTION.hairNotifications, {
+      dateField: 'createdAt',
+      from: query.from,
+      to: query.to,
+      equals: { kind: SMS_LOG_KIND, type: query.type, status: query.status, customerId: query.customerId },
+      orderBy: { field: 'createdAt', dir: 'desc' },
+      limit: query.limit,
+      cursor: query.cursor,
+    });
+  }
+
   async markRead(id: string) {
     const actor = await this.store.actorOrThrow();
     const item = await this.store.getOrThrow(TENANT_COLLECTION.hairNotifications, id, NOT_FOUND);

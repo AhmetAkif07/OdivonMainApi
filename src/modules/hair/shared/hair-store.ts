@@ -12,6 +12,7 @@ import {
 } from '../../../shared/firestore/base-document';
 import { TenantContext } from '../../../shared/tenancy/tenant.context';
 import { DEFAULT_MAX_DISCOUNT_PERCENT, MaxDiscountPercent } from './discount-limit';
+import { mergeSmsTemplates, SmsTemplates } from '../notifications/sms/sms-templates';
 import { hairForbidden, hairNotFound } from './hair-errors';
 import { HAIR_DEFAULT_LIST_LIMIT, HairPage } from './hair-list.dto';
 import { HairScope, HairStaffRole, isHairStaffRole, scopeFor } from './hair-roles';
@@ -62,11 +63,14 @@ export interface HairSettingsDoc extends BaseDocument {
   maxDiscountPercent: MaxDiscountPercent;
   /** Online booking needs an SMS code (only enforced when an SMS provider is configured). */
   requireBookingOtp: boolean;
+  /** Appointment SMS texts (confirmation / reminder / cancellation), each with an on/off switch. */
+  smsTemplates: SmsTemplates;
 }
 
 export const DEFAULT_HAIR_SETTINGS = {
   maxDiscountPercent: { ...DEFAULT_MAX_DISCOUNT_PERCENT } as MaxDiscountPercent,
   requireBookingOtp: false,
+  smsTemplates: mergeSmsTemplates(),
   timezone: DEFAULT_TIMEZONE,
   currency: 'TRY',
   workDayStart: '09:00',
@@ -301,6 +305,7 @@ export class HairStore {
       ...DEFAULT_HAIR_SETTINGS,
       ...stored,
       maxDiscountPercent: { ...DEFAULT_MAX_DISCOUNT_PERCENT, ...stored.maxDiscountPercent },
+      smsTemplates: mergeSmsTemplates(stored.smsTemplates),
       id: this.tenantId(),
     } as HairSettingsDoc;
   }

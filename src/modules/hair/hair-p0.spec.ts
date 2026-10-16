@@ -11,7 +11,10 @@ import { HairCoreService } from './core/hair-core.service';
 import { HairCustomersService } from './customers/hair-customers.service';
 import { HairFinanceService } from './finance/hair-finance.service';
 import { HairNotificationsService } from './notifications/hair-notifications.service';
+import { HairAppointmentSmsService } from './notifications/sms/hair-appointment-sms.service';
 import { HairSmsService } from './notifications/sms/hair-sms.service';
+import { HairJobSecretGuard } from './jobs/hair-jobs.controller';
+import { HairJobsService } from './jobs/hair-jobs.service';
 import { SmsProvider } from './notifications/sms/sms-provider';
 import { HairPackagesService } from './packages/hair-packages.service';
 import { HairPosService } from './pos/hair-pos.service';
@@ -62,6 +65,7 @@ describe('hair P0 rules (FakeFirestore)', () => {
   let pos: HairPosService;
   let sms: HairSmsService;
   let booking: HairBookingService;
+  let notificationsService: HairNotificationsService;
   const sent: { to: string; text: string }[] = [];
   const fakeSms = (configured: boolean): SmsProvider => ({
     name: 'fake',
@@ -101,6 +105,7 @@ describe('hair P0 rules (FakeFirestore)', () => {
     customers = new HairCustomersService(store);
     catalog = new HairCatalogService(store);
     const notifications = new HairNotificationsService(store);
+    notificationsService = notifications;
     pos = new HairPosService(store, notifications);
     sms = new HairSmsService(store);
     sms.useProvider(fakeSms(false));
@@ -529,6 +534,84 @@ describe('hair P0 rules (FakeFirestore)', () => {
       await expect(booking.book(slug, request('05559998877', '11:00', { otpCode: code }), '10.0.0.1')).rejects.toMatchObject({
         code: ErrorCode.OTP_INVALID,
       }); // a code works once
+    });
+  });
+  // ── 8. SMS templates, reminders, package expiry ──
+
+  describe('SMS sending and scheduled jobs', () => {
+    let appointmentSms: HairAppointmentSmsService;
+    let withSms: HairAppointmentsService;
+    let jobs: HairJobsService;
+    let date: string;
+
+    beforeEach(() => {
+      sms.useProvider(fakeSms(true));
+      appointmentSms = new HairAppointmentSmsService(store, sms, tenants as never);
+      withSms = new HairAppointmentsService(store, appointmentSms);
+      jobs = new HairJobsService({ db } as never, context, store, appointmentSms);
+      date = addDays(dateIdInTz('Europe/Istanbul'), 7);
+      while (weekday(date) === 0) date = addDays(date, 1);
+    });
+
+    afterEach(() => {
+      delete process.env['HAIR_JOB_SECRET'];
+    });
+
+    it('sends confirmation and cancellation SMS from the tenant templates', async () => {
+      await asOwner(() =>
+        core.updateSettings({ smsTemplates: { confirmation: { text: '{salonName}: {customerName} {date} {time} ({services}) onaylandı' } } }),
+      );
+      const appointment = await asOwner(() =>
+        withSms.save({ customerId, branchId: 'main', staffId: 'st1', date, startTime: '10:00', services: [{ serviceId: cutId }] }),
+      );
+      const [y, m, d] = date.split('-');
+      expect(sent).toEqual([{ to: '+905321112233', text: `Salon Test: Zeynep Kara ${d}.${m}.${y} 10:00 (Kesim) onaylandı` }]);
+
+      await asOwner(() => core.updateSettings({ smsTemplates: { cancellation: { enabled: false } } }));
+      await asOwner(() => withSms.setStatus(appointment.id, { status: 'cancelled' }));
+      expect(sent).toHaveLength(1); // cancellation switched off
+
+      const log = rows('hairNotifications').filter((n) => n['kind'] === 'smsLog');
+      expect(log).toEqual([expect.objectContaining({ type: 'appointmentConfirmation', status: 'sent', appointmentId: appointment.id, customerId })]);
+      const page = await asOwner(() => notificationsService.smsLog({}));
+      expect(page.items).toHaveLength(1);
+      expect((await asOwner(() => notificationsService.list({}))).items.some((n) => n['kind'] === 'smsLog')).toBe(false);
+    });
+
+    it('reminds once within reminderHoursBefore and retries failed sends', async () => {
+      const soon = new Date(Date.now() + 2 * 3_600_000).toISOString();
+      const later = new Date(Date.now() + 30 * 3_600_000).toISOString();
+      put('hairAppointments', { id: 'r1', customerId, customerName: 'Zeynep Kara', customerPhone: '+905321112233', branchId: 'main', date, startTime: '10:00', startAt: soon, status: 'confirmed', reminderSent: false });
+      put('hairAppointments', { id: 'r2', customerId, customerPhone: '+905321112233', branchId: 'main', date, startAt: later, status: 'confirmed', reminderSent: false });
+      put('hairAppointments', { id: 'r3', customerId, customerPhone: '+905321112233', branchId: 'main', date, startAt: soon, status: 'cancelled', reminderSent: false });
+
+      sms.useProvider({ ...fakeSms(true), send: async () => ({ ok: false, error: 'down' }) });
+      await expect(asOwner(() => jobs.sendReminders())).resolves.toEqual({ sent: 0, failed: 1 });
+      expect(db.docs.get('tenants/t1/hairAppointments/r1')).toMatchObject({ reminderSent: false });
+
+      sms.useProvider(fakeSms(true));
+      await expect(asOwner(() => jobs.sendReminders())).resolves.toEqual({ sent: 1, failed: 0 });
+      await expect(asOwner(() => jobs.sendReminders())).resolves.toEqual({ sent: 0, failed: 0 });
+      expect(db.docs.get('tenants/t1/hairAppointments/r1')).toMatchObject({ reminderSent: true });
+      expect(sent.map((s) => s.text)).toEqual([expect.stringContaining('hatırlatırız')]);
+    });
+
+    it('expires customer packages past their end date', async () => {
+      put('hairCustomerPackages', { id: 'old', customerId, status: 'active', endDate: '2020-01-01' });
+      put('hairCustomerPackages', { id: 'new', customerId, status: 'active', endDate: '2999-01-01' });
+      await expect(asOwner(() => jobs.expirePackages())).resolves.toBe(1);
+      expect(db.docs.get('tenants/t1/hairCustomerPackages/old')).toMatchObject({ status: 'expired' });
+      expect(db.docs.get('tenants/t1/hairCustomerPackages/new')).toMatchObject({ status: 'active' });
+    });
+
+    it('opens the job endpoints only with HAIR_JOB_SECRET', () => {
+      const guard = new HairJobSecretGuard();
+      const call = (secret?: string) =>
+        guard.canActivate({ switchToHttp: () => ({ getRequest: () => ({ headers: secret ? { 'x-job-secret': secret } : {} }) }) } as never);
+      expect(() => call('anything')).toThrow(expect.objectContaining({ code: ErrorCode.JOB_UNAUTHORIZED }));
+      process.env['HAIR_JOB_SECRET'] = 's3cret-value';
+      expect(() => call('wrong')).toThrow(expect.objectContaining({ code: ErrorCode.JOB_UNAUTHORIZED }));
+      expect(call('s3cret-value')).toBe(true);
     });
   });
 });

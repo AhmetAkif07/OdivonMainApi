@@ -7,6 +7,7 @@ import { loadConfiguration } from './config/configuration';
 import { allowedCorsOrigins, isCorsOriginAllowed } from './config/cors';
 import { GymClassBookingService } from './modules/gym/ops/class-booking.service';
 import { GymRemindersService } from './modules/gym/reminders/reminders.service';
+import { HairJobsService } from './modules/hair/jobs/hair-jobs.service';
 import { SaasBillingService } from './modules/payments/saas-billing.service';
 import { PlatformDemosService } from './modules/platform/demos/demos.service';
 import { ErrorLogService } from './shared/errors/error-log.service';
@@ -90,4 +91,15 @@ export async function runScheduledJobs(): Promise<void> {
   // Platform: Purge error logs older than 30 days
   const errorLogs = application.get(ErrorLogService);
   await errorLogs.purgeOlderThan(30);
+}
+
+/**
+ * Hourly hair jobs (wrangler.jsonc hourly cron): SMS reminders `reminderHoursBefore` ahead and
+ * expiry of customer packages. Idempotent; also reachable as POST /api/v1/hair/jobs/run.
+ */
+export async function runHairJobs(): Promise<void> {
+  if (!application) {
+    throw new Error('Application is not bootstrapped');
+  }
+  await application.get(HairJobsService).runAll();
 }

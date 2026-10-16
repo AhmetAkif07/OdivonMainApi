@@ -14,6 +14,7 @@ import {
   HAIR_STAFF_ROLES,
   hairRoleId,
 } from '../shared/hair-roles';
+import { mergeSmsTemplates } from '../notifications/sms/sms-templates';
 import { slugCandidate, slugify } from '../shared/hair-slug';
 import { DEFAULT_HAIR_SETTINGS, HairDoc, HairSettingsDoc, HairStore } from '../shared/hair-store';
 import { parseClock } from '../shared/hair-time';
@@ -78,6 +79,7 @@ export class HairCoreService {
       ...pickSettings(current),
       ...stripUndefined(rest),
       maxDiscountPercent: { ...current.maxDiscountPercent, ...stripUndefined(rest.maxDiscountPercent ?? {}) },
+      smsTemplates: mergeSmsTemplates(current.smsTemplates, rest.smsTemplates),
     };
     if ((parseClock(next.workDayStart) ?? 0) >= (parseClock(next.workDayEnd) ?? 0)) {
       throw hairInvalid('Mesai başlangıcı bitişten önce olmalıdır.');

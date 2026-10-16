@@ -40,6 +40,10 @@ export class HairSmsService {
     return this.provider.isConfigured();
   }
 
+  status() {
+    return { configured: this.provider.isConfigured(), provider: this.provider.name };
+  }
+
   async send(message: SmsMessage): Promise<{ ok: boolean; logId: string; error?: string }> {
     const result = await this.provider.send(message.to, message.text);
     if (!result.ok) this.logger.warn(`SMS ${message.type} failed: ${result.error}`);
