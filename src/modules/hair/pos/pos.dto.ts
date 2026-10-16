@@ -131,8 +131,18 @@ export class RefundSessionDto {
 
   @ApiPropertyOptional({
     type: [PaymentLineDto],
-    description: 'How the money goes back; default: the original payment methods, largest first',
+    description:
+      'How the money goes back (method + amount); each method at most what was paid with it minus earlier ' +
+      'refunds. Default: the original payment methods, largest first',
   })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(10)
+  @ValidateNested({ each: true })
+  @Type(() => PaymentLineDto)
+  lines?: PaymentLineDto[];
+
+  @ApiPropertyOptional({ type: [PaymentLineDto], description: 'Deprecated alias of `lines`' })
   @IsOptional()
   @IsArray()
   @ArrayMaxSize(10)

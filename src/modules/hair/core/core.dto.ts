@@ -12,12 +12,50 @@ import {
   Max,
   MaxLength,
   Min,
+  ValidateNested,
 } from 'class-validator';
 
 const CLOCK = /^[0-2][0-9]:[0-5][0-9]$/;
 const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
+/** Checkout discount ceilings (%) per role; admins are always allowed 100. */
+export class MaxDiscountPercentDto {
+  @ApiPropertyOptional({ example: 30 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(100)
+  manager?: number;
+
+  @ApiPropertyOptional({ example: 10 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(100)
+  receptionist?: number;
+
+  @ApiPropertyOptional({ example: 10 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(100)
+  cashier?: number;
+
+  @ApiPropertyOptional({ example: 0 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(100)
+  stylist?: number;
+}
+
 export class UpdateHairSettingsDto {
+  @ApiPropertyOptional({ type: MaxDiscountPercentDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => MaxDiscountPercentDto)
+  maxDiscountPercent?: MaxDiscountPercentDto;
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()

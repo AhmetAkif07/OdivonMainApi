@@ -74,7 +74,11 @@ export class HairCoreService {
     const current = await this.store.settings();
     const tenant = await this.tenants.getById(this.store.tenantId());
     const { name: rawName, ...rest } = dto;
-    const next = { ...pickSettings(current), ...stripUndefined(rest) };
+    const next = {
+      ...pickSettings(current),
+      ...stripUndefined(rest),
+      maxDiscountPercent: { ...current.maxDiscountPercent, ...stripUndefined(rest.maxDiscountPercent ?? {}) },
+    };
     if ((parseClock(next.workDayStart) ?? 0) >= (parseClock(next.workDayEnd) ?? 0)) {
       throw hairInvalid('Mesai başlangıcı bitişten önce olmalıdır.');
     }

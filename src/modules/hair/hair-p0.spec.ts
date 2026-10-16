@@ -11,6 +11,7 @@ import { HairCustomersService } from './customers/hair-customers.service';
 import { HairFinanceService } from './finance/hair-finance.service';
 import { HairNotificationsService } from './notifications/hair-notifications.service';
 import { HairPackagesService } from './packages/hair-packages.service';
+import { HairPosService } from './pos/hair-pos.service';
 import { HairReportsService } from './reports/hair-reports.service';
 import { HairDoc, HairStore } from './shared/hair-store';
 import { HairStaffService } from './staff/hair-staff.service';
@@ -53,6 +54,7 @@ describe('hair P0 rules (FakeFirestore)', () => {
   let finance: HairFinanceService;
   let reports: HairReportsService;
   let staff: HairStaffService;
+  let pos: HairPosService;
   let appointments: HairAppointmentsService;
   let packages: HairPackagesService;
   const tenants = {
@@ -83,7 +85,7 @@ describe('hair P0 rules (FakeFirestore)', () => {
     customers = new HairCustomersService(store);
     catalog = new HairCatalogService(store);
     const notifications = new HairNotificationsService(store);
-    void notifications;
+    pos = new HairPosService(store, notifications);
     finance = new HairFinanceService(store);
     reports = new HairReportsService(store);
     staff = new HairStaffService(store, context, users as never);
@@ -270,6 +272,96 @@ describe('hair P0 rules (FakeFirestore)', () => {
       await expect(asOwner(() => catalog.updateService(cutId, { processingMinutes: 30 }))).rejects.toMatchObject({
         code: ErrorCode.HAIR_INVALID,
       });
+    });
+  });
+  // ── 5. Discount and refund limits ──
+
+  describe('discount and refund limits', () => {
+    let shampooId: string;
+    const sell = (who: TenantStore, overrides: Record<string, unknown> = {}) =>
+      as(who, () =>
+        pos.checkout({
+          idempotencyKey: `key-${Math.random().toString(36).slice(2, 12)}`,
+          branchId: 'main',
+          customerId,
+          staffId: 'st1',
+          items: [
+            { type: 'service', refId: cutId, quantity: 1 },
+            { type: 'product', refId: shampooId, quantity: 1 },
+          ],
+          payments: [{ method: 'creditCard', amount: 500 }],
+          ...overrides,
+        } as never),
+      );
+
+    beforeEach(async () => {
+      put('hairStaff', staffCard('rc1', 'receptionist'));
+      shampooId = (
+        await asOwner(() =>
+          catalog.createProduct({ name: 'Şampuan', category: 'Bakım', unit: 'adet', purchasePrice: 50, salePrice: 200, minStock: 0, currentStock: 5 }),
+        )
+      ).id;
+    });
+
+    it('caps line and basket discounts by role', async () => {
+      const receptionist = asUser('u-rc1');
+      const cutDiscount = (discount: number, pay: number) => ({
+        items: [{ type: 'service', refId: cutId, quantity: 1, discount }],
+        payments: [{ method: 'creditCard', amount: pay }],
+      });
+      await expect(sell(receptionist, cutDiscount(60, 240))).rejects.toMatchObject({
+        code: ErrorCode.DISCOUNT_LIMIT,
+        details: { maxDiscountPercent: 10, requestedPercent: 20 },
+      });
+      await expect(sell(receptionist, cutDiscount(30, 270))).resolves.toMatchObject({ totalAmount: 270 });
+      await expect(sell(receptionist, { globalDiscount: 100, payments: [{ method: 'creditCard', amount: 400 }] })).rejects.toMatchObject({
+        code: ErrorCode.DISCOUNT_LIMIT,
+      });
+      await expect(sell(asUser('u-st1'), cutDiscount(1, 299))).rejects.toMatchObject({ code: ErrorCode.DISCOUNT_LIMIT });
+
+      await asOwner(() => core.updateSettings({ maxDiscountPercent: { receptionist: 25 } }));
+      expect((await asOwner(() => core.getSettings())).settings.maxDiscountPercent).toEqual({
+        manager: 30,
+        receptionist: 25,
+        cashier: 10,
+        stylist: 0,
+      });
+      await expect(sell(receptionist, cutDiscount(60, 240))).resolves.toMatchObject({ totalAmount: 240 });
+      await expect(sell(OWNER, { ...cutDiscount(300, 0), payments: [] })).resolves.toMatchObject({ totalAmount: 0 });
+    });
+
+    it('lets only admins and managers refund, within what was paid and per method', async () => {
+      const session = await sell(OWNER);
+      const commission = () => rows('hairCommissions').reduce((sum, c) => sum + Number(c['amount']), 0);
+      expect(commission()).toBe(30); // 10% of the 300 service
+
+      await expect(as(asUser('u-rc1'), () => pos.refund(session.id, { reason: 'x' }))).rejects.toMatchObject({
+        code: ErrorCode.HAIR_FORBIDDEN,
+      });
+      const manager = asUser('u-mg1');
+      await expect(
+        as(manager, () => pos.refund(session.id, { reason: 'x', amount: 50, lines: [{ method: 'cash', amount: 50 }] })),
+      ).rejects.toMatchObject({ code: ErrorCode.REFUND_LIMIT, details: { method: 'cash', refundable: 0 } });
+
+      const partial = await as(manager, () =>
+        pos.refund(session.id, { reason: 'Kısmi', lines: [{ method: 'creditCard', amount: 100 }] }),
+      );
+      expect(partial).toMatchObject({ status: 'partialRefund', refundedAmount: 100 });
+      expect(commission()).toBe(24); // 30 − 30 × 100/500
+      expect(db.docs.get(`tenants/t1/hairProducts/${shampooId}`)).toMatchObject({ currentStock: 4 });
+
+      await expect(as(manager, () => pos.refund(session.id, { reason: 'fazla', amount: 401 }))).rejects.toMatchObject({
+        code: ErrorCode.REFUND_LIMIT,
+        details: { refundable: 400 },
+      });
+      const full = await as(manager, () => pos.refund(session.id, { reason: 'Kalan' }));
+      expect(full).toMatchObject({ status: 'refunded', refundedAmount: 500 });
+      expect(commission()).toBe(0);
+      expect(db.docs.get(`tenants/t1/hairProducts/${shampooId}`)).toMatchObject({ currentStock: 5 });
+      const returned = rows('hairInventoryTransactions').filter((m) => m['productId'] === shampooId && m['reason'] === 'İade');
+      expect(returned).toEqual([expect.objectContaining({ type: 'in', quantity: 1, sessionId: session.id })]);
+      const refunds = rows('hairPayments').filter((p) => p['isRefund']);
+      expect(refunds.map((p) => p['totalAmount']).sort()).toEqual([-100, -400]);
     });
   });
 });

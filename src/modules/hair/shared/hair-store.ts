@@ -11,6 +11,7 @@ import {
   touchBaseFields,
 } from '../../../shared/firestore/base-document';
 import { TenantContext } from '../../../shared/tenancy/tenant.context';
+import { DEFAULT_MAX_DISCOUNT_PERCENT, MaxDiscountPercent } from './discount-limit';
 import { hairForbidden, hairNotFound } from './hair-errors';
 import { HAIR_DEFAULT_LIST_LIMIT, HairPage } from './hair-list.dto';
 import { HairScope, HairStaffRole, isHairStaffRole, scopeFor } from './hair-roles';
@@ -57,9 +58,12 @@ export interface HairSettingsDoc extends BaseDocument {
   /** Only a status flag: provider secrets never live in Firestore (plan §5.12). */
   smsConfigured: boolean;
   emailConfigured: boolean;
+  /** Checkout discount ceiling per role (admin is always 100). */
+  maxDiscountPercent: MaxDiscountPercent;
 }
 
 export const DEFAULT_HAIR_SETTINGS = {
+  maxDiscountPercent: { ...DEFAULT_MAX_DISCOUNT_PERCENT } as MaxDiscountPercent,
   timezone: DEFAULT_TIMEZONE,
   currency: 'TRY',
   workDayStart: '09:00',
@@ -293,6 +297,7 @@ export class HairStore {
       ...createBaseFields(this.tenantId(), this.userId()),
       ...DEFAULT_HAIR_SETTINGS,
       ...stored,
+      maxDiscountPercent: { ...DEFAULT_MAX_DISCOUNT_PERCENT, ...stored.maxDiscountPercent },
       id: this.tenantId(),
     } as HairSettingsDoc;
   }
