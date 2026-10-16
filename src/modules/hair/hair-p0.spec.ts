@@ -364,4 +364,58 @@ describe('hair P0 rules (FakeFirestore)', () => {
       expect(refunds.map((p) => p['totalAmount']).sort()).toEqual([-100, -400]);
     });
   });
+  // ── 6. Idempotency ──
+
+  describe('idempotency keys', () => {
+    it('replays payments, expenses, package sales and register open/close', async () => {
+      const open = { branchId: 'main', openingBalance: 100, idempotencyKey: 'open-0001' };
+      const opened = await asOwner(() => finance.openRegister(open));
+      await expect(asOwner(() => finance.openRegister(open))).resolves.toEqual(opened);
+
+      const payment = { customerId, branchId: 'main', lines: [{ method: 'cash' as const, amount: 50 }], idempotencyKey: 'pay-00001' };
+      const first = await asOwner(() => finance.createPayment(payment));
+      await expect(asOwner(() => finance.createPayment(payment))).resolves.toMatchObject({ id: first.id });
+      expect(rows('hairPayments')).toHaveLength(1);
+      await expect(
+        asOwner(() => finance.createPayment({ ...payment, lines: [{ method: 'cash', amount: 60 }] })),
+      ).rejects.toMatchObject({ code: ErrorCode.IDEMPOTENCY_CONFLICT });
+
+      const expense = { category: 'Kira', amount: 10, paymentMethod: 'cash' as const, branchId: 'main', idempotencyKey: 'exp-00001' };
+      const spent = await asOwner(() => finance.createExpense(expense));
+      await expect(asOwner(() => finance.createExpense(expense))).resolves.toMatchObject({ id: spent.id });
+      expect(rows('hairExpenses')).toHaveLength(1);
+      expect(spent['idempotencyKey']).toBeUndefined();
+
+      const plan = await asOwner(() => packages.createPackage({ name: '5 Kesim', services: [{ serviceId: cutId }], totalSessions: 5, price: 1000, validityDays: 90 }));
+      const sale = { customerId, packageId: plan.id, branchId: 'main', payments: [{ method: 'cash' as const, amount: 1000 }], idempotencyKey: 'sale-0001' };
+      const soldOnce = await asOwner(() => packages.sell(sale));
+      await expect(asOwner(() => packages.sell(sale))).resolves.toMatchObject({ id: soldOnce.id });
+      expect(rows('hairCustomerPackages')).toHaveLength(1);
+      expect(rows('hairPayments')).toHaveLength(2);
+
+      const close = { branchId: 'main', countedBalance: 1140, idempotencyKey: 'close-001' };
+      const closed = await asOwner(() => finance.closeRegister(close));
+      expect(closed).toMatchObject({ status: 'closed', closingBalance: 1140, difference: 0 });
+      await expect(asOwner(() => finance.closeRegister(close))).resolves.toMatchObject({ status: 'closed', closingBalance: 1140 });
+    });
+
+    it('replays a refund instead of refunding twice', async () => {
+      const session = await asOwner(() =>
+        pos.checkout({
+          idempotencyKey: 'chk-00001',
+          branchId: 'main',
+          customerId,
+          staffId: 'st1',
+          items: [{ type: 'service', refId: cutId, quantity: 1 }],
+          payments: [{ method: 'creditCard', amount: 300 }],
+        }),
+      );
+      const refund = { reason: 'İade', amount: 100, idempotencyKey: 'ref-00001' };
+      const once = await asOwner(() => pos.refund(session.id, refund));
+      const twice = await asOwner(() => pos.refund(session.id, refund));
+      expect(twice).toMatchObject({ refundedAmount: 100, status: 'partialRefund' });
+      expect(once['refundedAmount']).toBe(100);
+      expect(rows('hairPayments').filter((p) => p['isRefund'])).toHaveLength(1);
+    });
+  });
 });

@@ -17,7 +17,7 @@ import {
   Min,
   ValidateNested,
 } from 'class-validator';
-import { DATE_ID, PaymentLineDto } from '../shared/hair-dto';
+import { DATE_ID, IdempotentDto, PaymentLineDto } from '../shared/hair-dto';
 
 export class PackageServiceDto {
   @ApiProperty()
@@ -76,7 +76,7 @@ export class CreateHairPackageDto {
 
 export class UpdateHairPackageDto extends PartialType(CreateHairPackageDto) {}
 
-export class SellCustomerPackageDto {
+export class SellCustomerPackageDto extends IdempotentDto {
   @ApiProperty()
   @IsString()
   customerId!: string;

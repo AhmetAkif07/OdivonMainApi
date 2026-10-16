@@ -7,7 +7,8 @@ import { MONEY_EPSILON } from '../shared/checkout-pricing';
 import { assertNoRelated, hairInvalid, hairNotFound, hairPrecondition } from '../shared/hair-errors';
 import { HairListQueryDto, searchTerm } from '../shared/hair-list.dto';
 import { assertPayments, round2 } from '../shared/hair-money';
-import { HairStore } from '../shared/hair-store';
+import { idempotency } from '../shared/hair-idempotency';
+import { HairDoc, HairStore } from '../shared/hair-store';
 import { dateIdInTz } from '../shared/hair-time';
 import { fullName, live, matchesSearch, num, str } from '../shared/hair-tx';
 import {
@@ -108,7 +109,9 @@ export class HairPackagesService {
     const userId = this.store.userId();
     const pkgRef = this.store.newRef(TENANT_COLLECTION.hairCustomerPackages);
 
-    const sold = await this.store.runTransaction(async (tx) => {
+    const outcome = await this.store.runTransaction(async (tx) => {
+      const idem = await idempotency<HairDoc>(tx, this.store, 'packageSale', dto.idempotencyKey, dto);
+      if (idem.replay) return { doc: idem.replay, replay: true };
       const plan = live(await tx.get(this.store.ref(TENANT_COLLECTION.hairPackages, dto.packageId)));
       if (!plan) throw hairNotFound(PACKAGE_NOT_FOUND);
       if (plan['active'] === false) throw hairPrecondition('Bu paket satışta değil.');
@@ -160,14 +163,17 @@ export class HairPackagesService {
         });
         tx.update(customerRef, { totalSpent: round2(num(customer['totalSpent']) + price), updatedAt: now });
       }
-      return doc;
+      idem.save(doc);
+      return { doc: doc as HairDoc, replay: false };
     });
-    await this.store.audit('hairCustomerPackages', 'create', pkgRef.id, null, {
-      customerId: dto.customerId,
-      packageId: dto.packageId,
-      price: sold.price,
-    });
-    return sold;
+    if (!outcome.replay) {
+      await this.store.audit('hairCustomerPackages', 'create', pkgRef.id, null, {
+        customerId: dto.customerId,
+        packageId: dto.packageId,
+        price: outcome.doc['price'],
+      });
+    }
+    return outcome.doc;
   }
 
   updateCustomerPackage(id: string, dto: UpdateCustomerPackageDto) {

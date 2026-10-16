@@ -22,6 +22,7 @@ import { hairForbidden, hairInvalid, hairNotFound, hairPrecondition } from '../s
 import { HairListQueryDto } from '../shared/hair-list.dto';
 import { assertPayments, PaymentLine, PaymentMethod, round2 } from '../shared/hair-money';
 import { HairStaffRole } from '../shared/hair-roles';
+import { idempotency } from '../shared/hair-idempotency';
 import { HairDoc, HairStore } from '../shared/hair-store';
 import { dateIdInTz, dateStampInTz } from '../shared/hair-time';
 import { fullName, live, num, str, toMap, unique } from '../shared/hair-tx';
@@ -370,6 +371,8 @@ export class HairPosService {
     const requestedLines = dto.lines?.length ? dto.lines : dto.payments;
 
     const result = await this.store.runTransaction(async (tx) => {
+      const idem = await idempotency<HairDoc>(tx, this.store, `refund_${sessionId}`, dto.idempotencyKey, dto);
+      if (idem.replay) return { session: idem.replay, amount: 0, becomesFull: false, replay: true };
       const session = live(await tx.get(sessionRef));
       if (!session) throw hairNotFound(SESSION_NOT_FOUND);
       this.store.assertBranchAccess(actor, str(session['branchId']));
@@ -535,13 +538,16 @@ export class HairPosService {
         updatedBy: userId,
       };
       tx.set(sessionRef, updated);
-      return { session: updated as HairDoc, amount, becomesFull };
+      idem.save(updated as HairDoc);
+      return { session: updated as HairDoc, amount, becomesFull, replay: false };
     });
 
-    await this.store.audit('hairSessions', 'callable', sessionId, null, {
-      refund: result.amount,
-      status: result.session['status'],
-    });
+    if (!result.replay) {
+      await this.store.audit('hairSessions', 'callable', sessionId, null, {
+        refund: result.amount,
+        status: result.session['status'],
+      });
+    }
     return result.session;
   }
 }

@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsIn, IsNumber, IsOptional, IsString, MaxLength, Min } from 'class-validator';
+import { IsIn, IsNumber, IsOptional, IsString, Length, MaxLength, Min } from 'class-validator';
 import { PAYMENT_METHODS, PaymentMethod } from './hair-money';
 
 export const CLOCK = /^([01][0-9]|2[0-4]):[0-5][0-9]$/;
@@ -22,4 +22,13 @@ export class PaymentLineDto {
   @IsString()
   @MaxLength(64)
   reference?: string;
+}
+
+/** Optional client-generated key (UUID); a retry with the same key returns the first response. */
+export class IdempotentDto {
+  @ApiPropertyOptional({ description: 'Client-generated UUID; a retry with the same key returns the first result' })
+  @IsOptional()
+  @IsString()
+  @Length(8, 100)
+  idempotencyKey?: string;
 }

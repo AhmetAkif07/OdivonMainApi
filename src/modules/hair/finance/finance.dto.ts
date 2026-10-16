@@ -1,4 +1,4 @@
-import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional, OmitType, PartialType } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
@@ -17,10 +17,10 @@ import {
   Min,
   ValidateNested,
 } from 'class-validator';
-import { DATE_ID, PaymentLineDto } from '../shared/hair-dto';
+import { DATE_ID, IdempotentDto, PaymentLineDto } from '../shared/hair-dto';
 import { PAYMENT_METHODS, PaymentMethod } from '../shared/hair-money';
 
-export class CreateHairPaymentDto {
+export class CreateHairPaymentDto extends IdempotentDto {
   @ApiProperty()
   @IsString()
   customerId!: string;
@@ -54,7 +54,7 @@ export class CreateHairPaymentDto {
   notes?: string;
 }
 
-export class CreateHairExpenseDto {
+export class CreateHairExpenseDto extends IdempotentDto {
   @ApiProperty({ example: 'Kira' })
   @IsString()
   @Length(1, 80)
@@ -96,7 +96,7 @@ export class CreateHairExpenseDto {
   staffId?: string;
 }
 
-export class UpdateHairExpenseDto extends PartialType(CreateHairExpenseDto) {}
+export class UpdateHairExpenseDto extends PartialType(OmitType(CreateHairExpenseDto, ['idempotencyKey'] as const)) {}
 
 export class CashRegisterQueryDto {
   @ApiPropertyOptional()
@@ -110,7 +110,7 @@ export class CashRegisterQueryDto {
   date?: string;
 }
 
-export class OpenCashRegisterDto {
+export class OpenCashRegisterDto extends IdempotentDto {
   @ApiProperty()
   @IsString()
   branchId!: string;
@@ -121,7 +121,7 @@ export class OpenCashRegisterDto {
   openingBalance!: number;
 }
 
-export class CloseCashRegisterDto {
+export class CloseCashRegisterDto extends IdempotentDto {
   @ApiProperty()
   @IsString()
   branchId!: string;
