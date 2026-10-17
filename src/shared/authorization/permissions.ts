@@ -3,7 +3,7 @@
 export const PERMISSION_ACTIONS = ['view', 'create', 'update', 'delete', 'export', 'approve', 'refund'] as const;
 export type PermissionAction = (typeof PERMISSION_ACTIONS)[number];
 
-export type PermissionGroup = 'clinic' | 'finance' | 'stock' | 'definitions' | 'admin' | 'gym' | 'spa' | 'hair' | 'beauty' | 'apm' | 'rentacar';
+export type PermissionGroup = 'clinic' | 'finance' | 'stock' | 'definitions' | 'admin' | 'gym' | 'spa' | 'hair' | 'beauty' | 'apm' | 'rentacar' | 'drivingschool' | 'parking';
 
 export interface PermissionResourceDefinition {
   key: string;
@@ -134,6 +134,19 @@ export const PERMISSION_RESOURCES = [
   { key: 'rentCrm', label: 'CRM ve kampanyalar', group: 'rentacar', modules: ['rentacar'] },
   { key: 'rentReports', label: 'Raporlar', group: 'rentacar', modules: ['rentacar'] },
   { key: 'rentSettings', label: 'Rent A Car ayarları', group: 'rentacar', modules: ['rentacar'] },
+  { key: 'drivingSchoolDashboard', label: 'Sürücü kursu gösterge paneli', group: 'drivingschool', modules: ['drivingschool'] },
+  { key: 'drivingSchoolStudents', label: 'Kursiyerler', group: 'drivingschool', modules: ['drivingschool'] },
+  { key: 'drivingSchoolInstructors', label: 'Eğitmenler', group: 'drivingschool', modules: ['drivingschool'] },
+  { key: 'drivingSchoolVehicles', label: 'Eğitim araçları', group: 'drivingschool', modules: ['drivingschool'] },
+  { key: 'drivingSchoolLessons', label: 'Ders ve randevu planı', group: 'drivingschool', modules: ['drivingschool'] },
+  { key: 'parkingDashboard', label: 'Otopark gösterge paneli', group: 'parking', modules: ['parking'] },
+  { key: 'parkingFacilities', label: 'Tesis, bölge ve park yerleri', group: 'parking', modules: ['parking'] },
+  { key: 'parkingSessions', label: 'Giriş ve çıkış işlemleri', group: 'parking', modules: ['parking'] },
+  { key: 'parkingTariffs', label: 'Tarifeler', group: 'parking', modules: ['parking'] },
+  { key: 'parkingPayments', label: 'Tahsilat ve iadeler', group: 'parking', modules: ['parking'] },
+  { key: 'parkingCash', label: 'Kasa vardiyaları', group: 'parking', modules: ['parking'] },
+  { key: 'parkingDevices', label: 'Bariyer ve edge agent', group: 'parking', modules: ['parking'] },
+  { key: 'parkingAudit', label: 'Otopark işlem geçmişi', group: 'parking', modules: ['parking'] },
 ] as const satisfies readonly PermissionResourceDefinition[];
 
 export type PermissionResource = (typeof PERMISSION_RESOURCES)[number]['key'];
@@ -152,6 +165,8 @@ export const PERMISSION_GROUP_LABELS: Record<PermissionGroup, string> = {
   beauty: 'Güzellik Merkezi',
   apm: 'Randevu Yönetimi',
   rentacar: 'Rent A Car',
+  drivingschool: 'Sürücü Kursu',
+  parking: 'Otopark',
 };
 
 export function resourcesForModules(

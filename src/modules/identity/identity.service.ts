@@ -241,6 +241,20 @@ export class IdentityService {
     if (!profile) {
       throw new AppException(ErrorCode.USER_NOT_FOUND, 'User profile was not found');
     }
+    if (profile.emailVerified !== true) {
+      const fbUser = await this.firebase.auth.getUser(store.userId).catch(() => null);
+      if (fbUser?.emailVerified) {
+        profile.emailVerified = true;
+        await this.users
+          .updateProfile(store.userId, {
+            emailVerified: true,
+            emailVerificationToken: null,
+            emailVerificationExpiresAt: null,
+            updatedAt: new Date().toISOString(),
+          })
+          .catch(() => undefined);
+      }
+    }
     const tenant = await this.tenants.getById(profile.tenantId);
     // A paid gym stays active through the grace period after its end date (see saas-billing).
     const billing = effectiveSubscription(tenant as TenantBillingState);
@@ -472,8 +486,12 @@ export class IdentityService {
 }
 
 function verificationUrl(module: ProductModule, token: string): string {
+  if (module === 'drivingschool') {
+    const url = process.env.APP_URL_DRIVINGSCHOOL?.trim() || (process.env.NODE_ENV === 'development' ? 'http://localhost:4200' : 'https://drivingschool.odivon.com');
+    return `${url.replace(/\/+$/, '')}/auth/verify-email?token=${encodeURIComponent(token)}`;
+  }
   if (module === 'rentacar') {
-    const url = process.env.APP_URL_RENTACAR?.trim() || 'https://rent.odivon.com';
+    const url = process.env.APP_URL_RENTACAR?.trim() || (process.env.NODE_ENV === 'development' ? 'http://localhost:4200' : 'https://rent.odivon.com');
     return `${url.replace(/\/+$/, '')}/auth/verify-email?token=${encodeURIComponent(token)}`;
   }
   if (module === 'gym') {

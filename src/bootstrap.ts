@@ -55,7 +55,7 @@ export async function bootstrap(
     const { DocumentBuilder, SwaggerModule } = await import('@nestjs/swagger');
     const swagger = new DocumentBuilder()
       .setTitle('Odivon Main API')
-      .setDescription('Modular monolith API for Odivon (vet / farm / gym / spa / hair / beauty)')
+      .setDescription('Modular monolith API for Odivon (vet / farm / gym / spa / hair / beauty / parking)')
       .setVersion('0.1.0')
       .addBearerAuth()
       .build();

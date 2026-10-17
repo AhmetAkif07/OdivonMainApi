@@ -64,6 +64,21 @@ export class TenantGuard implements CanActivate {
       throw new AppException(ErrorCode.USER_INACTIVE, 'User account is inactive');
     }
 
+    // Auto-sync emailVerified if Firebase Auth ID token indicates it was verified
+    if (decoded.email_verified === true && profile.emailVerified !== true) {
+      profile.emailVerified = true;
+      this.firebase.db
+        .collection(ROOT_COLLECTION.users)
+        .doc(decoded.uid)
+        .update({
+          emailVerified: true,
+          emailVerificationToken: null,
+          emailVerificationExpiresAt: null,
+          updatedAt: new Date().toISOString(),
+        })
+        .catch(() => undefined);
+    }
+
     // A gym member account is always a plain user without staff permissions, even if its profile
     // was edited to carry another role or roleIds: members only reach their own /gym/mobile routes.
     const isMember = profile.accountType === 'gym_member';

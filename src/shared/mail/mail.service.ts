@@ -721,6 +721,8 @@ const MODULE_VERIFICATION_NAMES: Record<Exclude<ProductModule, 'gym'>, string> =
   beauty: 'Odivon Beauty',
   apm: 'Odivon APM',
   rentacar: 'Odivon Rent A Car',
+  drivingschool: 'Odivon Driving School',
+  parking: 'OdivonPark',
 };
 
 function moduleLoginUrl(module: WelcomeModule): string | null {

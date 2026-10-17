@@ -219,6 +219,24 @@ export const TENANT_COLLECTION = {
   rentReminders: 'rentReminders',
   rentNotifications: 'rentNotifications',
   rentAuditLogs: 'rentAuditLogs',
+  drivingSchoolStudents: 'drivingSchoolStudents',
+  drivingSchoolInstructors: 'drivingSchoolInstructors',
+  drivingSchoolVehicles: 'drivingSchoolVehicles',
+  drivingSchoolLessons: 'drivingSchoolLessons',
+  drivingSchoolAuditLogs: 'drivingSchoolAuditLogs',
+  parkingFacilities: 'parkingFacilities',
+  parkingZones: 'parkingZones',
+  parkingSlots: 'parkingSlots',
+  parkingLanes: 'parkingLanes',
+  parkingSessions: 'parkingSessions',
+  parkingTariffs: 'parkingTariffs',
+  parkingPayments: 'parkingPayments',
+  parkingCashShifts: 'parkingCashShifts',
+  parkingDeviceAgents: 'parkingDeviceAgents',
+  parkingDeviceCommands: 'parkingDeviceCommands',
+  parkingDeviceEvents: 'parkingDeviceEvents',
+  parkingIdempotencyKeys: 'parkingIdempotencyKeys',
+  parkingAuditLogs: 'parkingAuditLogs',
 } as const;
 
 export const ROOT_COLLECTION = {
@@ -231,6 +249,8 @@ export const ROOT_COLLECTION = {
   platformAuditLogs: 'platformAuditLogs',
   rentPublicTenants: 'rentPublicTenants',
   rentPublicOtps: 'rentPublicOtps',
+  parkingAgentIndex: 'parkingAgentIndex',
+  parkingAgentPairingCodes: 'parkingAgentPairingCodes',
 } as const;
 
 export function tenantCollectionPath(tenantId: string, collection: string): string {

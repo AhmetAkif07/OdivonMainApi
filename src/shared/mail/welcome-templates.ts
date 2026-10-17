@@ -107,6 +107,32 @@ export const MODULE_WELCOME_CONTENT: Record<WelcomeModule, ModuleWelcomeContent>
       { title: 'Rezervasyon', text: 'Operasyon çizelgesinden ilk rezervasyonunuzu planlayın.' },
     ],
   },
+  drivingschool: {
+    brand: 'Odivon Driving School',
+    badge: 'SÜRÜCÜ KURSU YÖNETİM PLATFORMU',
+    heading: 'Kursunuz Dijitalleşmeye Hazır! 🚗',
+    recipientFallback: 'Kurs Yöneticisi',
+    tenantNoun: 'sürücü kursunuz',
+    tenantLabel: 'Kurs Adı',
+    steps: [
+      { title: 'Kursiyerler', text: 'İlk kursiyerinizi kaydedip belge durumunu takip edin.' },
+      { title: 'Eğitmen ve Araçlar', text: 'Eğitmenlerinizi ve eğitim araçlarınızı tanımlayın.' },
+      { title: 'Ders Planı', text: 'Çakışmasız direksiyon dersleri planlayın.' },
+    ],
+  },
+  parking: {
+    brand: 'OdivonPark',
+    badge: 'AKILLI OTOPARK YÖNETİM PLATFORMU',
+    heading: 'Otoparkınız Dijitalleşmeye Hazır! 🅿️',
+    recipientFallback: 'Otopark Yöneticisi',
+    tenantNoun: 'otopark işletmeniz',
+    tenantLabel: 'İşletme Adı',
+    steps: [
+      { title: 'Tesis ve Alanlar', text: 'İlk tesisinizi, bölgelerinizi ve kapasitenizi tanımlayın.' },
+      { title: 'Tarifeler', text: 'Ücretsiz süreyi ve park ücret bantlarını oluşturun.' },
+      { title: 'Canlı Operasyon', text: 'Giriş, tahsilat ve çıkış akışını tek ekrandan yönetin.' },
+    ],
+  },
 };
 
 export interface ModuleWelcomeInput {
