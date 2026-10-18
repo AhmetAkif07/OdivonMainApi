@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsIn, IsISO8601, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { IsEmail, IsIn, IsInt, IsISO8601, IsOptional, IsString, Max, MaxLength, Min, MinLength } from 'class-validator';
 
 export const APM_APPOINTMENT_STATUSES = ['Pending', 'Confirmed', 'InProgress', 'Completed', 'Cancelled'] as const;
 export type ApmAppointmentStatus = (typeof APM_APPOINTMENT_STATUSES)[number];
@@ -41,6 +41,40 @@ export class SaveApmAppointmentDto {
   @IsString()
   @MaxLength(2000)
   notes?: string;
+
+  @ApiPropertyOptional({ description: 'Structured APM branch id; omitted for legacy appointments.' })
+  @IsOptional()
+  @IsString()
+  branchId?: string;
+
+  @ApiPropertyOptional({ description: 'Structured APM service id; omitted for legacy appointments.' })
+  @IsOptional()
+  @IsString()
+  serviceId?: string;
+
+  @ApiPropertyOptional({ description: 'Structured APM staff id; omitted for legacy appointments.' })
+  @IsOptional()
+  @IsString()
+  staffId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsEmail()
+  @MaxLength(120)
+  customerEmail?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  customerPhone?: string;
+
+  @ApiPropertyOptional({ minimum: 15, maximum: 480 })
+  @IsOptional()
+  @IsInt()
+  @Min(15)
+  @Max(480)
+  durationMinutes?: number;
 }
 
 export class SetApmAppointmentStatusDto {

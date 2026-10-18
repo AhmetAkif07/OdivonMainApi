@@ -711,6 +711,56 @@ export class MailService {
       return false;
     }
   }
+
+  /** Short-lived code used by the public Odivon APM booking flow. */
+  async sendApmBookingOtp(to: string, code: string, tenantName: string): Promise<boolean> {
+    if (!this.transporter && !this.hostingerApiConfigured()) {
+      await this.initTransporter();
+      if (!this.transporter) return false;
+    }
+    try {
+      await this.sendMessage({
+        from: { name: 'Odivon APM', address: fromAddress() },
+        to,
+        subject: `${tenantName} randevu doğrulama kodunuz`,
+        html: `<div style="background:#0b1120;color:#f8fafc;padding:32px;font-family:Arial,sans-serif"><div style="max-width:480px;margin:auto;background:#0f172a;border:1px solid #334155;border-radius:24px;padding:32px;text-align:center"><div style="font-size:12px;color:#a5b4fc;font-weight:800;letter-spacing:.08em">ODIVON APM</div><h1 style="font-size:22px">Randevu doğrulama kodu</h1><div style="font-size:36px;letter-spacing:.25em;font-weight:900;color:#c4b5fd;margin:24px 0">${code}</div><p style="color:#94a3b8;font-size:13px">Kod 10 dakika geçerlidir. Bu kodu kimseyle paylaşmayın.</p></div></div>`,
+      });
+      return true;
+    } catch (error) {
+      this.logger.error(`APM OTP e-postası gönderilemedi (${to})`, error as Error);
+      return false;
+    }
+  }
+
+  async sendApmAppointmentStatus(input: {
+    to: string;
+    tenantName: string;
+    branchName: string;
+    serviceName: string;
+    startAt: string;
+    status: string;
+    manageUrl: string;
+  }): Promise<boolean> {
+    if (!this.transporter && !this.hostingerApiConfigured()) {
+      await this.initTransporter();
+      if (!this.transporter) return false;
+    }
+    const labels: Record<string, string> = {
+      Pending: 'Onay bekliyor', Confirmed: 'Onaylandı', InProgress: 'Başladı', Completed: 'Tamamlandı', Cancelled: 'İptal edildi',
+    };
+    try {
+      await this.sendMessage({
+        from: { name: 'Odivon APM', address: fromAddress() },
+        to: input.to,
+        subject: `${input.tenantName} randevunuz: ${labels[input.status] ?? input.status}`,
+        html: `<div style="font-family:Arial,sans-serif;background:#f8fafc;padding:28px"><div style="max-width:520px;margin:auto;background:white;border:1px solid #e2e8f0;border-radius:20px;padding:28px"><h1 style="font-size:20px;color:#0f172a">Randevu durumu: ${labels[input.status] ?? input.status}</h1><p style="color:#475569"><strong>${input.serviceName}</strong><br>${input.branchName}<br>${new Date(input.startAt).toLocaleString('tr-TR', { timeZone: 'Europe/Istanbul' })}</p><a href="${input.manageUrl}" style="display:inline-block;background:#4f46e5;color:white;text-decoration:none;padding:12px 18px;border-radius:12px;font-weight:700">Randevuyu görüntüle</a></div></div>`,
+      });
+      return true;
+    } catch (error) {
+      this.logger.error(`APM durum e-postası gönderilemedi (${input.to})`, error as Error);
+      return false;
+    }
+  }
 }
 
 const MODULE_VERIFICATION_NAMES: Record<Exclude<ProductModule, 'gym'>, string> = {

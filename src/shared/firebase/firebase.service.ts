@@ -1,7 +1,9 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { App, cert, getApps, initializeApp } from 'firebase-admin/app';
 import { Auth, getAuth } from 'firebase-admin/auth';
+import { AppCheck, getAppCheck } from 'firebase-admin/app-check';
 import { Firestore, getFirestore } from 'firebase-admin/firestore';
+import { Messaging, getMessaging } from 'firebase-admin/messaging';
 import { loadConfiguration } from '../../config/configuration';
 
 @Injectable()
@@ -46,6 +48,14 @@ export class FirebaseService implements OnModuleInit {
 
   get auth(): Auth {
     return this.authClient;
+  }
+
+  get appCheck(): AppCheck {
+    return getAppCheck(this.app);
+  }
+
+  get messaging(): Messaging {
+    return getMessaging(this.app);
   }
 
   get db(): Firestore {
