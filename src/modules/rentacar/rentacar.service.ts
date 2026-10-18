@@ -34,7 +34,10 @@ type RentCollection =
   | typeof TENANT_COLLECTION.rentCrmTasks
   | typeof TENANT_COLLECTION.rentCommunicationLogs
   | typeof TENANT_COLLECTION.rentCampaigns
-  | typeof TENANT_COLLECTION.rentTransfers;
+  | typeof TENANT_COLLECTION.rentTransfers
+  | typeof TENANT_COLLECTION.rentInvoices
+  | typeof TENANT_COLLECTION.rentExtras
+  | typeof TENANT_COLLECTION.rentDiscountRules;
 
 export interface RentDocument {
   id: string;
@@ -491,6 +494,451 @@ export class RentacarService {
     const ref = this.collection(TENANT_COLLECTION.rentAuditLogs).doc();
     await ref.set({ id: ref.id, action, entity, entityId, changes, userId: this.tenant.getUserId(), timestamp: new Date().toISOString() });
   }
+
+  invoices(query: ListRentQueryDto) {
+    return this.list<RentDocument>(TENANT_COLLECTION.rentInvoices, query);
+  }
+
+  async fromRental(rentalId: string) {
+    const rental = await this.get<RentRental>(TENANT_COLLECTION.rentRentals, rentalId);
+    this.assertBranch(rental.branchId);
+    const customer = rental.customerId ? await this.get<RentCustomer>(TENANT_COLLECTION.rentCustomers, rental.customerId).catch(() => null) : null;
+    const now = new Date().toISOString();
+    const invoiceNumber = `INV-${Date.now().toString().slice(-6)}`;
+    const totalAmount = (rental as any).totalPrice ?? (rental as any).price?.totalAmount ?? 0;
+    const taxRate = 0.20;
+    const netAmount = Math.round((totalAmount / (1 + taxRate)) * 100) / 100;
+    const taxAmount = Math.round((totalAmount - netAmount) * 100) / 100;
+
+    const invoiceData = {
+      branchId: rental.branchId,
+      rentalId: rental.id,
+      customerId: rental.customerId,
+      number: invoiceNumber,
+      type: (customer as any)?.type === 'corporate' ? 'e_invoice' : 'e_archive',
+      status: 'issued',
+      issuedAt: now,
+      netAmount,
+      taxAmount,
+      totalAmount,
+      currency: (rental as any).price?.currency ?? 'TRY',
+      customerName: customer ? (customer.companyName || `${customer.firstName} ${customer.lastName}`) : 'Müşteri',
+    };
+
+    const invoice = await this.create<RentDocument>(TENANT_COLLECTION.rentInvoices, invoiceData as any);
+    await this.update<RentRental>(TENANT_COLLECTION.rentRentals, rentalId, { invoiced: true } as any);
+    return invoice;
+  }
+
+  async cancelInvoice(id: string, reason: string) {
+    return this.update<RentDocument>(TENANT_COLLECTION.rentInvoices, id, {
+      status: 'cancelled',
+      cancelReason: reason || 'İptal edildi',
+      cancelledAt: new Date().toISOString(),
+    } as any);
+  }
+
+  async reports(type: string, query: { from?: string; to?: string; branchId?: string }) {
+    const branchId = query.branchId || undefined;
+    if (branchId) this.assertBranch(branchId);
+
+    const [
+      vehiclesRes,
+      rentalsRes,
+      customersRes,
+      branchesRes,
+      reservationsRes,
+      transactionsRes,
+      maintenancesRes,
+      damagesRes,
+    ] = await Promise.all([
+      this.list<RentVehicle>(TENANT_COLLECTION.rentVehicles, { branchId, limit: 500 }).catch(() => ({ items: [], total: 0 })),
+      this.list<RentRental>(TENANT_COLLECTION.rentRentals, { branchId, limit: 500 }).catch(() => ({ items: [], total: 0 })),
+      this.list<RentCustomer>(TENANT_COLLECTION.rentCustomers, { branchId, limit: 500 }).catch(() => ({ items: [], total: 0 })),
+      this.list<RentBranch>(TENANT_COLLECTION.rentBranches, {}).catch(() => ({ items: [], total: 0 })),
+      this.list<RentReservation>(TENANT_COLLECTION.rentReservations, { branchId, limit: 500 }).catch(() => ({ items: [], total: 0 })),
+      this.list<RentTransaction>(TENANT_COLLECTION.rentTransactions, { branchId, limit: 500 }).catch(() => ({ items: [], total: 0 })),
+      this.list<RentDocument>(TENANT_COLLECTION.rentMaintenanceOrders, { branchId, limit: 500 }).catch(() => ({ items: [], total: 0 })),
+      this.list<RentDocument>(TENANT_COLLECTION.rentDamages, { branchId, limit: 500 }).catch(() => ({ items: [], total: 0 })),
+    ]);
+
+    const vehicles = vehiclesRes.items;
+    const rentals = rentalsRes.items;
+    const customers = customersRes.items;
+    const branches = branchesRes.items;
+    const reservations = reservationsRes.items;
+    const transactions = transactionsRes.items;
+    const maintenances = maintenancesRes.items;
+    const damages = damagesRes.items;
+
+    // Helper for period range overlap
+    const fromMs = query.from ? Date.parse(query.from) : null;
+    const toMs = query.to ? Date.parse(query.to) : null;
+
+    const isDateInPeriod = (dateStr?: string | null): boolean => {
+      if (!dateStr) return true;
+      const ms = Date.parse(dateStr);
+      if (isNaN(ms)) return true;
+      if (fromMs !== null && ms < fromMs) return false;
+      if (toMs !== null && ms > toMs) return false;
+      return true;
+    };
+
+    switch (type) {
+      case 'utilization': {
+        const activeVehicles = vehicles.filter((v) => !v.deletedAt && v.status !== 'inactive' && v.status !== 'out_of_service');
+        const segments = Array.from(new Set(activeVehicles.map((v) => v.segment || 'Ekonomik')));
+
+        const windowDays = Math.max(1, fromMs && toMs ? Math.round((toMs - fromMs) / (86400 * 1000)) : 30);
+        const nonCancelledRentals = rentals.filter((r) => r.status !== 'cancelled' && r.status !== 'draft');
+
+        const rows = segments.map((seg) => {
+          const segVehicles = activeVehicles.filter((v) => (v.segment || 'Ekonomik').toLowerCase() === seg.toLowerCase());
+          const totalVehicles = segVehicles.length;
+          const availableVehicles = segVehicles.filter((v) => v.status === 'available').length;
+          const segVehicleIds = new Set(segVehicles.map((v) => v.id));
+          const segRentals = nonCancelledRentals.filter((r) => segVehicleIds.has(r.vehicleId));
+
+          let rentedDays = 0;
+          for (const r of segRentals) {
+            const pStart = Date.parse(r.pickupAt || r.createdAt);
+            const pEnd = Date.parse(r.returnedAt || r.expectedReturnAt || r.pickupAt || r.createdAt);
+            if (isNaN(pStart) || isNaN(pEnd)) continue;
+            const startOverlap = fromMs !== null ? Math.max(fromMs, pStart) : pStart;
+            const endOverlap = toMs !== null ? Math.min(toMs, pEnd) : pEnd;
+            if (endOverlap > startOverlap) {
+              rentedDays += Math.max(1, Math.round((endOverlap - startOverlap) / (86400 * 1000)));
+            }
+          }
+
+          const totalDays = totalVehicles * windowDays;
+          const rate = totalDays > 0 ? Math.min(1, Math.round((rentedDays / totalDays) * 100) / 100) : 0;
+          return { segment: seg, totalVehicles, availableVehicles, rentedDays, totalDays, rate };
+        });
+
+        const totalVeh = rows.reduce((s, r) => s + r.totalVehicles, 0);
+        const totalRented = rows.reduce((s, r) => s + r.rentedDays, 0);
+        const totalCapacity = rows.reduce((s, r) => s + r.totalDays, 0);
+        const avgRate = totalCapacity > 0 ? Math.min(1, Math.round((totalRented / totalCapacity) * 100) / 100) : 0;
+
+        return {
+          columns: [
+            { key: 'segment', label: 'Segment', type: 'text' },
+            { key: 'totalVehicles', label: 'Toplam Araç', type: 'number' },
+            { key: 'availableVehicles', label: 'Müsait Araç', type: 'number' },
+            { key: 'rentedDays', label: 'Kiralanan Gün', type: 'number' },
+            { key: 'rate', label: 'Doluluk Oranı', type: 'percent' },
+          ],
+          rows,
+          summary: { totalVehicles: totalVeh, rentedDays: totalRented, rate: avgRate },
+        };
+      }
+
+      case 'revenue': {
+        const nonCancelledRentals = rentals.filter((r) => r.status !== 'cancelled' && r.status !== 'draft' && isDateInPeriod(r.pickupAt || r.createdAt));
+        const monthNames = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
+        const groupMap = new Map<string, { period: string; rentalRevenue: number; extrasRevenue: number; finesRevenue: number; totalRevenue: number }>();
+
+        for (const r of nonCancelledRentals) {
+          const d = new Date(r.pickupAt || r.createdAt);
+          const key = isNaN(d.getTime()) ? 'Dönem' : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+          const periodLabel = isNaN(d.getTime()) ? 'Genel Dönem' : `${monthNames[d.getMonth()]} ${d.getFullYear()}`;
+          const existing = groupMap.get(key) ?? { period: periodLabel, rentalRevenue: 0, extrasRevenue: 0, finesRevenue: 0, totalRevenue: 0 };
+
+          const base = Number(r.price?.baseAmount ?? r.price?.netAmount ?? 0);
+          const extras = Number(r.price?.extrasAmount ?? 0);
+          const fines = Number(r.price?.oneWayFee ?? 0);
+          const total = Number(r.price?.totalAmount ?? (base + extras + fines));
+
+          existing.rentalRevenue += base;
+          existing.extrasRevenue += extras;
+          existing.finesRevenue += fines;
+          existing.totalRevenue += total;
+          groupMap.set(key, existing);
+        }
+
+        const rows = Array.from(groupMap.entries())
+          .sort(([a], [b]) => b.localeCompare(a))
+          .map(([, val]) => val);
+
+        return {
+          columns: [
+            { key: 'period', label: 'Dönem', type: 'text' },
+            { key: 'rentalRevenue', label: 'Kira Geliri', type: 'money' },
+            { key: 'extrasRevenue', label: 'Ek Hizmet Geliri', type: 'money' },
+            { key: 'finesRevenue', label: 'Ekstra Ücretler', type: 'money' },
+            { key: 'totalRevenue', label: 'Toplam Ciro', type: 'money' },
+          ],
+          rows,
+          summary: {
+            totalRevenue: rows.reduce((s, r) => s + r.totalRevenue, 0),
+            rentalRevenue: rows.reduce((s, r) => s + r.rentalRevenue, 0),
+            extrasRevenue: rows.reduce((s, r) => s + r.extrasRevenue, 0),
+          },
+        };
+      }
+
+      case 'vehicle-profitability': {
+        const nonCancelledRentals = rentals.filter((r) => r.status !== 'cancelled' && r.status !== 'draft');
+
+        const rows = vehicles.map((v) => {
+          const vRentals = nonCancelledRentals
+            .filter((r) => r.vehicleId === v.id && isDateInPeriod(r.pickupAt || r.createdAt));
+
+          const income = vRentals.reduce((sum, r) => sum + (Number(r.price?.totalAmount) || 0), 0);
+
+          const vMaints = maintenances.filter((m: any) => m.vehicleId === v.id && !m.deletedAt && isDateInPeriod(m.createdAt || m.date));
+          const vDams = damages.filter((d: any) => d.vehicleId === v.id && !d.deletedAt && isDateInPeriod(d.createdAt || d.incidentDate));
+
+          const maintCost = vMaints.reduce((sum, m: any) => sum + (Number(m.totalCost || m.cost) || 0), 0);
+          const damCost = vDams.reduce((sum, d: any) => sum + (Number(d.estimatedCost || d.cost) || 0), 0);
+          const expense = maintCost + damCost;
+          const net = income - expense;
+          const margin = income > 0 ? Math.round((net / income) * 100) / 100 : (expense > 0 ? -1 : 0);
+
+          return {
+            plate: v.plate,
+            vehicle: `${v.brand} ${v.model}`.trim(),
+            income,
+            expense,
+            net,
+            margin,
+          };
+        }).sort((a, b) => b.income - a.income);
+
+        return {
+          columns: [
+            { key: 'plate', label: 'Plaka', type: 'text' },
+            { key: 'vehicle', label: 'Araç', type: 'text' },
+            { key: 'income', label: 'Toplam Gelir', type: 'money' },
+            { key: 'expense', label: 'Masraflar', type: 'money' },
+            { key: 'net', label: 'Net Kâr', type: 'money' },
+            { key: 'margin', label: 'Kâr Marjı', type: 'percent' },
+          ],
+          rows,
+          summary: {
+            income: rows.reduce((s, r) => s + r.income, 0),
+            expense: rows.reduce((s, r) => s + r.expense, 0),
+            net: rows.reduce((s, r) => s + r.net, 0),
+          },
+        };
+      }
+
+      case 'branch-performance': {
+        const nonCancelledRentals = rentals.filter((r) => r.status !== 'cancelled' && r.status !== 'draft' && isDateInPeriod(r.pickupAt || r.createdAt));
+
+        const targetBranches = branchId ? branches.filter((b) => b.id === branchId) : branches;
+
+        const rows = targetBranches.map((b) => {
+          const bRentals = nonCancelledRentals.filter((r) => r.branchId === b.id);
+          const rentalsCount = bRentals.length;
+          const revenue = bRentals.reduce((sum, r) => sum + (Number(r.price?.totalAmount) || 0), 0);
+          const totalDays = bRentals.reduce((sum, r) => sum + (Number(r.price?.rentalDays) || 1), 0);
+          const avgDays = rentalsCount > 0 ? Math.round((totalDays / rentalsCount) * 10) / 10 : 0;
+
+          const bVehicles = vehicles.filter((v) => v.branchId === b.id && !v.deletedAt);
+          const bRented = bVehicles.filter((v) => v.status === 'rented').length;
+          const utilization = bVehicles.length > 0 ? Math.round((bRented / bVehicles.length) * 100) / 100 : 0;
+
+          return {
+            branch: b.name || 'Şube',
+            rentalsCount,
+            revenue,
+            avgDays,
+            utilization,
+          };
+        }).sort((a, b) => b.revenue - a.revenue);
+
+        return {
+          columns: [
+            { key: 'branch', label: 'Şube', type: 'text' },
+            { key: 'rentalsCount', label: 'Kiralama Adedi', type: 'number' },
+            { key: 'revenue', label: 'Şube Cirosu', type: 'money' },
+            { key: 'avgDays', label: 'Ort. Gün', type: 'number' },
+            { key: 'utilization', label: 'Doluluk Oranı', type: 'percent' },
+          ],
+          rows,
+          summary: {
+            revenue: rows.reduce((s, r) => s + r.revenue, 0),
+            rentalsCount: rows.reduce((s, r) => s + r.rentalsCount, 0),
+          },
+        };
+      }
+
+      case 'collections': {
+        const nonCancelledRentals = rentals.filter((r) => r.status !== 'cancelled' && isDateInPeriod(r.pickupAt || r.createdAt));
+
+        const customerMap = new Map(customers.map((c) => [c.id, c]));
+
+        const rows = nonCancelledRentals.map((r) => {
+          const cust = customerMap.get(r.customerId);
+          const customerName = cust ? (cust.companyName || `${cust.firstName} ${cust.lastName}`.trim()) : 'Müşteri';
+          const totalAmount = Number(r.price?.totalAmount) || 0;
+
+          const rTx = transactions.filter((t) => t.rentalId === r.id && !t.reversedTransactionId);
+          const paidTx = rTx
+            .filter((t) => t.kind === 'payment' || (t as any).kind === 'charge')
+            .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+
+          const paidAmount = (r.price as any)?.paidAmount ?? (paidTx > 0 ? paidTx : (r.status === 'closed' ? totalAmount : 0));
+          const open = Math.max(0, totalAmount - paidAmount);
+          const collectionRate = totalAmount > 0 ? Math.min(1, Math.round((paidAmount / totalAmount) * 100) / 100) : 1;
+
+          return {
+            contract: r.contractNumber || r.id.slice(-6),
+            customer: customerName,
+            totalAmount,
+            paidAmount,
+            open,
+            collectionRate,
+          };
+        }).sort((a, b) => b.open - a.open);
+
+        const totalAll = rows.reduce((s, r) => s + r.totalAmount, 0);
+        const collectedAll = rows.reduce((s, r) => s + r.paidAmount, 0);
+        const openAll = rows.reduce((s, r) => s + r.open, 0);
+        const avgRate = totalAll > 0 ? Math.round((collectedAll / totalAll) * 100) / 100 : 1;
+
+        return {
+          columns: [
+            { key: 'contract', label: 'Sözleşme No', type: 'text' },
+            { key: 'customer', label: 'Müşteri', type: 'text' },
+            { key: 'totalAmount', label: 'Toplam Tutar', type: 'money' },
+            { key: 'paidAmount', label: 'Tahsil Edilen', type: 'money' },
+            { key: 'open', label: 'Açık Bakiye', type: 'money' },
+            { key: 'collectionRate', label: 'Tahsilat Oranı', type: 'percent' },
+          ],
+          rows,
+          summary: {
+            totalAmount: totalAll,
+            paidAmount: collectedAll,
+            open: openAll,
+            collectionRate: avgRate,
+          },
+        };
+      }
+
+      case 'reservation-sources': {
+        const inPeriodRes = reservations.filter((r) => isDateInPeriod(r.pickupAt || r.createdAt));
+        const inPeriodRentals = rentals.filter((r) => isDateInPeriod(r.pickupAt || r.createdAt));
+
+        const SOURCE_LABELS: Record<string, string> = {
+          web: 'Web Sitesi (Online)',
+          online: 'Web Sitesi (Online)',
+          office: 'Ofis / Doğrudan',
+          direct: 'Ofis / Doğrudan',
+          phone: 'Çağrı Merkezi / Telefon',
+          call_center: 'Çağrı Merkezi / Telefon',
+          broker: 'Acente & Broker',
+          corporate: 'Kurumsal Sözleşme',
+        };
+
+        const sourceGroups = new Map<string, { source: string; reservations: number; completed: number; cancelled: number; conversionRate: number }>();
+
+        for (const res of inPeriodRes) {
+          const rawSource = ((res as any).source || 'office').toLowerCase();
+          const label = SOURCE_LABELS[rawSource] || 'Doğrudan / Diğer';
+          const existing = sourceGroups.get(label) ?? { source: label, reservations: 0, completed: 0, cancelled: 0, conversionRate: 0 };
+          existing.reservations++;
+          if (res.status === 'converted' || (res.status as string) === 'completed') existing.completed++;
+          if (res.status === 'cancelled' || res.status === 'no_show') existing.cancelled++;
+          sourceGroups.set(label, existing);
+        }
+
+        for (const r of inPeriodRentals) {
+          if (!r.reservationId) {
+            const rawSource = ((r as any).source || 'office').toLowerCase();
+            const label = SOURCE_LABELS[rawSource] || 'Doğrudan / Diğer';
+            const existing = sourceGroups.get(label) ?? { source: label, reservations: 0, completed: 0, cancelled: 0, conversionRate: 0 };
+            existing.reservations++;
+            if (r.status !== 'cancelled' && r.status !== 'draft') existing.completed++;
+            if (r.status === 'cancelled') existing.cancelled++;
+            sourceGroups.set(label, existing);
+          }
+        }
+
+        const rows = Array.from(sourceGroups.values()).map((row) => ({
+          ...row,
+          conversionRate: row.reservations > 0 ? Math.round((row.completed / row.reservations) * 100) / 100 : 0,
+        })).sort((a, b) => b.reservations - a.reservations);
+
+        const totalRes = rows.reduce((s, r) => s + r.reservations, 0);
+        const totalComp = rows.reduce((s, r) => s + r.completed, 0);
+        const avgConv = totalRes > 0 ? Math.round((totalComp / totalRes) * 100) / 100 : 0;
+
+        return {
+          columns: [
+            { key: 'source', label: 'Kaynak', type: 'text' },
+            { key: 'reservations', label: 'Rezervasyon Adedi', type: 'number' },
+            { key: 'completed', label: 'Tamamlanan', type: 'number' },
+            { key: 'cancelled', label: 'İptal Edilen', type: 'number' },
+            { key: 'conversionRate', label: 'Dönüşüm Oranı', type: 'percent' },
+          ],
+          rows,
+          summary: {
+            reservations: totalRes,
+            conversionRate: avgConv,
+          },
+        };
+      }
+
+      case 'customers': {
+        const nonCancelledRentals = rentals.filter((r) => r.status !== 'cancelled' && r.status !== 'draft');
+
+        const rows = customers.map((c) => {
+          const cRentals = nonCancelledRentals
+            .filter((r) => r.customerId === c.id && isDateInPeriod(r.pickupAt || r.createdAt));
+
+          const rentalCount = cRentals.length;
+          const totalSpent = cRentals.reduce((sum, r) => sum + (Number(r.price?.totalAmount) || 0), 0);
+
+          const segCount = new Map<string, number>();
+          for (const r of cRentals) {
+            const v = vehicles.find((veh) => veh.id === r.vehicleId);
+            const seg = v?.segment || 'Ekonomik';
+            segCount.set(seg, (segCount.get(seg) || 0) + 1);
+          }
+          let preferredSegment = '—';
+          let maxCount = 0;
+          for (const [seg, cnt] of segCount.entries()) {
+            if (cnt > maxCount) {
+              maxCount = cnt;
+              preferredSegment = seg;
+            }
+          }
+
+          const customerName = c.companyName || `${c.firstName} ${c.lastName}`.trim() || 'Müşteri';
+
+          return {
+            customer: customerName,
+            phone: c.phone || '—',
+            rentalCount,
+            totalSpent,
+            preferredSegment,
+          };
+        }).sort((a, b) => b.totalSpent - a.totalSpent || b.rentalCount - a.rentalCount);
+
+        return {
+          columns: [
+            { key: 'customer', label: 'Müşteri', type: 'text' },
+            { key: 'phone', label: 'Telefon', type: 'text' },
+            { key: 'rentalCount', label: 'Kiralama Adedi', type: 'number' },
+            { key: 'totalSpent', label: 'Toplam Harcama', type: 'money' },
+            { key: 'preferredSegment', label: 'Tercih Edilen Segment', type: 'text' },
+          ],
+          rows,
+          summary: {
+            totalSpent: rows.reduce((s, r) => s + r.totalSpent, 0),
+            rentalCount: rows.reduce((s, r) => s + r.rentalCount, 0),
+          },
+        };
+      }
+
+      default:
+        return { columns: [], rows: [] };
+    }
+  }
+
 }
 
 function normalizePlate(value: string): string {

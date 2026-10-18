@@ -59,6 +59,16 @@ export class RentacarController {
   @Post('rates') @RequirePermission('rentRates', 'create') createRate(@Body() dto: CreateRatePlanDto) { return this.service.createRatePlan(dto); }
   @Patch('rates/:id') @RequirePermission('rentRates', 'update') updateRate(@Param('id') id: string, @Body() dto: UpdateRatePlanDto) { return this.service.updateRatePlan(id, dto); }
   @Delete('rates/:id') @RequirePermission('rentRates', 'delete') removeRate(@Param('id') id: string) { return this.service.remove(TENANT_COLLECTION.rentRatePlans, id); }
+  @Get('extras') @RequirePermission('rentRates', 'view') extras(@Query() query: ListRentQueryDto) { return this.service.related(TENANT_COLLECTION.rentExtras, query); }
+  @Post('extras') @RequirePermission('rentRates', 'create') createExtra(@Body() dto: CreateRelatedRecordDto) { return this.service.createRelated(TENANT_COLLECTION.rentExtras, dto); }
+  @Patch('extras/:id') @RequirePermission('rentRates', 'update') updateExtra(@Param('id') id: string, @Body() dto: UpdateRelatedRecordDto) { return this.service.updateRelated(TENANT_COLLECTION.rentExtras, id, dto); }
+  @Delete('extras/:id') @RequirePermission('rentRates', 'delete') removeExtra(@Param('id') id: string) { return this.service.remove(TENANT_COLLECTION.rentExtras, id); }
+
+  @Get('seasons') @RequirePermission('rentRates', 'view') seasons(@Query() query: ListRentQueryDto) { return this.service.related(TENANT_COLLECTION.rentDiscountRules, query); }
+  @Post('seasons') @RequirePermission('rentRates', 'create') createSeason(@Body() dto: CreateRelatedRecordDto) { return this.service.createRelated(TENANT_COLLECTION.rentDiscountRules, dto); }
+  @Patch('seasons/:id') @RequirePermission('rentRates', 'update') updateSeason(@Param('id') id: string, @Body() dto: UpdateRelatedRecordDto) { return this.service.updateRelated(TENANT_COLLECTION.rentDiscountRules, id, dto); }
+  @Delete('seasons/:id') @RequirePermission('rentRates', 'delete') removeSeason(@Param('id') id: string) { return this.service.remove(TENANT_COLLECTION.rentDiscountRules, id); }
+
   @Post('rates/quote') @RequirePermission('rentRates', 'view') quote(@Body() dto: QuoteDto) { return this.service.quote(dto); }
 
   @Get('reservations') @RequirePermission('rentReservations', 'view') reservations(@Query() query: ListRentQueryDto) { return this.service.reservations(query); }
@@ -97,4 +107,25 @@ export class RentacarController {
 
   @Get('settings') @RequirePermission('rentSettings', 'view') settings() { return this.service.getSettings(); }
   @Put('settings') @RequirePermission('rentSettings', 'update') @ApiOperation({ summary: 'Save Rent A Car and public portal settings' }) saveSettings(@Body() dto: RentSettingsDto) { return this.service.saveSettings(dto); }
+
+  @Get('invoices') @RequirePermission('rentFinance', 'view') invoices(@Query() query: ListRentQueryDto) {
+    return this.service.invoices(query);
+  }
+  @Post('invoices') @RequirePermission('rentFinance', 'create') createInvoice(@Body() dto: CreateRelatedRecordDto) {
+    return this.service.createRelated(TENANT_COLLECTION.rentInvoices, dto);
+  }
+  @Post('invoices/from-rental/:rentalId') @RequirePermission('rentFinance', 'create') invoiceFromRental(@Param('rentalId') id: string) {
+    return this.service.fromRental(id);
+  }
+  @Post('invoices/:id/cancel') @RequirePermission('rentFinance', 'delete') cancelInvoice(@Param('id') id: string, @Body('reason') reason?: string) {
+    return this.service.cancelInvoice(id, reason || 'İptal edildi');
+  }
+
+  @Get('reports/:type') @RequirePermission('rentReports', 'view') getReport(
+    @Param('type') type: string,
+    @Query() query: { from?: string; to?: string; branchId?: string },
+  ) {
+    return this.service.reports(type, query);
+  }
+
 }
