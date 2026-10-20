@@ -6,7 +6,7 @@ import { ErrorCode } from '../../../shared/errors/error-codes';
 import { UserProfile } from '../../identity/entities/user-profile.entity';
 import { PlatformAuditService } from '../audit/platform-audit.service';
 import { PlatformAdminUser } from '../platform-admin.guard';
-import { ListUsersQueryDto, UpdatePlatformUserDto } from './dto';
+import { DeletePlatformUserDto, ListUsersQueryDto, UpdatePlatformUserDto } from './dto';
 
 @Injectable()
 export class PlatformUsersService {
@@ -123,6 +123,65 @@ export class PlatformUsersService {
     });
 
     return { success: true };
+  }
+
+  async deleteUser(uid: string, dto: DeletePlatformUserDto, admin: PlatformAdminUser) {
+    if (uid === admin.uid) {
+      throw new AppException(ErrorCode.PLATFORM_FORBIDDEN, 'Kendi hesabınızı silemezsiniz');
+    }
+
+    const userDoc = await this.usersCollection().doc(uid).get();
+    if (!userDoc.exists) {
+      throw new AppException(ErrorCode.USER_NOT_FOUND, 'User not found');
+    }
+    const user = userDoc.data() as UserProfile;
+
+    const adminDoc = await this.firebase.db.collection(ROOT_COLLECTION.platformAdmins).doc(uid).get();
+    if (adminDoc.exists) {
+      throw new AppException(ErrorCode.PLATFORM_FORBIDDEN, 'Platform yöneticisi panelden silinemez');
+    }
+
+    // Deleting the owner would leave the tenant without an owner account
+    if (user.tenantId) {
+      const tenantDoc = await this.firebase.db.collection(ROOT_COLLECTION.tenants).doc(user.tenantId).get();
+      if (user.role === 'owner' || tenantDoc.data()?.ownerUid === uid) {
+        throw new AppException(
+          ErrorCode.PLATFORM_FORBIDDEN,
+          'İşletme sahibi silinemez. İşletmeyi askıya alın veya sahipliği başka kullanıcıya devredin.',
+        );
+      }
+    }
+
+    try {
+      await this.firebase.auth.deleteUser(uid);
+    } catch (err) {
+      if ((err as { code?: string }).code !== 'auth/user-not-found') {
+        throw new AppException(ErrorCode.VALIDATION_ERROR, `Firebase Auth delete failed: ${(err as Error).message}`);
+      }
+      this.logger.warn(`Firebase Auth user ${uid} was already missing, deleting profile only`);
+    }
+
+    await userDoc.ref.delete();
+
+    await this.audit.record({
+      adminUid: admin.uid,
+      adminEmail: admin.email,
+      action: 'USER_DELETED',
+      targetType: 'user',
+      tenantId: user.tenantId,
+      targetId: uid,
+      before: {
+        email: user.email,
+        displayName: user.displayName ?? null,
+        role: user.role,
+        modules: user.modules,
+        status: user.status,
+      },
+      after: null,
+      reason: dto.reason?.trim() || null,
+    });
+
+    return { success: true, uid };
   }
 
   async generatePasswordResetLink(uid: string, admin: PlatformAdminUser) {

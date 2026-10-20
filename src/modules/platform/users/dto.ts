@@ -20,6 +20,12 @@ export class ListUsersQueryDto {
   pageSize?: string;
 }
 
+export class DeletePlatformUserDto {
+  @IsOptional()
+  @IsString()
+  reason?: string;
+}
+
 export class UpdatePlatformUserDto {
   @IsOptional()
   @IsEnum(['active', 'inactive'])

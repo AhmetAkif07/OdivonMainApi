@@ -1,9 +1,9 @@
-import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { RequirePlatformAdmin, CurrentPlatformAdmin } from '../platform-admin.decorator';
 import { PlatformAdminUser } from '../platform-admin.guard';
 import { PlatformUsersService } from './users.service';
-import { ListUsersQueryDto, UpdatePlatformUserDto } from './dto';
+import { DeletePlatformUserDto, ListUsersQueryDto, UpdatePlatformUserDto } from './dto';
 
 @ApiTags('platform-users')
 @RequirePlatformAdmin()
@@ -31,6 +31,16 @@ export class PlatformUsersController {
     @CurrentPlatformAdmin() admin: PlatformAdminUser,
   ) {
     return this.usersService.updateUser(uid, dto, admin);
+  }
+
+  @Delete(':uid')
+  @ApiOperation({ summary: 'Kullanıcıyı kalıcı olarak sil (Firebase Auth + profil)' })
+  remove(
+    @Param('uid') uid: string,
+    @Body() dto: DeletePlatformUserDto,
+    @CurrentPlatformAdmin() admin: PlatformAdminUser,
+  ) {
+    return this.usersService.deleteUser(uid, dto, admin);
   }
 
   @Post(':uid/password-reset-link')
