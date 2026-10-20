@@ -15,6 +15,8 @@ import { PlatformDemosService } from './demos/demos.service';
 import { PlatformDemosController } from './demos/demos.controller';
 import { PlatformErrorLogsService } from './logs/error-logs.service';
 import { PlatformErrorLogsController } from './logs/error-logs.controller';
+import { PlatformOrphanTenantsService } from './orphans/orphan-tenants.service';
+import { PlatformOrphanTenantsController } from './orphans/orphan-tenants.controller';
 
 @Module({
   controllers: [
@@ -26,6 +28,7 @@ import { PlatformErrorLogsController } from './logs/error-logs.controller';
     PlatformDemosController,
     PlatformErrorLogsController,
     PlatformAuditController,
+    PlatformOrphanTenantsController,
   ],
   providers: [
     PlatformAdminGuard,
@@ -36,6 +39,7 @@ import { PlatformErrorLogsController } from './logs/error-logs.controller';
     PlatformRevenueService,
     PlatformDemosService,
     PlatformErrorLogsService,
+    PlatformOrphanTenantsService,
   ],
   exports: [
     PlatformAdminGuard,
