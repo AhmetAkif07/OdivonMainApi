@@ -34,10 +34,11 @@ export class BeautyService {
   async me() {
     const actor = this.store.actor();
     const role = beautyRoleFor(actor.role, actor.roleIds ?? []);
-    const [settingsSnapshot, customer, staff] = await Promise.all([
+    const [settingsSnapshot, customer, staff, tenantSnapshot] = await Promise.all([
       this.store.doc('beautySettings', this.store.tenantId()).get(),
       this.linkedAccount('beautyCustomers', actor.userId, actor.phone),
       this.linkedAccount('beautyStaff', actor.userId),
+      this.store.db.doc(`tenants/${this.store.tenantId()}`).get(),
     ]);
     const settings = settingsSnapshot.data() ?? {};
     const centerCode =
@@ -52,6 +53,41 @@ export class BeautyService {
     const account = role === 'customer' ? customer : staff;
     const branchId = typeof account?.['branchId'] === 'string' ? account['branchId'] : null;
     const branchSnapshot = branchId ? await this.store.doc('beautyBranches', branchId).get() : null;
+
+    const tenantData = (tenantSnapshot?.data() ?? {}) as Record<string, unknown>;
+    const membershipStatus = (tenantData['membershipStatus'] as string) || 'trial';
+    const trialEndsAt = (tenantData['trialEndsAt'] as string) || null;
+    const subscriptionEndsAt = (tenantData['subscriptionEndsAt'] as string) || null;
+    const nowMs = Date.now();
+    let isExpired = false;
+    let daysLeft = 14;
+
+    if (membershipStatus === 'trial') {
+      const trialMs = trialEndsAt ? Date.parse(trialEndsAt) : NaN;
+      if (Number.isFinite(trialMs)) {
+        daysLeft = Math.max(0, Math.ceil((trialMs - nowMs) / 86400000));
+        isExpired = nowMs > trialMs;
+      }
+    } else if (membershipStatus === 'active') {
+      const subMs = subscriptionEndsAt ? Date.parse(subscriptionEndsAt) : NaN;
+      if (Number.isFinite(subMs)) {
+        daysLeft = Math.max(0, Math.ceil((subMs - nowMs) / 86400000));
+        isExpired = nowMs > subMs + 3 * 86400000;
+      }
+    } else {
+      isExpired = true;
+      daysLeft = 0;
+    }
+
+    const subscription = {
+      membershipStatus: isExpired ? 'expired' : membershipStatus,
+      trialEndsAt,
+      subscriptionEndsAt,
+      daysLeft,
+      isLocked: isExpired,
+      planId: (tenantData['planId'] as string) || 'pro',
+      billingCycle: (tenantData['billingCycle'] as string) || 'monthly',
+    };
 
     return {
       uid: actor.userId,
@@ -73,6 +109,7 @@ export class BeautyService {
           ? branchSnapshot.data()?.['name']
           : null,
       scopes: role ? beautyScopes(role) : [],
+      subscription,
     };
   }
 
