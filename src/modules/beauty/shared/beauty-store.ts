@@ -58,6 +58,36 @@ export const BEAUTY_RESOURCES: Record<string, ResourceConfig> = {
     permission: 'beautySessions',
     branchRequired: true,
   },
+  'service-packages': {
+    collection: 'beautyServicePackages',
+    permission: 'beautySessions',
+    branchRequired: true,
+  },
+  consultations: {
+    collection: 'beautyConsultations',
+    permission: 'beautyCustomers',
+    branchRequired: true,
+  },
+  leads: {
+    collection: 'beautyConsultations',
+    permission: 'beautyCustomers',
+    branchRequired: true,
+  },
+  'customer-health': {
+    collection: 'beautyCustomerHealth',
+    permission: 'beautyHealth',
+    branchRequired: true,
+  },
+  'wallet-transactions': {
+    collection: 'beautyWalletTransactions',
+    permission: 'beautyFinance',
+    branchRequired: true,
+  },
+  installments: {
+    collection: 'beautyInstallmentPlans',
+    permission: 'beautyFinance',
+    branchRequired: true,
+  },
   'customer-packages': {
     collection: 'beautyCustomerPackages',
     permission: 'beautySessions',
@@ -294,12 +324,18 @@ export class BeautyStore {
       if (
         [
           'health',
+          'customer-health',
           'skin-analyses',
           'consents',
           'appointments',
           'sessions',
           'customer-packages',
+          'service-packages',
           'reviews',
+          'consultations',
+          'leads',
+          'wallet-transactions',
+          'installments',
         ].includes(resource)
       ) {
         return { field: 'customerId', value: customerId };

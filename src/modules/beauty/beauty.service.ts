@@ -405,6 +405,10 @@ export class BeautyService {
         ? []
         : await this.store.list('products', { branchId, limit: 200 });
     const sessions = await this.store.list('sessions', { branchId, limit: 200 });
+    const consultations =
+      role === 'customer'
+        ? []
+        : await this.store.list('consultations', { branchId, limit: 200 });
     const packages =
       role === 'customer'
         ? await this.store.list('customer-packages', { branchId, limit: 200 })
@@ -418,6 +422,8 @@ export class BeautyService {
       ).length,
       sessions: sessions.length,
       packages: packages.filter((item) => item['status'] === 'active').length,
+      consultations: consultations.length,
+      leads: consultations.length,
     };
   }
 
@@ -495,7 +501,7 @@ function beautyRoleFor(platformRole: string, roleIds: readonly string[]): Beauty
 
 function beautyScopes(role: BeautyRole): string[] {
   if (role === 'customer')
-    return ['own-customer', 'own-appointments', 'own-sessions', 'own-packages'];
+    return ['own-customer', 'own-appointments', 'own-sessions', 'own-packages', 'own-wallet', 'own-installments', 'own-consultations'];
   if (role === 'specialist') return ['own-appointments', 'own-sessions', 'own-commissions'];
   return ['tenant'];
 }

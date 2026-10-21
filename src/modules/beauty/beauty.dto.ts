@@ -128,3 +128,60 @@ export class BeautyOnboardingDto {
 export class BeautyMobileConnectDto {
   @IsString() centerCode!: string;
 }
+
+export class BeautyConsultationDto {
+  @IsOptional() @IsString() customerId?: string;
+  @IsString() customerName!: string;
+  @IsString() phone!: string;
+  @IsOptional() @IsString() email?: string;
+  @IsString() serviceCategory!: string;
+  @IsString() inquiredSession!: string;
+  @IsOptional() @IsNumber() @Min(1) targetSessionsCount?: number;
+  @IsOptional() @IsNumber() @Min(0) quotedPrice?: number;
+  @IsOptional() @IsString() consultantStaffId?: string;
+  @IsOptional() @IsString() consultantStaffName?: string;
+  @IsOptional() @IsString() consultationDate?: string;
+  @IsOptional() @IsString() nextFollowUpDate?: string;
+  @IsOptional() @IsIn(['high', 'medium', 'low']) interestLevel?: string;
+  @IsOptional() @IsString() channel?: string;
+  @IsOptional() @IsIn(['inquiry', 'scheduled', 'converted', 'cancelled']) status?: string;
+  @IsOptional() @IsString() notes?: string;
+  @IsOptional() @IsString() branchId?: string;
+}
+
+export class BeautyCustomerHealthDto {
+  @IsOptional() @IsString() customerId?: string;
+  @IsOptional() @IsString() skinType?: string;
+  @IsOptional() @IsString() fitzpatrick?: string;
+  @IsOptional() @IsString() allergies?: string;
+  @IsOptional() @IsString() chronicDiseases?: string;
+  @IsOptional() @IsString() medications?: string;
+  @IsOptional() @IsBoolean() isPregnant?: boolean;
+  @IsOptional() @IsBoolean() isNursing?: boolean;
+  @IsOptional() @IsBoolean() hasImplant?: boolean;
+  @IsOptional() @IsString() bloodType?: string;
+  @IsOptional() @IsString() healthNotes?: string;
+  @IsOptional() @IsString() lastUpdated?: string;
+  @IsOptional() @IsString() branchId?: string;
+}
+
+export class BeautyWalletTransactionDto {
+  @IsString() customerId!: string;
+  @IsOptional() @IsString() branchId?: string;
+  @IsISO8601() date!: string;
+  @IsIn(['deposit', 'spend', 'refund']) type!: string;
+  @IsNumber() amount!: number;
+  @IsString() description!: string;
+  @IsString() paymentMethod!: string;
+}
+
+export class BeautyInstallmentPlanDto {
+  @IsString() customerId!: string;
+  @IsOptional() @IsString() branchId?: string;
+  @IsString() title!: string;
+  @IsNumber() @Min(0) totalAmount!: number;
+  @IsNumber() @Min(0) paidAmount!: number;
+  @IsNumber() @Min(0) remainingAmount!: number;
+  @IsInt() @Min(1) installmentCount!: number;
+  @IsArray() schedule!: Record<string, unknown>[];
+}
