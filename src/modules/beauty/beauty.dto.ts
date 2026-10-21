@@ -218,3 +218,57 @@ export class BeautyNailSterilizationDto {
   @IsOptional() @IsString() notes?: string;
   @IsOptional() @IsString() branchId?: string;
 }
+
+
+export class BeautyPurchaseRequisitionDto {
+  @IsString() code!: string;
+  @IsString() requestedByStaffName!: string;
+  @IsString() requestedAt!: string;
+  @IsString() requiredDate!: string;
+  @IsIn(['low', 'normal', 'high', 'urgent']) priority!: string;
+  @IsString() category!: string;
+  @IsArray() items!: Array<Record<string, unknown>>;
+  @IsNumber() estimatedTotal!: number;
+  @IsString() reason!: string;
+  @IsIn(['draft', 'pending_approval', 'approved', 'rejected', 'ordered', 'cancelled']) status!: string;
+  @IsOptional() @IsNumber() currentApprovalLevel?: number;
+  @IsOptional() @IsArray() approvalFlow?: Array<Record<string, unknown>>;
+  @IsOptional() @IsString() purchaseOrderId?: string;
+  @IsOptional() @IsString() branchId?: string;
+}
+
+export class BeautyPurchaseOrderDto {
+  @IsString() poNumber!: string;
+  @IsOptional() @IsString() requisitionId?: string;
+  @IsString() supplierId!: string;
+  @IsString() supplierName!: string;
+  @IsString() orderDate!: string;
+  @IsString() expectedDeliveryDate!: string;
+  @IsString() paymentTerms!: string;
+  @IsString() currency!: string;
+  @IsArray() items!: Array<Record<string, unknown>>;
+  @IsNumber() subtotal!: number;
+  @IsNumber() taxTotal!: number;
+  @IsNumber() grandTotal!: number;
+  @IsIn(['draft', 'pending_approval', 'approved', 'sent_to_supplier', 'partially_received', 'completed', 'cancelled']) status!: string;
+  @IsIn(['waiting', 'in_transit', 'partially_received', 'delivered', 'returned']) deliveryStatus!: string;
+  @IsIn(['unpaid', 'partially_paid', 'paid']) paymentStatus!: string;
+  @IsOptional() @IsArray() approvalFlow?: Array<Record<string, unknown>>;
+  @IsOptional() @IsString() notes?: string;
+  @IsOptional() @IsString() branchId?: string;
+}
+
+export class BeautyGoodsReceiptDto {
+  @IsString() receiptNumber!: string;
+  @IsString() purchaseOrderId!: string;
+  @IsString() poNumber!: string;
+  @IsString() supplierName!: string;
+  @IsString() waybillNumber!: string;
+  @IsOptional() @IsString() invoiceNumber?: string;
+  @IsString() receivedAt!: string;
+  @IsString() receivedByStaffName!: string;
+  @IsArray() items!: Array<Record<string, unknown>>;
+  @IsIn(['verified', 'discrepancy', 'rejected']) status!: string;
+  @IsOptional() @IsString() notes?: string;
+  @IsOptional() @IsString() branchId?: string;
+}

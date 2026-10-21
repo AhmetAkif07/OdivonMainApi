@@ -103,6 +103,21 @@ export const BEAUTY_RESOURCES: Record<string, ResourceConfig> = {
     permission: 'beautyResources',
     branchRequired: true,
   },
+  'purchase-requisitions': {
+    collection: 'beautyPurchaseRequisitions',
+    permission: 'beautyInventory',
+    branchRequired: true,
+  },
+  'purchase-orders': {
+    collection: 'beautyPurchaseOrders',
+    permission: 'beautyInventory',
+    branchRequired: true,
+  },
+  'goods-receipts': {
+    collection: 'beautyGoodsReceipts',
+    permission: 'beautyInventory',
+    branchRequired: true,
+  },
   'nail-swatches': {
     collection: 'beautyNailSwatches',
     permission: 'beautyCatalog',
