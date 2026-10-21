@@ -50,5 +50,10 @@ describe('beauty business rules', () => {
     expect(BEAUTY_RESOURCES['goods-receipts']).toBeDefined();
     expect(BEAUTY_RESOURCES['goods-receipts'].collection).toBe('beautyGoodsReceipts');
     expect(BEAUTY_RESOURCES['goods-receipts'].permission).toBe('beautyInventory');
+
+    expect(BEAUTY_RESOURCES['payment-links']).toBeDefined();
+    expect(BEAUTY_RESOURCES['payment-links'].collection).toBe('beautyPaymentLinks');
+    expect(BEAUTY_RESOURCES['payment-links'].permission).toBe('beautyFinance');
+    expect(BEAUTY_RESOURCES['payment-links'].branchRequired).toBe(true);
   });
 });

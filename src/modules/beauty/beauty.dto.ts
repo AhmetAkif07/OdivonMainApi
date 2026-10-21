@@ -272,3 +272,25 @@ export class BeautyGoodsReceiptDto {
   @IsOptional() @IsString() notes?: string;
   @IsOptional() @IsString() branchId?: string;
 }
+
+
+export class BeautyPaymentLinkDto {
+  @IsString() linkCode!: string;
+  @IsString() customerId!: string;
+  @IsString() customerName!: string;
+  @IsString() customerPhone!: string;
+  @IsOptional() @IsString() customerEmail?: string;
+  @IsNumber() amount!: number;
+  @IsIn(['deposit', 'package_installment', 'service_checkout', 'wallet_topup', 'custom']) paymentType!: string;
+  @IsString() title!: string;
+  @IsOptional() @IsString() description?: string;
+  @IsString() expiresAt!: string;
+  @IsIn(['pending', 'viewed', 'paid', 'expired', 'cancelled']) status!: string;
+  @IsOptional() @IsString() paidAt?: string;
+  @IsOptional() @IsString() paymentMethod?: string;
+  @IsOptional() @IsString() transactionId?: string;
+  @IsOptional() @IsNumber() installmentCount?: number;
+  @IsOptional() @IsString() appointmentId?: string;
+  @IsOptional() @IsString() packageId?: string;
+  @IsOptional() @IsString() branchId?: string;
+}

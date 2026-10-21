@@ -113,6 +113,11 @@ export const BEAUTY_RESOURCES: Record<string, ResourceConfig> = {
     permission: 'beautyInventory',
     branchRequired: true,
   },
+  'payment-links': {
+    collection: 'beautyPaymentLinks',
+    permission: 'beautyFinance',
+    branchRequired: true,
+  },
   'goods-receipts': {
     collection: 'beautyGoodsReceipts',
     permission: 'beautyInventory',
