@@ -31,5 +31,11 @@ describe('beauty business rules', () => {
 
     expect(BEAUTY_RESOURCES['installments']).toBeDefined();
     expect(BEAUTY_RESOURCES['installments'].collection).toBe('beautyInstallmentPlans');
+
+    expect(BEAUTY_RESOURCES['nail-warranties']).toBeDefined();
+    expect(BEAUTY_RESOURCES['nail-warranties'].collection).toBe('beautyNailWarranties');
+
+    expect(BEAUTY_RESOURCES['nail-sterilizations']).toBeDefined();
+    expect(BEAUTY_RESOURCES['nail-sterilizations'].collection).toBe('beautyNailSterilizations');
   });
 });

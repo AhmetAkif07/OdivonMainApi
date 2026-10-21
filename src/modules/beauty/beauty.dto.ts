@@ -185,3 +185,36 @@ export class BeautyInstallmentPlanDto {
   @IsInt() @Min(1) installmentCount!: number;
   @IsArray() schedule!: Record<string, unknown>[];
 }
+
+export class BeautyNailWarrantyDto {
+  @IsString() customerId!: string;
+  @IsString() customerName!: string;
+  @IsString() phone!: string;
+  @IsISO8601() appliedDate!: string;
+  @IsISO8601() warrantyExpireDate!: string;
+  @IsString() technicianStaffName!: string;
+  @IsString() technique!: string;
+  @IsString() nailShape!: string;
+  @IsString() swatchCode!: string;
+  @IsIn(['active', 'claimed', 'expired']) status!: string;
+  @IsOptional() @IsString() claimedAt?: string;
+  @IsOptional() @IsString() damagedFinger?: string;
+  @IsOptional() @IsString() repairNotes?: string;
+  @IsOptional() @IsString() branchId?: string;
+}
+
+export class BeautyNailSterilizationDto {
+  @IsString() cycleNumber!: string;
+  @IsString() autoclaveDeviceName!: string;
+  @IsString() sterilizedAt!: string;
+  @IsString() sterilizedByStaffName!: string;
+  @IsNumber() temperatureCelsius!: number;
+  @IsNumber() pressureBar!: number;
+  @IsNumber() holdTimeMinutes!: number;
+  @IsBoolean() indicatorStripPassed!: boolean;
+  @IsString() batchPouchBarcode!: string;
+  @IsNumber() instrumentCount!: number;
+  @IsOptional() @IsString() assignedCustomerName?: string;
+  @IsOptional() @IsString() notes?: string;
+  @IsOptional() @IsString() branchId?: string;
+}

@@ -88,6 +88,26 @@ export const BEAUTY_RESOURCES: Record<string, ResourceConfig> = {
     permission: 'beautyFinance',
     branchRequired: true,
   },
+  'nail-designs': {
+    collection: 'beautyNailDesigns',
+    permission: 'beautyCatalog',
+    branchRequired: true,
+  },
+  'nail-warranties': {
+    collection: 'beautyNailWarranties',
+    permission: 'beautyAppointments',
+    branchRequired: true,
+  },
+  'nail-sterilizations': {
+    collection: 'beautyNailSterilizations',
+    permission: 'beautyResources',
+    branchRequired: true,
+  },
+  'nail-swatches': {
+    collection: 'beautyNailSwatches',
+    permission: 'beautyCatalog',
+    branchRequired: true,
+  },
   'customer-packages': {
     collection: 'beautyCustomerPackages',
     permission: 'beautySessions',
@@ -336,6 +356,8 @@ export class BeautyStore {
           'leads',
           'wallet-transactions',
           'installments',
+          'nail-warranties',
+          'nail-designs',
         ].includes(resource)
       ) {
         return { field: 'customerId', value: customerId };
