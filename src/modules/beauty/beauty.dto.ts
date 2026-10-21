@@ -294,3 +294,43 @@ export class BeautyPaymentLinkDto {
   @IsOptional() @IsString() packageId?: string;
   @IsOptional() @IsString() branchId?: string;
 }
+
+
+export class BeautySmsProviderDto {
+  @IsString() providerId!: string;
+  @IsString() providerName!: string;
+  @IsBoolean() isActive!: boolean;
+  @IsBoolean() isDefault!: boolean;
+  @IsString() originator!: string;
+  @IsOptional() @IsString() username?: string;
+  @IsOptional() @IsString() password?: string;
+  @IsOptional() @IsString() apiKey?: string;
+  @IsOptional() @IsString() apiSecret?: string;
+  @IsOptional() @IsString() accountSid?: string;
+  @IsOptional() @IsString() authToken?: string;
+  @IsOptional() @IsNumber() balance?: number;
+  @IsOptional() @IsString() lastTestedAt?: string;
+}
+
+export class BeautySmsTemplateDto {
+  @IsString() templateKey!: string;
+  @IsString() title!: string;
+  @IsString() content!: string;
+  @IsBoolean() isAutoSend!: boolean;
+  @IsOptional() @IsString() triggerEvent?: string;
+  @IsOptional() @IsNumber() timingHours?: number;
+  @IsOptional() @IsString() defaultSenderTitle?: string;
+}
+
+export class BeautySmsLogDto {
+  @IsString() recipientPhone!: string;
+  @IsString() recipientName!: string;
+  @IsString() messageContent!: string;
+  @IsString() providerId!: string;
+  @IsString() senderTitle!: string;
+  @IsString() status!: string;
+  @IsNumber() smsCount!: number;
+  @IsOptional() @IsString() templateKey?: string;
+  @IsOptional() @IsString() appointmentId?: string;
+  @IsOptional() @IsString() customerId?: string;
+}

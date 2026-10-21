@@ -128,6 +128,21 @@ export const BEAUTY_RESOURCES: Record<string, ResourceConfig> = {
     permission: 'beautyCatalog',
     branchRequired: true,
   },
+  'sms-providers': {
+    collection: 'beautySmsProviders',
+    permission: 'beautySettings',
+    branchRequired: false,
+  },
+  'sms-templates': {
+    collection: 'beautySmsTemplates',
+    permission: 'beautySettings',
+    branchRequired: false,
+  },
+  'sms-logs': {
+    collection: 'beautySmsLogs',
+    permission: 'beautySettings',
+    branchRequired: true,
+  },
   'customer-packages': {
     collection: 'beautyCustomerPackages',
     permission: 'beautySessions',
