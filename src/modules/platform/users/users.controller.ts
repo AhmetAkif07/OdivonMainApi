@@ -17,6 +17,15 @@ export class PlatformUsersController {
     return this.usersService.list(query);
   }
 
+  @Post('stale-profiles/cleanup')
+  @ApiOperation({ summary: 'Firebase Auth hesabı silinmiş tüm kullanıcı profillerini Firestore\'dan temizle' })
+  cleanupStaleProfiles(
+    @Body() dto: DeletePlatformUserDto,
+    @CurrentPlatformAdmin() admin: PlatformAdminUser,
+  ) {
+    return this.usersService.cleanupStaleProfiles(dto, admin);
+  }
+
   @Get(':uid')
   @ApiOperation({ summary: 'Kullanıcı detayını getir' })
   getByUid(@Param('uid') uid: string) {

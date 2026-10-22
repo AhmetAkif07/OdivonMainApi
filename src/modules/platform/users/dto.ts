@@ -13,6 +13,11 @@ export class ListUsersQueryDto {
   @IsEnum(['active', 'inactive'])
   status?: 'active' | 'inactive';
 
+  /** exists (default): Firebase Auth accounts. missing: Firestore profiles whose Auth account is gone. */
+  @IsOptional()
+  @IsEnum(['exists', 'missing', 'all'])
+  auth?: 'exists' | 'missing' | 'all';
+
   @IsOptional()
   page?: string;
 

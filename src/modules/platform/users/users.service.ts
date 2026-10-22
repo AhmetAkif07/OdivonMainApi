@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { UserRecord } from 'firebase-admin/auth';
 import { FirebaseService } from '../../../shared/firebase/firebase.service';
 import { ROOT_COLLECTION } from '../../../shared/firebase/firestore-path';
 import { AppException } from '../../../shared/errors/app.exception';
@@ -7,6 +8,15 @@ import { UserProfile } from '../../identity/entities/user-profile.entity';
 import { PlatformAuditService } from '../audit/platform-audit.service';
 import { PlatformAdminUser } from '../platform-admin.guard';
 import { DeletePlatformUserDto, ListUsersQueryDto, UpdatePlatformUserDto } from './dto';
+
+export type PlatformUserListItem = Omit<UserProfile, 'role'> & {
+  role: UserProfile['role'] | null;
+  /** The uid has a Firebase Auth account. */
+  authExists: boolean;
+  /** The uid has a Firestore users/{uid} profile. */
+  hasProfile: boolean;
+  lastSignInAt: string | null;
+};
 
 @Injectable()
 export class PlatformUsersService {
@@ -21,22 +31,64 @@ export class PlatformUsersService {
     return this.firebase.db.collection(ROOT_COLLECTION.users);
   }
 
+  /**
+   * Firebase Auth is the source of truth for who exists: each account is joined with its
+   * Firestore profile. Profiles whose Auth account was deleted are only shown with auth=missing|all.
+   */
   async list(query: ListUsersQueryDto) {
     const page = Math.max(1, Number(query.page) || 1);
     const pageSize = Math.min(100, Math.max(1, Number(query.pageSize) || 20));
+    const authFilter = query.auth ?? 'exists';
 
-    let q: FirebaseFirestore.Query = this.usersCollection();
+    const [profilesSnap, authUsers] = await Promise.all([
+      this.usersCollection().get(),
+      this.loadAuthUsers(),
+    ]);
+    const profiles = new Map(profilesSnap.docs.map((d) => [d.id, d.data() as UserProfile]));
 
+    const all: PlatformUserListItem[] = [];
+    profiles.forEach((profile, uid) => {
+      const auth = authUsers.get(uid);
+      all.push({
+        ...profile,
+        uid,
+        authExists: Boolean(auth),
+        hasProfile: true,
+        lastSignInAt: auth?.metadata.lastSignInTime ? new Date(auth.metadata.lastSignInTime).toISOString() : null,
+      });
+    });
+    authUsers.forEach((auth, uid) => {
+      if (profiles.has(uid)) return;
+      const claims = auth.customClaims ?? {};
+      all.push({
+        uid,
+        tenantId: typeof claims['tenantId'] === 'string' ? claims['tenantId'] : '',
+        role: (claims['role'] as UserProfile['role']) ?? null,
+        modules: Array.isArray(claims['modules']) ? (claims['modules'] as UserProfile['modules']) : [],
+        email: auth.email ?? '',
+        displayName: auth.displayName ?? null,
+        phone: auth.phoneNumber ?? null,
+        status: auth.disabled ? 'inactive' : 'active',
+        createdAt: new Date(auth.metadata.creationTime).toISOString(),
+        updatedAt: new Date(auth.metadata.creationTime).toISOString(),
+        authExists: true,
+        hasProfile: false,
+        lastSignInAt: auth.metadata.lastSignInTime ? new Date(auth.metadata.lastSignInTime).toISOString() : null,
+      });
+    });
+
+    const authCount = authUsers.size;
+    const staleProfileCount = all.filter((u) => !u.authExists).length;
+
+    let items = all.filter((u) =>
+      authFilter === 'all' ? true : authFilter === 'missing' ? !u.authExists : u.authExists,
+    );
     if (query.tenantId) {
-      q = q.where('tenantId', '==', query.tenantId);
+      items = items.filter((u) => u.tenantId === query.tenantId);
     }
     if (query.status) {
-      q = q.where('status', '==', query.status);
+      items = items.filter((u) => u.status === query.status);
     }
-
-    const snapshot = await q.get();
-    let items = snapshot.docs.map((d) => d.data() as UserProfile);
-
     if (query.q && query.q.trim()) {
       const needle = query.q.trim().toLowerCase();
       items = items.filter(
@@ -60,7 +112,58 @@ export class PlatformUsersService {
       page,
       pageSize,
       totalPages: Math.ceil(total / pageSize),
+      authCount,
+      staleProfileCount,
     };
+  }
+
+  /** Deletes every users/{uid} profile whose Firebase Auth account no longer exists. */
+  async cleanupStaleProfiles(dto: DeletePlatformUserDto, admin: PlatformAdminUser) {
+    const [profilesSnap, authUsers] = await Promise.all([
+      this.usersCollection().get(),
+      this.loadAuthUsers(),
+    ]);
+    const stale = profilesSnap.docs.filter((d) => !authUsers.has(d.id));
+    const reason = dto.reason?.trim() || null;
+
+    for (let i = 0; i < stale.length; i += 400) {
+      const batch = this.firebase.db.batch();
+      stale.slice(i, i + 400).forEach((d) => batch.delete(d.ref));
+      await batch.commit();
+    }
+
+    for (const doc of stale) {
+      const profile = doc.data() as UserProfile;
+      await this.audit.record({
+        adminUid: admin.uid,
+        adminEmail: admin.email,
+        action: 'USER_STALE_PROFILE_DELETED',
+        targetType: 'user',
+        tenantId: profile.tenantId,
+        targetId: doc.id,
+        before: {
+          email: profile.email,
+          displayName: profile.displayName ?? null,
+          role: profile.role,
+          tenantId: profile.tenantId,
+        },
+        after: null,
+        reason,
+      });
+    }
+
+    return { deleted: stale.length };
+  }
+
+  private async loadAuthUsers() {
+    const users = new Map<string, UserRecord>();
+    let pageToken: string | undefined;
+    do {
+      const res = await this.firebase.auth.listUsers(1000, pageToken);
+      res.users.forEach((u) => users.set(u.uid, u));
+      pageToken = res.pageToken;
+    } while (pageToken);
+    return users;
   }
 
   async getByUid(uid: string) {
@@ -131,10 +234,25 @@ export class PlatformUsersService {
     }
 
     const userDoc = await this.usersCollection().doc(uid).get();
-    if (!userDoc.exists) {
-      throw new AppException(ErrorCode.USER_NOT_FOUND, 'User not found');
+    let user = userDoc.data() as UserProfile | undefined;
+    if (!user) {
+      // Auth account without a Firestore profile
+      const authUser = await this.firebase.auth.getUser(uid).catch(() => null);
+      if (!authUser) {
+        throw new AppException(ErrorCode.USER_NOT_FOUND, 'User not found');
+      }
+      user = {
+        uid,
+        tenantId: (authUser.customClaims?.['tenantId'] as string) ?? '',
+        role: (authUser.customClaims?.['role'] as UserProfile['role']) ?? 'user',
+        modules: [],
+        email: authUser.email ?? '',
+        displayName: authUser.displayName ?? null,
+        status: authUser.disabled ? 'inactive' : 'active',
+        createdAt: authUser.metadata.creationTime,
+        updatedAt: authUser.metadata.creationTime,
+      };
     }
-    const user = userDoc.data() as UserProfile;
 
     const adminDoc = await this.firebase.db.collection(ROOT_COLLECTION.platformAdmins).doc(uid).get();
     if (adminDoc.exists) {
@@ -161,7 +279,9 @@ export class PlatformUsersService {
       this.logger.warn(`Firebase Auth user ${uid} was already missing, deleting profile only`);
     }
 
-    await userDoc.ref.delete();
+    if (userDoc.exists) {
+      await userDoc.ref.delete();
+    }
 
     await this.audit.record({
       adminUid: admin.uid,
