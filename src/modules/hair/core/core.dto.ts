@@ -193,6 +193,11 @@ export class UpdateHairSettingsDto {
   @IsBoolean()
   autoConfirmOnlineBooking?: boolean;
 
+  @ApiPropertyOptional({ description: 'Show service prices on the online booking page' })
+  @IsOptional()
+  @IsBoolean()
+  onlineBookingShowPrices?: boolean;
+
   @ApiPropertyOptional({ example: 24 })
   @IsOptional()
   @Type(() => Number)

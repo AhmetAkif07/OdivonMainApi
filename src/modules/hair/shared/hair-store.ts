@@ -50,6 +50,7 @@ export interface HairSettingsDoc extends BaseDocument {
   workDayStart: string;
   workDayEnd: string;
   onlineBookingEnabled: boolean;
+  onlineBookingShowPrices: boolean;
   autoConfirmOnlineBooking: boolean;
   reminderHoursBefore: number;
   cancellationHoursBefore: number;
@@ -80,6 +81,7 @@ export const DEFAULT_HAIR_SETTINGS = {
   workDayStart: '09:00',
   workDayEnd: '21:00',
   onlineBookingEnabled: false,
+  onlineBookingShowPrices: true,
   autoConfirmOnlineBooking: false,
   reminderHoursBefore: 24,
   cancellationHoursBefore: 2,

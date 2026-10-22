@@ -76,6 +76,8 @@ export class HairBookingService {
       currency: salon.settings.currency,
       cancellationHoursBefore: salon.settings.cancellationHoursBefore,
       onlineBookingEnabled: salon.settings.onlineBookingEnabled,
+      showPrices: salon.settings.onlineBookingShowPrices ?? true,
+      onlineBookingShowPrices: salon.settings.onlineBookingShowPrices ?? true,
       requireBookingOtp: this.otpRequired(salon),
       captchaRequired: Boolean(captchaSecret()),
       maxDaysAhead: MAX_DAYS_AHEAD,
