@@ -15,6 +15,7 @@ import {
   hairRoleId,
 } from '../shared/hair-roles';
 import { mergeSmsTemplates } from '../notifications/sms/sms-templates';
+import { mergeDefinitions, normalizeDefinitions } from '../shared/hair-definitions';
 import { slugCandidate, slugify } from '../shared/hair-slug';
 import { DEFAULT_HAIR_SETTINGS, HairDoc, HairSettingsDoc, HairStore } from '../shared/hair-store';
 import { parseClock } from '../shared/hair-time';
@@ -80,6 +81,7 @@ export class HairCoreService {
       ...stripUndefined(rest),
       maxDiscountPercent: { ...current.maxDiscountPercent, ...stripUndefined(rest.maxDiscountPercent ?? {}) },
       smsTemplates: mergeSmsTemplates(current.smsTemplates, rest.smsTemplates),
+      definitions: mergeDefinitions(current.definitions, normalizeDefinitions(rest.definitions)),
     };
     if ((parseClock(next.workDayStart) ?? 0) >= (parseClock(next.workDayEnd) ?? 0)) {
       throw hairInvalid('Mesai başlangıcı bitişten önce olmalıdır.');
@@ -383,7 +385,10 @@ const SETTINGS_KEYS = Object.keys(DEFAULT_HAIR_SETTINGS) as (keyof typeof DEFAUL
 
 function pickSettings(settings: SettingsView): typeof DEFAULT_HAIR_SETTINGS {
   return Object.fromEntries(
-    SETTINGS_KEYS.map((key) => [key, settings[key] ?? DEFAULT_HAIR_SETTINGS[key]]),
+    SETTINGS_KEYS.map((key) => [
+      key,
+      key === 'definitions' ? mergeDefinitions(settings.definitions) : (settings[key] ?? DEFAULT_HAIR_SETTINGS[key]),
+    ]),
   ) as typeof DEFAULT_HAIR_SETTINGS;
 }
 

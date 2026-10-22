@@ -1,10 +1,11 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   IsArray,
   IsBoolean,
   IsInt,
+  IsNotEmpty,
   IsOptional,
   IsString,
   Length,
@@ -84,7 +85,59 @@ export class SmsTemplatesDto {
   cancellation?: SmsTemplateDto;
 }
 
+const trimList = ({ value }: { value: unknown }) =>
+  Array.isArray(value) ? value.map((item) => (typeof item === 'string' ? item.trim() : item)) : value;
+
+/** Each list sent replaces the stored one; lists left out stay as they are. */
+export class HairDefinitionsDto {
+  @ApiPropertyOptional({ type: [String], example: ['Kira', 'Elektrik'] })
+  @IsOptional()
+  @Transform(trimList)
+  @IsArray()
+  @ArrayMaxSize(100)
+  @IsString({ each: true })
+  @IsNotEmpty({ each: true })
+  @MaxLength(80, { each: true })
+  expenseCategories?: string[];
+
+  @ApiPropertyOptional({ type: [String], example: ['Şampuan', 'Boya'] })
+  @IsOptional()
+  @Transform(trimList)
+  @IsArray()
+  @ArrayMaxSize(100)
+  @IsString({ each: true })
+  @IsNotEmpty({ each: true })
+  @MaxLength(80, { each: true })
+  productCategories?: string[];
+
+  @ApiPropertyOptional({ type: [String], example: ['adet', 'ml'] })
+  @IsOptional()
+  @Transform(trimList)
+  @IsArray()
+  @ArrayMaxSize(100)
+  @IsString({ each: true })
+  @IsNotEmpty({ each: true })
+  @MaxLength(80, { each: true })
+  productUnits?: string[];
+
+  @ApiPropertyOptional({ type: [String], example: ['Müşteri memnuniyetsizliği'] })
+  @IsOptional()
+  @Transform(trimList)
+  @IsArray()
+  @ArrayMaxSize(100)
+  @IsString({ each: true })
+  @IsNotEmpty({ each: true })
+  @MaxLength(120, { each: true })
+  refundReasons?: string[];
+}
+
 export class UpdateHairSettingsDto {
+  @ApiPropertyOptional({ type: HairDefinitionsDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => HairDefinitionsDto)
+  definitions?: HairDefinitionsDto;
+
   @ApiPropertyOptional({ type: SmsTemplatesDto })
   @IsOptional()
   @ValidateNested()

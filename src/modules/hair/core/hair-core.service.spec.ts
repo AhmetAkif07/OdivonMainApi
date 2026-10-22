@@ -76,6 +76,42 @@ describe('HairCoreService', () => {
     expect(tenants.update).toHaveBeenCalledWith('t1', { name: 'Yeni Ad' });
   });
 
+  it('returns empty definition lists until any are saved', async () => {
+    const view = await asOwner(() => service.getSettings());
+    expect(view.settings.definitions).toEqual({
+      expenseCategories: [],
+      productCategories: [],
+      productUnits: [],
+      refundReasons: [],
+    });
+  });
+
+  it('saves definition lists one by one, trimmed, leaving the others as they are', async () => {
+    await asOwner(() => service.ensureDefaults());
+    await asOwner(() => service.updateSettings({ definitions: { expenseCategories: [' Kira ', 'Elektrik'], productUnits: ['adet'] } }));
+    const updated = await asOwner(() => service.updateSettings({ definitions: { productUnits: ['ml', 'gr'] } }));
+    expect(updated.settings.definitions).toEqual({
+      expenseCategories: ['Kira', 'Elektrik'],
+      productCategories: [],
+      productUnits: ['ml', 'gr'],
+      refundReasons: [],
+    });
+    expect((await asOwner(() => service.getSettings())).settings.definitions.expenseCategories).toEqual(['Kira', 'Elektrik']);
+    expect(db.docs.get('tenants/t1/hairSettings/t1')).toMatchObject({ definitions: { productUnits: ['ml', 'gr'] } });
+  });
+
+  it('rejects blank, too long or oversized definition lists', async () => {
+    await asOwner(() => service.ensureDefaults());
+    const reject = (definitions: Record<string, string[]>) =>
+      expect(asOwner(() => service.updateSettings({ definitions }))).rejects.toMatchObject({ code: ErrorCode.HAIR_INVALID });
+    await reject({ expenseCategories: ['  '] });
+    await reject({ productCategories: ['x'.repeat(81)] });
+    await reject({ productUnits: Array.from({ length: 101 }, (_, i) => `u${i}`) });
+    await reject({ refundReasons: ['x'.repeat(121)] });
+    const ok = await asOwner(() => service.updateSettings({ definitions: { refundReasons: ['x'.repeat(120)] } }));
+    expect(ok.settings.definitions.refundReasons).toHaveLength(1);
+  });
+
   it('generates unique slugs for branches with the same name', async () => {
     await asOwner(() => service.ensureDefaults());
     const first = await asOwner(() => service.createBranch({ name: 'Moda' }));

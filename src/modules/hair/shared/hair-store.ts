@@ -13,6 +13,7 @@ import {
 import { TenantContext } from '../../../shared/tenancy/tenant.context';
 import { DEFAULT_MAX_DISCOUNT_PERCENT, MaxDiscountPercent } from './discount-limit';
 import { mergeSmsTemplates, SmsTemplates } from '../notifications/sms/sms-templates';
+import { HairDefinitions, mergeDefinitions } from './hair-definitions';
 import { hairForbidden, hairNotFound } from './hair-errors';
 import { HAIR_DEFAULT_LIST_LIMIT, HairPage } from './hair-list.dto';
 import { HairScope, HairStaffRole, isHairStaffRole, scopeFor } from './hair-roles';
@@ -65,12 +66,15 @@ export interface HairSettingsDoc extends BaseDocument {
   requireBookingOtp: boolean;
   /** Appointment SMS texts (confirmation / reminder / cancellation), each with an on/off switch. */
   smsTemplates: SmsTemplates;
+  /** Tenant pick lists (expense / product categories, product units, refund reasons). */
+  definitions: HairDefinitions;
 }
 
 export const DEFAULT_HAIR_SETTINGS = {
   maxDiscountPercent: { ...DEFAULT_MAX_DISCOUNT_PERCENT } as MaxDiscountPercent,
   requireBookingOtp: false,
   smsTemplates: mergeSmsTemplates(),
+  definitions: mergeDefinitions(),
   timezone: DEFAULT_TIMEZONE,
   currency: 'TRY',
   workDayStart: '09:00',
@@ -306,6 +310,7 @@ export class HairStore {
       ...stored,
       maxDiscountPercent: { ...DEFAULT_MAX_DISCOUNT_PERCENT, ...stored.maxDiscountPercent },
       smsTemplates: mergeSmsTemplates(stored.smsTemplates),
+      definitions: mergeDefinitions(stored.definitions),
       id: this.tenantId(),
     } as HairSettingsDoc;
   }
