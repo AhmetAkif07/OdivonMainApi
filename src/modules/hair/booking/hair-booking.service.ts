@@ -414,6 +414,8 @@ export class HairBookingService {
       customerPhoneMasked: maskPhone(str(appointment['customerPhone'])),
       branchName: str(salon.branch['name']),
       tenantName: salon.tenantName,
+      showPrices: salon.settings.onlineBookingShowPrices ?? true,
+      onlineBookingShowPrices: salon.settings.onlineBookingShowPrices ?? true,
     };
   }
 
