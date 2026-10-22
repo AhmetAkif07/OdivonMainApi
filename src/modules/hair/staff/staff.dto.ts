@@ -15,6 +15,7 @@ import {
   Max,
   MaxLength,
   Min,
+  ValidateIf,
   ValidateNested,
 } from 'class-validator';
 import { CLOCK, DATE_ID } from '../shared/hair-dto';
@@ -55,6 +56,7 @@ export class CreateHairStaffDto {
 
   @ApiPropertyOptional({ description: 'Needed to invite the staff member to the panel' })
   @IsOptional()
+  @ValidateIf((dto: CreateHairStaffDto) => dto.email !== '' && dto.email != null)
   @IsEmail()
   @MaxLength(120)
   email?: string;

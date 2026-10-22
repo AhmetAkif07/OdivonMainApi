@@ -241,7 +241,7 @@ export class IdentityService {
     if (!profile) {
       throw new AppException(ErrorCode.USER_NOT_FOUND, 'User profile was not found');
     }
-    if (profile.emailVerified !== true) {
+    if (profile.emailVerified !== true && typeof this.firebase.auth?.getUser === "function") {
       const fbUser = await this.firebase.auth.getUser(store.userId).catch(() => null);
       if (fbUser?.emailVerified) {
         profile.emailVerified = true;

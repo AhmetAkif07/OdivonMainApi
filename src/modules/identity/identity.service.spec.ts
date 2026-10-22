@@ -387,7 +387,7 @@ describe('IdentityService.resendVerification', () => {
 
   describe('IdentityService.me', () => {
   it('uses Firestore profile plus tenant summary, not claims alone', async () => {
-    const firebase = { auth: {} };
+    const firebase = { auth: { getUser: jest.fn().mockResolvedValue(null) } };
     const tenants = {
       getById: jest.fn().mockResolvedValue({ id: 't1', name: 'Clinic', status: 'active' }),
     };
@@ -422,7 +422,7 @@ describe('IdentityService.resendVerification', () => {
 
   it('filters gym permissions for gym tenants', async () => {
     const service = new IdentityService(
-      { auth: {} } as never,
+      { auth: { getUser: jest.fn().mockResolvedValue(null) } } as never,
       {
         getById: jest.fn().mockResolvedValue({
           id: 'g1',
@@ -456,7 +456,7 @@ describe('IdentityService.resendVerification', () => {
 
   it('returns role-derived permissions for non-owner users', async () => {
     const service = new IdentityService(
-      { auth: {} } as never,
+      { auth: { getUser: jest.fn().mockResolvedValue(null) } } as never,
       { getById: jest.fn().mockResolvedValue({ id: 't1', name: 'Clinic', status: 'active' }) } as never,
       {
         findByUid: jest.fn().mockResolvedValue({
@@ -488,7 +488,7 @@ describe('IdentityService.resendVerification', () => {
 
   it('throws USER_NOT_FOUND when profile is missing', async () => {
     const service = new IdentityService(
-      { auth: {} } as never,
+      { auth: { getUser: jest.fn().mockResolvedValue(null) } } as never,
       { getById: jest.fn() } as never,
       { findByUid: jest.fn().mockResolvedValue(null) } as never,
       { getStore: jest.fn().mockReturnValue({ userId: 'u1' }) } as never,
