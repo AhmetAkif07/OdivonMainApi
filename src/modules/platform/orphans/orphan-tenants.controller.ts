@@ -12,7 +12,7 @@ export class PlatformOrphanTenantsController {
   constructor(private readonly orphans: PlatformOrphanTenantsService) {}
 
   @Get()
-  @ApiOperation({ summary: 'users koleksiyonunda hiç kullanıcısı olmayan tenantları listele' })
+  @ApiOperation({ summary: 'Firebase Auth üzerinde hiç kullanıcısı olmayan tenantları listele' })
   list() {
     return this.orphans.list();
   }

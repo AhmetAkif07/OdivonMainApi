@@ -26,8 +26,8 @@ export interface OrphanTenant {
   status: string;
   isDemo: boolean;
   ownerUid: string | null;
-  ownerAuthExists: boolean;
-  ownerEmail: string | null;
+  /** Firestore user profiles that point to this tenant but have no Firebase Auth account. */
+  staleProfileCount: number;
   createdAt: string;
   deletedAt: string | null;
   tooRecent: boolean;
@@ -52,46 +52,40 @@ export class PlatformOrphanTenantsService {
     return this.firebase.db.collection(ROOT_COLLECTION.tenants);
   }
 
-  /** Tenants that no document in `users` points to via `tenantId`. */
-  async list(): Promise<{ items: OrphanTenant[]; total: number }> {
-    const [tenantsSnap, usersSnap] = await Promise.all([
+  /**
+   * Tenants with no Firebase Auth account behind them: the owner, every Firestore profile
+   * pointing at the tenant and every Auth user whose `tenantId` claim names it are all missing.
+   */
+  async list(): Promise<{ items: OrphanTenant[]; total: number; authUserCount: number }> {
+    const [tenantsSnap, profilesByTenant, auth] = await Promise.all([
       this.tenantsCollection().get(),
-      this.firebase.db.collection(ROOT_COLLECTION.users).select('tenantId').get(),
+      this.loadProfilesByTenant(),
+      this.loadAuthUsers(),
     ]);
-
-    const tenantIdsWithUsers = new Set<string>();
-    usersSnap.docs.forEach((d) => {
-      const tenantId = d.get('tenantId');
-      if (typeof tenantId === 'string' && tenantId) tenantIdsWithUsers.add(tenantId);
-    });
-
-    const orphans = tenantsSnap.docs
-      .map((d) => ({ ...(d.data() as TenantDocument), id: d.id }))
-      .filter((t) => !tenantIdsWithUsers.has(t.id));
-
-    const ownerAuth = await this.lookupAuthUsers(orphans.map((t) => t.ownerUid).filter(Boolean));
     const now = Date.now();
 
-    const items: OrphanTenant[] = orphans
-      .map((t) => {
-        const auth = t.ownerUid ? ownerAuth.get(t.ownerUid) : undefined;
-        return {
-          id: t.id,
-          name: t.name ?? '',
-          modules: t.modules ?? [],
-          status: t.status,
-          isDemo: Boolean(t.isDemo),
-          ownerUid: t.ownerUid || null,
-          ownerAuthExists: Boolean(auth),
-          ownerEmail: auth?.email ?? null,
-          createdAt: t.createdAt ?? '',
-          deletedAt: t.deletedAt ?? null,
-          tooRecent: this.isTooRecent(t.createdAt, now),
-        };
+    const items: OrphanTenant[] = tenantsSnap.docs
+      .map((d) => ({ ...(d.data() as TenantDocument), id: d.id }))
+      .filter((t) => {
+        if (auth.claimTenantIds.has(t.id)) return false;
+        if (t.ownerUid && auth.uids.has(t.ownerUid)) return false;
+        return !(profilesByTenant.get(t.id) ?? []).some((uid) => auth.uids.has(uid));
       })
+      .map((t) => ({
+        id: t.id,
+        name: t.name ?? '',
+        modules: t.modules ?? [],
+        status: t.status,
+        isDemo: Boolean(t.isDemo),
+        ownerUid: t.ownerUid || null,
+        staleProfileCount: (profilesByTenant.get(t.id) ?? []).length,
+        createdAt: t.createdAt ?? '',
+        deletedAt: t.deletedAt ?? null,
+        tooRecent: this.isTooRecent(t.createdAt, now),
+      }))
       .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
 
-    return { items, total: items.length };
+    return { items, total: items.length, authUserCount: auth.uids.size };
   }
 
   async delete(dto: DeleteOrphanTenantsDto, admin: PlatformAdminUser) {
@@ -128,12 +122,14 @@ export class PlatformOrphanTenantsService {
     const tenant = snap.data() as TenantDocument;
 
     // Re-check on the server: the list in the panel may be stale
-    const users = await this.firebase.db
+    const profiles = await this.firebase.db
       .collection(ROOT_COLLECTION.users)
       .where('tenantId', '==', tenantId)
-      .limit(1)
       .get();
-    if (!users.empty) throw new Error('İşletmeye bağlı kullanıcı var, silinmedi');
+    const uidsToCheck = [...new Set([tenant.ownerUid, ...profiles.docs.map((d) => d.id)].filter(Boolean))];
+    if (await this.anyAuthUserExists(uidsToCheck)) {
+      throw new Error('İşletmeye bağlı Firebase Auth kullanıcısı var, silinmedi');
+    }
     if (this.isTooRecent(tenant.createdAt, Date.now())) {
       throw new Error('Son 24 saatte oluşturulmuş, kurulumu sürüyor olabilir');
     }
@@ -168,6 +164,8 @@ export class PlatformOrphanTenantsService {
 
     await this.firebase.db.recursiveDelete(ref);
     await this.deleteTenantIndexes(tenantId);
+    // Profiles left behind by deleted Auth accounts would otherwise point at a missing tenant
+    await Promise.all(profiles.docs.map((d) => d.ref.delete()));
     await this.audit.record({
       adminUid: admin.uid,
       adminEmail: admin.email,
@@ -175,7 +173,7 @@ export class PlatformOrphanTenantsService {
       targetType: 'tenant',
       tenantId,
       targetId: tenantId,
-      before,
+      before: { ...before, staleProfilesDeleted: profiles.size },
       after: null,
       reason,
     });
@@ -192,19 +190,42 @@ export class PlatformOrphanTenantsService {
     }
   }
 
-  private async lookupAuthUsers(uids: string[]) {
-    const result = new Map<string, { email: string | null }>();
-    const unique = [...new Set(uids)];
-    for (let i = 0; i < unique.length; i += 100) {
-      const chunk = unique.slice(i, i + 100);
-      try {
-        const res = await this.firebase.auth.getUsers(chunk.map((uid) => ({ uid })));
-        res.users.forEach((u) => result.set(u.uid, { email: u.email ?? null }));
-      } catch (err) {
-        this.logger.warn(`Auth lookup failed for orphan tenant owners: ${(err as Error).message}`);
-      }
+  private async loadProfilesByTenant() {
+    const snap = await this.firebase.db.collection(ROOT_COLLECTION.users).select('tenantId').get();
+    const byTenant = new Map<string, string[]>();
+    snap.docs.forEach((d) => {
+      const tenantId = d.get('tenantId');
+      if (typeof tenantId !== 'string' || !tenantId) return;
+      const list = byTenant.get(tenantId) ?? [];
+      list.push(d.id);
+      byTenant.set(tenantId, list);
+    });
+    return byTenant;
+  }
+
+  /** Every Firebase Auth account, plus the tenant ids found in their custom claims. */
+  private async loadAuthUsers() {
+    const uids = new Set<string>();
+    const claimTenantIds = new Set<string>();
+    let pageToken: string | undefined;
+    do {
+      const page = await this.firebase.auth.listUsers(1000, pageToken);
+      page.users.forEach((u) => {
+        uids.add(u.uid);
+        const claimTenant = u.customClaims?.['tenantId'];
+        if (typeof claimTenant === 'string' && claimTenant) claimTenantIds.add(claimTenant);
+      });
+      pageToken = page.pageToken;
+    } while (pageToken);
+    return { uids, claimTenantIds };
+  }
+
+  private async anyAuthUserExists(uids: string[]) {
+    for (let i = 0; i < uids.length; i += 100) {
+      const res = await this.firebase.auth.getUsers(uids.slice(i, i + 100).map((uid) => ({ uid })));
+      if (res.users.length > 0) return true;
     }
-    return result;
+    return false;
   }
 
   private isTooRecent(createdAt: string | undefined, now: number) {
