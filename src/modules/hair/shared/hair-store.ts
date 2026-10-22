@@ -241,12 +241,13 @@ export class HairStore {
     id?: string,
   ): Promise<T> {
     const ref = id ? this.doc(name, id) : this.collection(name).doc();
+    const cleanFields = stripUndefinedDeep(omitUndefined(fields as Record<string, unknown>));
     const item = {
       ...createBaseFields(ref.id, this.userId()),
-      ...omitUndefined(fields as Record<string, unknown>),
+      ...cleanFields,
     } as unknown as T;
     await ref.set(item);
-    await this.audit(entity, 'create', ref.id, null, fields as Record<string, unknown>);
+    await this.audit(entity, 'create', ref.id, null, cleanFields);
     return item;
   }
 
@@ -258,7 +259,7 @@ export class HairStore {
     notFoundMessage: string,
   ): Promise<T> {
     const current = await this.getOrThrow<T>(name, id, notFoundMessage);
-    const changes = omitUndefined(patch as Record<string, unknown>);
+    const changes = stripUndefinedDeep(omitUndefined(patch as Record<string, unknown>));
     const updated = { ...current, ...changes, ...touchBaseFields(this.userId()) } as T;
     await this.doc(name, id).set(updated);
     await this.audit(entity, 'update', id, pick(current, Object.keys(changes)), changes);

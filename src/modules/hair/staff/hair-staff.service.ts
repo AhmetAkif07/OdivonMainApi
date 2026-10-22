@@ -87,7 +87,7 @@ export class HairStaffService {
       specialties: dto.specialties ?? [],
       serviceIds: dto.serviceIds ?? [],
       defaultCommissionPercent: dto.defaultCommissionPercent ?? 0,
-      workSchedule: dto.workSchedule ?? [],
+      workSchedule: dto.workSchedule ? dto.workSchedule.map((e) => ({ ...e })) : [],
       hireDate: dto.hireDate ?? dateIdInTz(await this.store.timeZone()),
       active: dto.active ?? true,
       onlineBookable: dto.onlineBookable ?? true,
@@ -125,7 +125,8 @@ export class HairStaffService {
         firstName: dto.firstName?.trim(),
         lastName: dto.lastName?.trim(),
         email: dto.email?.trim().toLowerCase(),
-        phone: dto.phone ? (normalizePhone(dto.phone) ?? dto.phone.trim()) : undefined,
+        phone: dto.phone !== undefined ? (dto.phone.trim() ? (normalizePhone(dto.phone) ?? dto.phone.trim()) : '') : undefined,
+        workSchedule: dto.workSchedule ? dto.workSchedule.map((e) => ({ ...e })) : undefined,
       },
       STAFF_NOT_FOUND,
     );
