@@ -1,13 +1,23 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { FirebaseService } from '../../../shared/firebase/firebase.service';
 import { ROOT_COLLECTION } from '../../../shared/firebase/firestore-path';
+import { AppException } from '../../../shared/errors/app.exception';
+import { ErrorCode } from '../../../shared/errors/error-codes';
 import { TenantDocument } from '../../tenant/entities/tenant.entity';
 import { PlatformAuditService } from '../audit/platform-audit.service';
 import { PlatformAdminUser } from '../platform-admin.guard';
-import { DeleteOrphanTenantsDto } from './dto';
+import { DeleteOrphanTenantsDto, PurgeOrphanTenantStepDto } from './dto';
 
 /** Tenants younger than this may still be in onboarding (tenant written before its user profile). */
 const MIN_ORPHAN_AGE_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Cloudflare Workers caps subrequests per invocation and every Firestore call is one, so a hard
+ * delete runs in steps: each request spends at most this many Firestore calls, then the panel
+ * calls again until the tenant is gone.
+ */
+const PURGE_STEP_BUDGET = 30;
+const PURGE_PAGE_SIZE = 450;
 
 /** Root-level index collections that point back to a tenant through a `tenantId` field. */
 const TENANT_INDEX_COLLECTIONS = [
@@ -31,6 +41,13 @@ export interface OrphanTenant {
   createdAt: string;
   deletedAt: string | null;
   tooRecent: boolean;
+}
+
+export interface PurgeStepResult {
+  tenantId: string;
+  done: boolean;
+  /** Documents deleted in this step. */
+  deletedDocs: number;
 }
 
 export interface DeleteResult {
@@ -143,7 +160,11 @@ export class PlatformOrphanTenantsService {
       createdAt: tenant.createdAt,
     };
 
-    if (mode === 'soft') {
+    if (mode === 'hard') {
+      throw new Error('Kalıcı silme purge-step ile parça parça yapılır');
+    }
+
+    {
       if (tenant.deletedAt) throw new Error('Zaten silinmiş');
       const now = new Date().toISOString();
       const patch = { deletedAt: now, status: 'inactive' as const, updatedAt: now, updatedBy: admin.uid };
@@ -162,10 +183,81 @@ export class PlatformOrphanTenantsService {
       return;
     }
 
-    await this.firebase.db.recursiveDelete(ref);
+  }
+
+  /**
+   * One bounded slice of a hard delete: verifies the tenant is still orphaned, deletes up to
+   * PURGE_STEP_BUDGET Firestore calls worth of sub-collection documents, and on the last step
+   * removes index docs, stale profiles and the tenant document itself.
+   */
+  async purgeStep(dto: PurgeOrphanTenantStepDto, admin: PlatformAdminUser): Promise<PurgeStepResult> {
+    const tenantId = dto.tenantId.trim();
+    const reason = dto.reason?.trim() || null;
+    let ops = 0;
+
+    const ref = this.tenantsCollection().doc(tenantId);
+    const snap = await ref.get();
+    ops++;
+    const tenant = snap.exists ? (snap.data() as TenantDocument) : null;
+
+    const profiles = await this.firebase.db
+      .collection(ROOT_COLLECTION.users)
+      .where('tenantId', '==', tenantId)
+      .get();
+    ops++;
+    const uidsToCheck = [...new Set([tenant?.ownerUid, ...profiles.docs.map((d) => d.id)].filter(Boolean))] as string[];
+    if (uidsToCheck.length > 0) {
+      ops += Math.ceil(uidsToCheck.length / 100);
+      if (await this.anyAuthUserExists(uidsToCheck)) {
+        throw new AppException(ErrorCode.PLATFORM_FORBIDDEN, 'İşletmeye bağlı Firebase Auth kullanıcısı var, silinmedi');
+      }
+    }
+    if (tenant && this.isTooRecent(tenant.createdAt, Date.now())) {
+      throw new AppException(ErrorCode.PLATFORM_FORBIDDEN, 'Son 24 saatte oluşturulmuş, kurulumu sürüyor olabilir');
+    }
+
+    // Hide the tenant everywhere while its data is being removed
+    if (tenant && !tenant.deletedAt) {
+      const now = new Date().toISOString();
+      await ref.update({ deletedAt: now, status: 'inactive', updatedAt: now, updatedBy: admin.uid });
+      ops++;
+    }
+
+    let deletedDocs = 0;
+    const collections = await ref.listCollections();
+    ops++;
+    for (const col of collections) {
+      while (ops + 2 <= PURGE_STEP_BUDGET) {
+        const page = await col.select().limit(PURGE_PAGE_SIZE).get();
+        ops++;
+        if (page.empty) break;
+        const batch = this.firebase.db.batch();
+        page.docs.forEach((d) => batch.delete(d.ref));
+        await batch.commit();
+        ops++;
+        deletedDocs += page.size;
+        if (page.size < PURGE_PAGE_SIZE) break;
+      }
+      if (ops + 2 > PURGE_STEP_BUDGET) {
+        return { tenantId, done: false, deletedDocs };
+      }
+    }
+
+    // Final step needs a fresh budget for index cleanup, profiles and the tenant doc
+    const finalStepCost = TENANT_INDEX_COLLECTIONS.length * 2 + 3;
+    if (collections.length > 0 && ops + finalStepCost > PURGE_STEP_BUDGET) {
+      return { tenantId, done: false, deletedDocs };
+    }
+
     await this.deleteTenantIndexes(tenantId);
-    // Profiles left behind by deleted Auth accounts would otherwise point at a missing tenant
-    await Promise.all(profiles.docs.map((d) => d.ref.delete()));
+    if (!profiles.empty) {
+      const batch = this.firebase.db.batch();
+      profiles.docs.forEach((d) => batch.delete(d.ref));
+      await batch.commit();
+    }
+    if (snap.exists) {
+      await ref.delete();
+    }
     await this.audit.record({
       adminUid: admin.uid,
       adminEmail: admin.email,
@@ -173,17 +265,31 @@ export class PlatformOrphanTenantsService {
       targetType: 'tenant',
       tenantId,
       targetId: tenantId,
-      before: { ...before, staleProfilesDeleted: profiles.size },
+      before: tenant
+        ? {
+            name: tenant.name,
+            ownerUid: tenant.ownerUid,
+            modules: tenant.modules,
+            isDemo: Boolean(tenant.isDemo),
+            createdAt: tenant.createdAt,
+            staleProfilesDeleted: profiles.size,
+          }
+        : { staleProfilesDeleted: profiles.size },
       after: null,
       reason,
     });
+
+    return { tenantId, done: true, deletedDocs };
   }
 
   private async deleteTenantIndexes(tenantId: string) {
     for (const name of TENANT_INDEX_COLLECTIONS) {
       try {
         const snap = await this.firebase.db.collection(name).where('tenantId', '==', tenantId).get();
-        await Promise.all(snap.docs.map((d) => d.ref.delete()));
+        if (snap.empty) continue;
+        const batch = this.firebase.db.batch();
+        snap.docs.forEach((d) => batch.delete(d.ref));
+        await batch.commit();
       } catch (err) {
         this.logger.warn(`Could not clean ${name} for tenant ${tenantId}: ${(err as Error).message}`);
       }

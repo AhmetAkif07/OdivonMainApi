@@ -15,3 +15,12 @@ export class DeleteOrphanTenantsDto {
   @IsString()
   reason?: string;
 }
+
+export class PurgeOrphanTenantStepDto {
+  @IsString()
+  tenantId!: string;
+
+  @IsOptional()
+  @IsString()
+  reason?: string;
+}
