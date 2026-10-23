@@ -26,6 +26,7 @@ import { BeautyModule } from './modules/beauty/beauty.module';
 import { RentacarModule } from './modules/rentacar/rentacar.module';
 import { DrivingSchoolModule } from './modules/driving-school/driving-school.module';
 import { ParkingModule } from './modules/parking/parking.module';
+import { FireSafeModule } from './modules/fire-safe/fire-safe.module';
 
 @Module({
   imports: [
@@ -46,6 +47,7 @@ import { ParkingModule } from './modules/parking/parking.module';
     RentacarModule,
     DrivingSchoolModule,
     ParkingModule,
+    FireSafeModule,
     PaymentsModule,
     ApmModule,
     PlatformModule,
