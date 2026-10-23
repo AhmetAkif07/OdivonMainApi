@@ -133,7 +133,33 @@ export const MODULE_WELCOME_CONTENT: Record<WelcomeModule, ModuleWelcomeContent>
       { title: 'Canlı Operasyon', text: 'Giriş, tahsilat ve çıkış akışını tek ekrandan yönetin.' },
     ],
   },
+  fgas: complianceWelcome('OdivonF-Gas', 'F-GAS UYUMLULUK PLATFORMU'),
+  'machine-ce': complianceWelcome('OdivonMachineCE', 'MAKİNE CE UYUMLULUK PLATFORMU'),
+  'food-label': complianceWelcome('OdivonFoodLabel', 'GIDA ETİKETİ UYUMLULUK PLATFORMU'),
+  'product-safe': complianceWelcome('OdivonProductSafe', 'ÜRÜN GÜVENLİĞİ PLATFORMU'),
+  'fire-safe': complianceWelcome('OdivonFireSafe', 'YANGIN GÜVENLİĞİ PLATFORMU'),
+  'pay-fair': complianceWelcome('OdivonPayFair', 'ÜCRET ŞEFFAFLIĞI PLATFORMU'),
+  'cargo-docs': complianceWelcome('OdivonCargoDocs', 'KARGO BELGE YÖNETİM PLATFORMU'),
+  kids: complianceWelcome('OdivonKids', 'ÇOCUK ÜRÜNLERİ GÜVENLİĞİ PLATFORMU'),
+  'cyber-ready': complianceWelcome('OdivonCyberReady', 'SİBER HAZIRLIK PLATFORMU'),
+  diet: complianceWelcome('OdivonDiet', 'BESLENME YÖNETİM PLATFORMU'),
 };
+
+function complianceWelcome(brand: string, badge: string): ModuleWelcomeContent {
+  return {
+    brand,
+    badge,
+    heading: 'Uyum çalışma alanınız hazır! ✅',
+    recipientFallback: 'İşletme Yöneticisi',
+    tenantNoun: 'işletmeniz',
+    tenantLabel: 'İşletme Adı',
+    steps: [
+      { title: 'Ekip', text: 'Kullanıcıları davet edip rol ve izinlerini belirleyin.' },
+      { title: 'İlk Kayıt', text: 'İlk operasyon veya uyum kaydınızı oluşturun.' },
+      { title: 'Kanıt ve Takip', text: 'Görevleri, kanıtları ve yaklaşan tarihleri tek yerden izleyin.' },
+    ],
+  };
+}
 
 export interface ModuleWelcomeInput {
   module: WelcomeModule;

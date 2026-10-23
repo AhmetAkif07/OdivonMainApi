@@ -8,6 +8,7 @@ export function loadConfiguration() {
     corsOrigin: env.CORS_ORIGIN,
     sessionMaxAgeDays: env.SESSION_MAX_AGE_DAYS,
     minClientVersion: env.MIN_CLIENT_VERSION,
+    minClientVersions: parseMinimumVersions(env.MIN_CLIENT_VERSIONS),
     firebase: {
       projectId: env.FIREBASE_PROJECT_ID,
       clientEmail: env.FIREBASE_CLIENT_EMAIL,
@@ -16,6 +17,19 @@ export function loadConfiguration() {
       authEmulatorHost: env.FIREBASE_AUTH_EMULATOR_HOST,
     },
   };
+}
+
+export function parseMinimumVersions(raw: string | undefined): Record<string, string> {
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    return Object.fromEntries(Object.entries(parsed).filter((entry): entry is [string, string] =>
+      typeof entry[1] === 'string' && /^\d+\.\d+\.\d+$/.test(entry[1]),
+    ));
+  } catch {
+    return {};
+  }
 }
 
 export type AppConfig = ReturnType<typeof loadConfiguration>;
