@@ -3,7 +3,7 @@
 export const PERMISSION_ACTIONS = ['view', 'create', 'update', 'delete', 'export', 'approve', 'refund'] as const;
 export type PermissionAction = (typeof PERMISSION_ACTIONS)[number];
 
-export type PermissionGroup = 'clinic' | 'finance' | 'stock' | 'definitions' | 'admin' | 'gym' | 'spa' | 'hair' | 'beauty' | 'apm' | 'rentacar' | 'drivingschool' | 'parking';
+export type PermissionGroup = 'clinic' | 'finance' | 'stock' | 'definitions' | 'admin' | 'gym' | 'spa' | 'hair' | 'beauty' | 'apm' | 'rentacar' | 'drivingschool' | 'parking' | 'fgas' | 'machine-ce' | 'food-label' | 'product-safe' | 'fire-safe' | 'pay-fair' | 'cargo-docs' | 'kids' | 'cyber-ready' | 'diet';
 
 export interface PermissionResourceDefinition {
   key: string;
@@ -151,6 +151,16 @@ export const PERMISSION_RESOURCES = [
   { key: 'parkingCash', label: 'Kasa vardiyaları', group: 'parking', modules: ['parking'] },
   { key: 'parkingDevices', label: 'Bariyer ve edge agent', group: 'parking', modules: ['parking'] },
   { key: 'parkingAudit', label: 'Otopark işlem geçmişi', group: 'parking', modules: ['parking'] },
+  { key: 'fgasRecords', label: 'F-Gas kayıtları', group: 'fgas', modules: ['fgas'] },
+  { key: 'machineCeRecords', label: 'Makine CE kayıtları', group: 'machine-ce', modules: ['machine-ce'] },
+  { key: 'foodLabelRecords', label: 'Gıda etiketi kayıtları', group: 'food-label', modules: ['food-label'] },
+  { key: 'productSafeRecords', label: 'Ürün güvenliği kayıtları', group: 'product-safe', modules: ['product-safe'] },
+  { key: 'fireSafeRecords', label: 'Yangın güvenliği kayıtları', group: 'fire-safe', modules: ['fire-safe'] },
+  { key: 'payFairRecords', label: 'Ücret eşitliği kayıtları', group: 'pay-fair', modules: ['pay-fair'] },
+  { key: 'cargoDocsRecords', label: 'Kargo belge kayıtları', group: 'cargo-docs', modules: ['cargo-docs'] },
+  { key: 'kidsRecords', label: 'Çocuk ürünü kayıtları', group: 'kids', modules: ['kids'] },
+  { key: 'cyberReadyRecords', label: 'Siber hazırlık kayıtları', group: 'cyber-ready', modules: ['cyber-ready'] },
+  { key: 'dietRecords', label: 'Beslenme kayıtları', group: 'diet', modules: ['diet'] },
 ] as const satisfies readonly PermissionResourceDefinition[];
 
 export type PermissionResource = (typeof PERMISSION_RESOURCES)[number]['key'];
@@ -171,6 +181,16 @@ export const PERMISSION_GROUP_LABELS: Record<PermissionGroup, string> = {
   rentacar: 'Rent A Car',
   drivingschool: 'Sürücü Kursu',
   parking: 'Otopark',
+  fgas: 'F-Gas',
+  'machine-ce': 'Makine CE',
+  'food-label': 'Gıda Etiketi',
+  'product-safe': 'Ürün Güvenliği',
+  'fire-safe': 'Yangın Güvenliği',
+  'pay-fair': 'Ücret Şeffaflığı',
+  'cargo-docs': 'Kargo Belgeleri',
+  kids: 'Çocuk Ürünleri',
+  'cyber-ready': 'Siber Hazırlık',
+  diet: 'Beslenme',
 };
 
 export function resourcesForModules(

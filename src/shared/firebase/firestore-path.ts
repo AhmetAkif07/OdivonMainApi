@@ -246,6 +246,12 @@ export const TENANT_COLLECTION = {
   parkingDeviceEvents: 'parkingDeviceEvents',
   parkingIdempotencyKeys: 'parkingIdempotencyKeys',
   parkingAuditLogs: 'parkingAuditLogs',
+  fgasRecords: 'fgasRecords',
+  fgasAuditLogs: 'fgasAuditLogs',
+  fireSafeRecords: 'fireSafeRecords',
+  fireSafeAuditLogs: 'fireSafeAuditLogs',
+  foodLabelRecords: 'foodLabelRecords',
+  foodLabelAuditLogs: 'foodLabelAuditLogs',
 } as const;
 
 export const ROOT_COLLECTION = {
