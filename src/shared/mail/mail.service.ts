@@ -773,6 +773,16 @@ const MODULE_VERIFICATION_NAMES: Record<Exclude<ProductModule, 'gym'>, string> =
   rentacar: 'Odivon Rent A Car',
   drivingschool: 'Odivon Driving School',
   parking: 'OdivonPark',
+  fgas: 'OdivonF-Gas',
+  'machine-ce': 'OdivonMachineCE',
+  'food-label': 'OdivonFoodLabel',
+  'product-safe': 'OdivonProductSafe',
+  'fire-safe': 'OdivonFireSafe',
+  'pay-fair': 'OdivonPayFair',
+  'cargo-docs': 'OdivonCargoDocs',
+  kids: 'OdivonKids',
+  'cyber-ready': 'OdivonCyberReady',
+  diet: 'OdivonDiet',
 };
 
 function moduleLoginUrl(module: WelcomeModule): string | null {

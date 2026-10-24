@@ -4,8 +4,8 @@ import { ErrorCode } from '../errors/error-codes';
 import { isSessionExpired } from '../auth/firebase-auth.guard';
 import { ClientVersionGuard, compareVersions } from './client-version.guard';
 
-function ctx(headers: Record<string, string> = {}): ExecutionContext {
-  return { getType: () => 'http', switchToHttp: () => ({ getRequest: () => ({ headers }) }) } as unknown as ExecutionContext;
+function ctx(headers: Record<string, string> = {}, originalUrl = '/api/v1/health'): ExecutionContext {
+  return { getType: () => 'http', switchToHttp: () => ({ getRequest: () => ({ headers, originalUrl }) }) } as unknown as ExecutionContext;
 }
 
 describe('compareVersions', () => {
@@ -21,6 +21,16 @@ describe('ClientVersionGuard', () => {
   const original = process.env.MIN_CLIENT_VERSION;
   afterEach(() => {
     process.env.MIN_CLIENT_VERSION = original;
+    delete process.env.MIN_CLIENT_VERSIONS;
+  });
+
+  it('uses the product-specific minimum when the request route identifies an app', () => {
+    delete process.env.MIN_CLIENT_VERSION;
+    process.env.MIN_CLIENT_VERSIONS = JSON.stringify({ fgas: '2.3.0', 'fire-safe': '1.4.0' });
+    const guard = new ClientVersionGuard();
+    expect(guard.canActivate(ctx({ 'x-client-version': '2.3.0' }, '/api/v1/fgas/assets'))).toBe(true);
+    expect(() => guard.canActivate(ctx({ 'x-client-version': '2.2.9' }, '/api/v1/fgas/assets'))).toThrow(AppException);
+    expect(guard.canActivate(ctx({ 'x-client-version': '1.0.0' }, '/api/v1/food-label/products'))).toBe(true);
   });
 
   it('passes everything when no minimum is configured', () => {

@@ -17,6 +17,8 @@ const envSchema = z
       .string()
       .regex(/^\d+\.\d+\.\d+$/)
       .optional(),
+    /** JSON object keyed by product route, for example {"fgas":"1.2.0"}. */
+    MIN_CLIENT_VERSIONS: z.string().optional(),
   })
   .superRefine((data, ctx) => {
     const usingEmulator = Boolean(
