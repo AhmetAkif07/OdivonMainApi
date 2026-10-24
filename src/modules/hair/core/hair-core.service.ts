@@ -147,6 +147,7 @@ export class HairCoreService {
         workDayEnd: dto.workDayEnd ?? settings.workDayEnd,
         workDays: dto.workDays ?? [1, 2, 3, 4, 5, 6],
         slotDurationMinutes: dto.slotDurationMinutes ?? 15,
+        logoUrl: dto.logoUrl || undefined,
         active: dto.active ?? true,
       });
       tx.set(ref, doc);
