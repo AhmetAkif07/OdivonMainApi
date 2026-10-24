@@ -70,7 +70,9 @@ export class HairBookingService {
       workDayEnd: str(salon.branch['workDayEnd']),
       workDays: Array.isArray(salon.branch['workDays']) ? salon.branch['workDays'] : [],
       slotDurationMinutes: num(salon.branch['slotDurationMinutes'], 15),
-      logoUrl: salon.logoUrl || str(extra(salon.settings)['logoUrl']) || undefined,
+      // Branch logo first, then the business-wide one; the page shows the Odivon mark when none.
+      logoUrl:
+        str(salon.branch['logoUrl']) || salon.logoUrl || str(extra(salon.settings)['logoUrl']) || undefined,
       primaryColor: str(extra(salon.settings)['primaryColor']) || undefined,
       timezone: salon.settings.timezone,
       currency: salon.settings.currency,

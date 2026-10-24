@@ -1,5 +1,5 @@
 import { BadRequestException, ValidationPipe } from '@nestjs/common';
-import { UpdateHairSettingsDto } from './core.dto';
+import { SaveHairBranchDto, UpdateHairSettingsDto } from './core.dto';
 
 describe('UpdateHairSettingsDto definitions', () => {
   const pipe = new ValidationPipe({ whitelist: true, transform: true, forbidNonWhitelisted: true });
@@ -21,5 +21,27 @@ describe('UpdateHairSettingsDto definitions', () => {
     { colors: ['red'] },
   ])('rejects %j', async (definitions) => {
     await expect(validate({ definitions })).rejects.toBeInstanceOf(BadRequestException);
+  });
+});
+
+describe('SaveHairBranchDto logoUrl', () => {
+  const pipe = new ValidationPipe({ whitelist: true, transform: true, forbidNonWhitelisted: true });
+  const validate = (body: unknown) =>
+    pipe.transform(body, { type: 'body', metatype: SaveHairBranchDto }) as Promise<SaveHairBranchDto>;
+
+  it.each(['', 'https://cdn.example.com/logo.png', 'data:image/webp;base64,UklGRg=='])(
+    'accepts %s',
+    async (logoUrl) => {
+      await expect(validate({ logoUrl })).resolves.toMatchObject({ logoUrl });
+    },
+  );
+
+  it.each([
+    'javascript:alert(1)',
+    'http://example.com/logo.png',
+    'data:image/svg+xml;base64,PHN2Zz4=',
+    `data:image/png;base64,${'A'.repeat(90_000)}`,
+  ])('rejects %s', async (logoUrl) => {
+    await expect(validate({ logoUrl })).rejects.toBeInstanceOf(BadRequestException);
   });
 });

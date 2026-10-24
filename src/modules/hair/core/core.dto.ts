@@ -18,6 +18,10 @@ import {
 
 const CLOCK = /^[0-2][0-9]:[0-5][0-9]$/;
 const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+/** Branch logo: empty (removes it), an https URL, or an inline png/jpeg/webp image. */
+const BRANCH_LOGO = /^$|^https:\/\/\S+$|^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/;
+/** Keeps an inline logo well under the 100 KB JSON body limit (the client sends ~20 KB). */
+const BRANCH_LOGO_MAX_LENGTH = 90_000;
 
 /** Checkout discount ceilings (%) per role; admins are always allowed 100. */
 export class MaxDiscountPercentDto {
@@ -297,6 +301,16 @@ export class SaveHairBranchDto {
   @Min(5)
   @Max(120)
   slotDurationMinutes?: number;
+
+  @ApiPropertyOptional({
+    description:
+      'Business logo shown on the public booking page: an https URL or a small data:image URL. Empty string removes it.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(BRANCH_LOGO_MAX_LENGTH)
+  @Matches(BRANCH_LOGO, { message: 'Logo bir resim olmalıdır.' })
+  logoUrl?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
