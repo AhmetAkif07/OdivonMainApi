@@ -26,6 +26,7 @@ import { BeautyModule } from './modules/beauty/beauty.module';
 import { RentacarModule } from './modules/rentacar/rentacar.module';
 import { DrivingSchoolModule } from './modules/driving-school/driving-school.module';
 import { ParkingModule } from './modules/parking/parking.module';
+import { FireSafeModule } from './modules/fire-safe/fire-safe.module';
 import { FgasModule } from './modules/fgas/fgas.module';
 
 @Module({
@@ -47,6 +48,7 @@ import { FgasModule } from './modules/fgas/fgas.module';
     RentacarModule,
     DrivingSchoolModule,
     ParkingModule,
+    FireSafeModule,
     FgasModule,
     PaymentsModule,
     ApmModule,
