@@ -352,6 +352,7 @@ export class IdentityService {
         email: dto.email,
         password: dto.password,
         displayName: dto.displayName,
+        emailVerified: true,
       });
       uid = userRecord.uid;
 
@@ -367,6 +368,7 @@ export class IdentityService {
         branchIds: dto.branchIds ?? [],
         allBranches: false,
         status: 'active',
+        emailVerified: true,
         createdAt: now,
         updatedAt: now,
       };
