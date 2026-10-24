@@ -27,6 +27,8 @@ import { RentacarModule } from './modules/rentacar/rentacar.module';
 import { DrivingSchoolModule } from './modules/driving-school/driving-school.module';
 import { ParkingModule } from './modules/parking/parking.module';
 import { FoodLabelModule } from './modules/food-label/food-label.module';
+import { FireSafeModule } from './modules/fire-safe/fire-safe.module';
+import { FgasModule } from './modules/fgas/fgas.module';
 
 @Module({
   imports: [
@@ -48,6 +50,8 @@ import { FoodLabelModule } from './modules/food-label/food-label.module';
     DrivingSchoolModule,
     ParkingModule,
     FoodLabelModule,
+    FireSafeModule,
+    FgasModule,
     PaymentsModule,
     ApmModule,
     PlatformModule,
