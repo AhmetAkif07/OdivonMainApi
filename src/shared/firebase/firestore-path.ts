@@ -248,6 +248,7 @@ export const TENANT_COLLECTION = {
   parkingIdempotencyKeys: 'parkingIdempotencyKeys',
   parkingAuditLogs: 'parkingAuditLogs',
   fgasRecords: 'fgasRecords',
+  fgasOperations: 'fgasOperations',
   fgasAuditLogs: 'fgasAuditLogs',
   fireSafeRecords: 'fireSafeRecords',
   fireSafeAuditLogs: 'fireSafeAuditLogs',
@@ -278,4 +279,3 @@ export function tenantCollectionPath(tenantId: string, collection: string): stri
   }
   return `tenants/${tenantId}/${collection}`;
 }
-

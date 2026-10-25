@@ -18,7 +18,19 @@ import { PermissionGuard } from '../../shared/authorization/permission.guard';
 import { RequirePermission } from '../../shared/authorization/require-permission.decorator';
 import { TenantGuard } from '../../shared/tenancy/tenant.guard';
 import { FGAS_ROLE_TEMPLATES } from './fgas.constants';
-import { CreateFgasRecordDto, FgasListQueryDto, UpdateFgasRecordDto } from './fgas.dto';
+import {
+  CompleteFgasOnboardingDto,
+  CreateFgasOperationDto,
+  CreateFgasRecordDto,
+  FGAS_OPERATION_KINDS,
+  FgasListQueryDto,
+  FgasOperationListQueryDto,
+  UpdateFgasOperationDto,
+  UpdateFgasRecordDto,
+} from './fgas.dto';
+import { FgasOperationKind } from './fgas.types';
+import { AppException } from '../../shared/errors/app.exception';
+import { ErrorCode } from '../../shared/errors/error-codes';
 import { FgasService } from './fgas.service';
 
 @ApiTags('fgas')
@@ -33,6 +45,20 @@ export class FgasController {
   }
   @Get('dashboard') @RequirePermission('fgasRecords', 'view') dashboard() {
     return this.service.dashboard();
+  }
+  @Get('audit') @RequirePermission('fgasRecords', 'view') allAudit(@Query('limit') limit?: string) {
+    return this.service.allAudit(Number(limit) || 100);
+  }
+  @Post('onboarding/complete') @RequirePermission('fgasRecords', 'update') completeOnboarding(
+    @Body() dto: CompleteFgasOnboardingDto,
+  ) {
+    return this.service.completeOnboarding(dto);
+  }
+  @Get('reports/compliance') @RequirePermission('fgasRecords', 'export') complianceReport(
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.service.complianceReport(from, to);
   }
   @Get('records')
   @RequirePermission('fgasRecords', 'view')
@@ -68,5 +94,46 @@ export class FgasController {
     @Param('id') id: string,
   ) {
     return this.service.restore(id);
+  }
+  @Get('operations/:kind') @RequirePermission('fgasRecords', 'view') listOperations(
+    @Param('kind') kind: string,
+    @Query() query: FgasOperationListQueryDto,
+  ) {
+    return this.service.listOperations(this.kind(kind), query);
+  }
+  @Get('operations/:kind/:id') @RequirePermission('fgasRecords', 'view') getOperation(
+    @Param('kind') kind: string,
+    @Param('id') id: string,
+  ) {
+    return this.service.getOperation(this.kind(kind), id);
+  }
+  @Post('operations/:kind') @RequirePermission('fgasRecords', 'create') createOperation(
+    @Param('kind') kind: string,
+    @Body() dto: CreateFgasOperationDto,
+  ) {
+    return this.service.createOperation(this.kind(kind), dto);
+  }
+  @Patch('operations/:kind/:id') @RequirePermission('fgasRecords', 'update') updateOperation(
+    @Param('kind') kind: string,
+    @Param('id') id: string,
+    @Body() dto: UpdateFgasOperationDto,
+  ) {
+    return this.service.updateOperation(this.kind(kind), id, dto);
+  }
+  @Delete('operations/:kind/:id') @RequirePermission('fgasRecords', 'delete') archiveOperation(
+    @Param('kind') kind: string,
+    @Param('id') id: string,
+  ) {
+    return this.service.archiveOperation(this.kind(kind), id);
+  }
+  @Post('operations/:kind/:id/restore')
+  @RequirePermission('fgasRecords', 'delete')
+  restoreOperation(@Param('kind') kind: string, @Param('id') id: string) {
+    return this.service.restoreOperation(this.kind(kind), id);
+  }
+  private kind(value: string): FgasOperationKind {
+    if (!(FGAS_OPERATION_KINDS as readonly string[]).includes(value))
+      throw new AppException(ErrorCode.VALIDATION_ERROR, 'Desteklenmeyen F-Gas operasyon türü.');
+    return value as FgasOperationKind;
   }
 }

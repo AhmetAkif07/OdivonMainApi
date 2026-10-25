@@ -1,5 +1,5 @@
 import { BadRequestException, ValidationPipe } from '@nestjs/common';
-import { CreateFgasRecordDto } from './fgas.dto';
+import { CreateFgasOperationDto, CreateFgasRecordDto } from './fgas.dto';
 
 describe('F-Gas DTO validation', () => {
   const pipe = new ValidationPipe({ whitelist: true, transform: true, forbidNonWhitelisted: true });
@@ -33,6 +33,26 @@ describe('F-Gas DTO validation', () => {
           tenantId: 'forged-tenant',
         },
         { type: 'body', metatype: CreateFgasRecordDto },
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('validates operational evidence and rejects unsafe unknown fields', async () => {
+    const dto = (await pipe.transform(
+      {
+        title: 'R-32 geri kazanımı',
+        status: 'completed',
+        movementType: 'recovery',
+        quantityKg: 4.25,
+        evidenceRefs: ['DOC-2026-44'],
+      },
+      { type: 'body', metatype: CreateFgasOperationDto },
+    )) as CreateFgasOperationDto;
+    expect(dto.quantityKg).toBe(4.25);
+    await expect(
+      pipe.transform(
+        { title: 'Kontrol', tenantId: 'forged' },
+        { type: 'body', metatype: CreateFgasOperationDto },
       ),
     ).rejects.toBeInstanceOf(BadRequestException);
   });

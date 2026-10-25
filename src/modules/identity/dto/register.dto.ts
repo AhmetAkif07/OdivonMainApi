@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEmail, IsIn, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsEmail, IsIn, IsOptional, IsString, Matches, MinLength } from 'class-validator';
 import { PRODUCT_MODULES, ProductModule } from '../../../shared/authorization/constants';
 
 export class RegisterDto {
@@ -7,9 +7,10 @@ export class RegisterDto {
   @IsEmail()
   email!: string;
 
-  @ApiProperty({ minLength: 8 })
+  @ApiProperty({ minLength: 10, description: 'Uppercase, lowercase, number and symbol required' })
   @IsString()
-  @MinLength(8)
+  @MinLength(10)
+  @Matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).+$/)
   password!: string;
 
   @ApiProperty({ example: 'Odivon Vet Clinic' })

@@ -2,6 +2,7 @@ import { PermissionMap } from '../../shared/authorization/permissions';
 
 export const FGAS_COLLECTIONS = {
   records: 'fgasRecords',
+  operations: 'fgasOperations',
   snapshots: 'fgasSnapshots',
   audit: 'fgasAuditLogs',
 } as const;
@@ -27,4 +28,8 @@ export const FGAS_AUDIT_EVENTS = {
   archived: 'fgas.record.archived',
   restored: 'fgas.record.restored',
   snapshot: 'fgas.snapshot.created',
+  operationCreated: 'fgas.operation.created',
+  operationUpdated: 'fgas.operation.updated',
+  operationArchived: 'fgas.operation.archived',
+  operationRestored: 'fgas.operation.restored',
 } as const;

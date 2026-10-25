@@ -52,14 +52,16 @@ export class IdentityService {
       const modules: ProductModule[] = [productModule];
       const now = new Date();
       const nowIso = now.toISOString();
-      const trialEndsAt = new Date(now.getTime() + SAAS_TRIAL_DAYS * 24 * 60 * 60 * 1000).toISOString();
+      const trialEndsAt = new Date(
+        now.getTime() + SAAS_TRIAL_DAYS * 24 * 60 * 60 * 1000,
+      ).toISOString();
 
-      const isGym = modules.includes('gym');
+      const requiresOnboarding = modules.some((module) => module === 'gym' || module === 'fgas');
       const createdTenant = await this.tenants.create({
         name: dto.tenantName,
         ownerUid: uid,
         modules,
-        onboardingCompleted: !isGym,
+        onboardingCompleted: !requiresOnboarding,
         membershipStatus: 'trial',
         trialEndsAt,
       });
@@ -110,9 +112,7 @@ export class IdentityService {
           module: productModule,
         })
         ?.catch((err) => {
-          this.logger.error(
-            `Doğrulama maili gönderilemedi (${dto.email}): ${err?.message || err}`,
-          );
+          this.logger.error(`Doğrulama maili gönderilemedi (${dto.email}): ${err?.message || err}`);
         });
 
       return {
@@ -154,7 +154,9 @@ export class IdentityService {
       await this.firebase.auth.updateUser(profile.uid, { emailVerified: true });
     } catch (err) {
       this.logger.error(`Firebase Auth emailVerified güncellenemedi (${profile.uid})`, err);
-      throw new ServiceUnavailableException('E-posta doğrulaması şu anda tamamlanamıyor. Lütfen tekrar deneyin.');
+      throw new ServiceUnavailableException(
+        'E-posta doğrulaması şu anda tamamlanamıyor. Lütfen tekrar deneyin.',
+      );
     }
 
     const nowIso = new Date().toISOString();
@@ -166,7 +168,8 @@ export class IdentityService {
     });
 
     const tenant = await this.tenants.getById(profile.tenantId).catch(() => null);
-    const tenantName = tenant?.name || (profile.modules.includes('gym') ? 'Spor Salonu' : 'İşletme');
+    const tenantName =
+      tenant?.name || (profile.modules.includes('gym') ? 'Spor Salonu' : 'İşletme');
 
     if (profile.modules.includes('gym')) {
       this.mail
@@ -176,7 +179,9 @@ export class IdentityService {
           tenantName,
         })
         ?.catch((err) => {
-          this.logger.error(`Hoş geldin maili gönderilemedi (${profile.email}): ${err?.message || err}`);
+          this.logger.error(
+            `Hoş geldin maili gönderilemedi (${profile.email}): ${err?.message || err}`,
+          );
         });
     } else {
       const primaryModule = (profile.modules[0] || 'vet') as WelcomeModule;
@@ -189,7 +194,9 @@ export class IdentityService {
           trialDays: SAAS_TRIAL_DAYS,
         })
         ?.catch((err) => {
-          this.logger.error(`Hoş geldin maili gönderilemedi (${profile.email}): ${err?.message || err}`);
+          this.logger.error(
+            `Hoş geldin maili gönderilemedi (${profile.email}): ${err?.message || err}`,
+          );
         });
     }
 
@@ -226,10 +233,14 @@ export class IdentityService {
         module: productModule,
       });
     } catch (error) {
-      this.logger.error(`Doğrulama maili tekrar gönderilemedi (${profile.email}): ${error instanceof Error ? error.message : error}`);
+      this.logger.error(
+        `Doğrulama maili tekrar gönderilemedi (${profile.email}): ${error instanceof Error ? error.message : error}`,
+      );
     }
     if (!sent) {
-      throw new ServiceUnavailableException('Doğrulama e-postası şu anda gönderilemiyor. Lütfen daha sonra tekrar deneyin.');
+      throw new ServiceUnavailableException(
+        'Doğrulama e-postası şu anda gönderilemiyor. Lütfen daha sonra tekrar deneyin.',
+      );
     }
 
     return { success: true };
@@ -241,7 +252,7 @@ export class IdentityService {
     if (!profile) {
       throw new AppException(ErrorCode.USER_NOT_FOUND, 'User profile was not found');
     }
-    if (profile.emailVerified !== true && typeof this.firebase.auth?.getUser === "function") {
+    if (profile.emailVerified !== true && typeof this.firebase.auth?.getUser === 'function') {
       const fbUser = await this.firebase.auth.getUser(store.userId).catch(() => null);
       if (fbUser?.emailVerified) {
         profile.emailVerified = true;
@@ -271,10 +282,15 @@ export class IdentityService {
       emailVerified: profile.emailVerified ?? null,
       branchIds: profile.branchIds ?? [],
       allBranches: profile.role === 'owner' || profile.allBranches === true,
-      membershipStatus: tenant.membershipStatus ? billing.membershipStatus : (profile.membershipStatus ?? 'active'),
+      membershipStatus: tenant.membershipStatus
+        ? billing.membershipStatus
+        : (profile.membershipStatus ?? 'active'),
       trialEndsAt: tenant.trialEndsAt ?? profile.trialEndsAt ?? null,
       onboardingCompleted: tenant.onboardingCompleted ?? false,
-      permissions: profile.role === 'owner' ? fullPermissionMap(profile.modules ?? []) : (store.permissions ?? {}),
+      permissions:
+        profile.role === 'owner'
+          ? fullPermissionMap(profile.modules ?? [])
+          : (store.permissions ?? {}),
       tenant: {
         id: tenant.id,
         name: tenant.name,
@@ -324,7 +340,6 @@ export class IdentityService {
     }
   }
 
-
   async listUsers(): Promise<UserProfile[]> {
     const users = await this.users.listByCurrentTenant();
     return users
@@ -342,7 +357,11 @@ export class IdentityService {
     const users = await this.users.listByCurrentTenant();
     return users
       .filter((user) => user.status === 'active')
-      .map((user) => ({ uid: user.uid, displayName: user.displayName || user.email, email: user.email }))
+      .map((user) => ({
+        uid: user.uid,
+        displayName: user.displayName || user.email,
+        email: user.email,
+      }))
       .sort((left, right) => left.displayName.localeCompare(right.displayName, 'tr'));
   }
 
@@ -415,7 +434,8 @@ export class IdentityService {
       throw new AppException(ErrorCode.VALIDATION_ERROR, 'You cannot deactivate your own account');
     }
 
-    const roleIds = dto.roleIds !== undefined ? await this.roles.assertRolesExist(dto.roleIds) : undefined;
+    const roleIds =
+      dto.roleIds !== undefined ? await this.roles.assertRolesExist(dto.roleIds) : undefined;
     const patch: Partial<UserProfile> = {
       ...(dto.displayName !== undefined ? { displayName: dto.displayName.trim() } : {}),
       ...(roleIds !== undefined ? { roleIds } : {}),
@@ -462,7 +482,10 @@ export class IdentityService {
     } catch (error) {
       throw mapFirebaseUserError(error, this.logger);
     }
-    await this.users.updateProfile(uid, { status: 'inactive', updatedAt: new Date().toISOString() });
+    await this.users.updateProfile(uid, {
+      status: 'inactive',
+      updatedAt: new Date().toISOString(),
+    });
   }
 
   private async getManageableUser(uid: string): Promise<UserProfile> {
@@ -507,15 +530,24 @@ export class IdentityService {
 
 function verificationUrl(module: ProductModule, token: string): string {
   if (module === 'drivingschool') {
-    const url = process.env.APP_URL_DRIVINGSCHOOL?.trim() || (process.env.NODE_ENV === 'development' ? 'http://localhost:4200' : 'https://drivingschool.odivon.com');
+    const url =
+      process.env.APP_URL_DRIVINGSCHOOL?.trim() ||
+      (process.env.NODE_ENV === 'development'
+        ? 'http://localhost:4200'
+        : 'https://drivingschool.odivon.com');
     return `${url.replace(/\/+$/, '')}/auth/verify-email?token=${encodeURIComponent(token)}`;
   }
   if (module === 'rentacar') {
-    const url = process.env.APP_URL_RENTACAR?.trim() || (process.env.NODE_ENV === 'development' ? 'http://localhost:4200' : 'https://rent.odivon.com');
+    const url =
+      process.env.APP_URL_RENTACAR?.trim() ||
+      (process.env.NODE_ENV === 'development'
+        ? 'http://localhost:4200'
+        : 'https://rent.odivon.com');
     return `${url.replace(/\/+$/, '')}/auth/verify-email?token=${encodeURIComponent(token)}`;
   }
   if (module === 'gym') {
-    const url = process.env.APP_URL_GYM?.trim() || process.env.APP_URL?.trim() || 'https://gym.odivon.com';
+    const url =
+      process.env.APP_URL_GYM?.trim() || process.env.APP_URL?.trim() || 'https://gym.odivon.com';
     return `${url.replace(/\/+$/, '')}/auth/verify-email?token=${encodeURIComponent(token)}`;
   }
   if (module === 'spa') {
@@ -530,7 +562,11 @@ function verificationUrl(module: ProductModule, token: string): string {
   return `${apiUrl.replace(/\/+$/, '')}/api/v1/identity/verification?token=${encodeURIComponent(token)}`;
 }
 
-function mapFirebaseUserError(error: unknown, logger: Logger, fallback = 'User operation failed'): AppException {
+function mapFirebaseUserError(
+  error: unknown,
+  logger: Logger,
+  fallback = 'User operation failed',
+): AppException {
   const firebase = describeFirebaseError(error);
   logger.error(`${fallback} code=${firebase.code} message=${firebase.message}`);
   if (firebase.code === 'auth/email-already-exists') {

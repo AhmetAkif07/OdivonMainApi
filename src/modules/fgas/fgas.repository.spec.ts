@@ -66,4 +66,48 @@ describe('FgasRepository', () => {
       expect((await repository.restore(created.id)).archivedAt).toBeNull();
     });
   });
+
+  it('stores operational records per tenant with optimistic versioning and immutable evidence', async () => {
+    const db = new FakeFirestore();
+    const tenant = new TenantContext();
+    const repository = new FgasRepository({ db } as never, tenant);
+    await tenant.run(principal('tenant-a'), async () => {
+      const created = await repository.createOperation('leak-check', {
+        title: 'Chiller periyodik kontrol',
+        equipmentId: 'eq-1',
+        status: 'scheduled',
+        dueAt: '2026-11-10',
+        technicianName: 'Ayşe Usta',
+      });
+      expect(
+        (await repository.listOperations('leak-check', { archived: false, limit: 25 })).items,
+      ).toHaveLength(1);
+      const updated = await repository.updateOperation('leak-check', created.id, {
+        expectedVersion: 1,
+        title: created.title,
+        status: 'completed',
+        result: 'pass',
+        occurredAt: '2026-11-01',
+        technicianName: 'Ayşe Usta',
+      });
+      expect(updated).toMatchObject({ version: 2, status: 'completed', result: 'pass' });
+      await expect(
+        repository.updateOperation('leak-check', created.id, {
+          expectedVersion: 1,
+          title: created.title,
+        }),
+      ).rejects.toMatchObject({ code: 'COMPLIANCE_RECORD_CONFLICT' });
+      await repository.setOperationArchive('leak-check', created.id, true);
+      expect(
+        (await repository.listOperations('leak-check', { archived: true, limit: 25 })).items,
+      ).toHaveLength(1);
+      const snapshots = await db.collection(`tenants/tenant-a/${FGAS_COLLECTIONS.snapshots}`).get();
+      expect(snapshots.docs).toHaveLength(3);
+    });
+    await tenant.run(principal('tenant-b'), async () => {
+      expect(
+        (await repository.listOperations('leak-check', { archived: false, limit: 25 })).items,
+      ).toHaveLength(0);
+    });
+  });
 });

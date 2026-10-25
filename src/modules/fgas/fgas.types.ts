@@ -39,9 +39,44 @@ export interface FgasRecord {
 export interface FgasAuditEntry {
   id: string;
   event: string;
-  entity: 'fgasRecord';
+  entity: 'fgasRecord' | 'fgasOperation';
   entityId: string;
   version: number;
   actorId: string;
   createdAt: string;
+}
+
+export type FgasOperationKind = 'leak-check' | 'gas-movement' | 'technician' | 'inspection';
+export interface FgasOperation {
+  id: string;
+  tenantId: string;
+  kind: FgasOperationKind;
+  title: string;
+  reference: string | null;
+  equipmentId: string | null;
+  location: string | null;
+  occurredAt: string | null;
+  dueAt: string | null;
+  status: 'draft' | 'scheduled' | 'completed' | 'action-required' | 'expired';
+  technicianId: string | null;
+  technicianName: string | null;
+  certificateNumber: string | null;
+  certificateCategory: string | null;
+  certificateExpiresAt: string | null;
+  refrigerant: string | null;
+  quantityKg: number | null;
+  movementType: 'charge' | 'recovery' | 'transfer' | 'disposal' | null;
+  result: 'pass' | 'conditional' | 'fail' | null;
+  leakDetected: boolean | null;
+  repairRequired: boolean | null;
+  followUpDueAt: string | null;
+  notes: string | null;
+  evidenceRefs: string[];
+  version: number;
+  createdAt: string;
+  createdBy: string;
+  updatedAt: string;
+  updatedBy: string;
+  archivedAt: string | null;
+  archivedBy: string | null;
 }
