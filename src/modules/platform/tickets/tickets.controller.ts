@@ -51,7 +51,7 @@ export class SupportTicketsController {
     const user = getOptionalDecodedToken(req);
     if (user) {
       // A signed-in user only sees their own tickets, whatever ?email says.
-      return this.ticketsService.getMyTickets(user.email, user.uid);
+      return this.ticketsService.getMyTickets(user.email || email, user.uid);
     }
     return this.ticketsService.getMyTickets(email, undefined);
   }
