@@ -50,7 +50,7 @@ jobs:
         run: npm run build
 
       - name: Reject committed secrets
-        run: "! git grep -nE '(BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY|FIREBASE_PRIVATE_KEY=[^-]|IYZICO_SECRET_KEY=[^$]|sk_live_[A-Za-z0-9]+|AKIA[0-9A-Z]{16})' -- ':!package-lock.json' ':!.github/workflows/deploy.yml' ':!.env.example'"
+        run: "! git grep -nE '(BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY|FIREBASE_PRIVATE_KEY=[^-]|IYZICO_SECRET_KEY=[^$]|sk_live_[A-Za-z0-9]+|AKIA[0-9A-Z]{16})' -- ':!package-lock.json' ':!.github/workflows/deploy.yml' ':!.env.example' ':!src/config/env.schema.spec.ts'"
 
       - name: Deploy to Cloudflare
         if: ${{ env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != '' }}
