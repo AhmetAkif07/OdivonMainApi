@@ -48,6 +48,14 @@ export class StaffController {
     return this.staff.update(id, dto);
   }
 
+  @Post(':id/resend-invite')
+  @Roles('owner', 'admin')
+  @RequirePermission('staff', 'update')
+  @ApiOperation({ summary: 'Resend invite and password setup link to staff' })
+  resendInvite(@Param('id') id: string) {
+    return this.staff.resendInvite(id);
+  }
+
   @Delete(':id')
   @Roles('owner', 'admin')
   @RequirePermission('staff', 'delete')

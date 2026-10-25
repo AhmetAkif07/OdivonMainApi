@@ -16,7 +16,7 @@ import { CreateCheckoutDto, CreateSaasOrderDto, MemberCheckoutDto } from './paym
 import { CheckoutInput, IyzicoCredentials, PaymentProvider, PaymentProviderId, PaymentSession, PaymentSource } from './payment-provider';
 import { nextPeriod, receiptNo, SaasCycle } from './saas-billing';
 import { SAAS_PLAN_MODULE } from './saas-prices';
-import { SaasPricingService, STATIC_SAAS_PRICING } from '../saas-pricing/saas-pricing.service';
+import { pricingProduct, SaasPlanPricing, SaasPricingService, STATIC_SAAS_PRICING } from '../saas-pricing/saas-pricing.service';
 
 /** iyzico checkout form tokens live ~30 minutes; an older pending session is treated as abandoned. */
 export const CHECKOUT_TTL_MS = 30 * 60_000;
@@ -97,14 +97,25 @@ export class PaymentsService {
 
   /** Plans this tenant can buy: an APM-only tenant sees the APM packages, everyone else the shared set. */
   async saasPlans() {
-    const prices = await this.pricing.priceMap();
-    return Object.fromEntries(Object.entries(prices).filter(([planId]) => this.planAvailable(planId)));
+    const plans = await this.saasPlanCatalog();
+    return Object.fromEntries(
+      plans.map((plan) => [
+        plan.id,
+        { ...(plan.monthly !== null ? { monthly: plan.monthly } : {}), ...(plan.yearly !== null ? { yearly: plan.yearly } : {}) },
+      ]),
+    );
   }
 
-  /** Same plans with names and module, for apps that render a pricing table. */
-  async saasPlanCatalog() {
-    const plans = await this.pricing.activePlans();
-    return plans.filter((plan) => this.planAvailable(plan.id));
+  /** Same plans with names, at this tenant's product prices, for apps that render a pricing table. */
+  async saasPlanCatalog(): Promise<SaasPlanPricing[]> {
+    const modules = this.tenant.getStore().modules ?? [];
+    const result: SaasPlanPricing[] = [];
+    for (const plan of await this.pricing.activePlans()) {
+      if (!this.planAvailable(plan.id)) continue;
+      const priced = (await this.pricing.activePlans(pricingProduct(modules, plan.id))).find((item) => item.id === plan.id);
+      if (priced) result.push(priced);
+    }
+    return result;
   }
 
   private planAvailable(planId: string): boolean {
@@ -123,12 +134,13 @@ export class PaymentsService {
     if (this.tenant.getStore().role !== 'owner') {
       throw new AppException(ErrorCode.FORBIDDEN_ROLE, 'Only the tenant owner can create a SaaS order');
     }
-    const amount = await this.pricing.price(dto.planId, dto.billingCycle);
-    if (!amount) throw new AppException(ErrorCode.FINANCE_INVALID, 'Invalid SaaS plan or billing cycle');
     // A module's own packages (APM) are only sold to tenants of that module, and vice versa.
-    if (!this.planAvailable(dto.planId)) {
+    if ((await this.pricing.price(dto.planId, dto.billingCycle)) && !this.planAvailable(dto.planId)) {
       throw new AppException(ErrorCode.FINANCE_INVALID, 'This plan is not available for this product');
     }
+    // The tenant's product price: a product can have its own price or not sell the plan at all.
+    const amount = await this.pricing.price(dto.planId, dto.billingCycle, pricingProduct(this.tenant.getStore().modules, dto.planId));
+    if (!amount) throw new AppException(ErrorCode.FINANCE_INVALID, 'Invalid SaaS plan or billing cycle');
     const tenantId = this.tenant.getTenantId();
     const id = randomUUID();
     const now = new Date().toISOString();

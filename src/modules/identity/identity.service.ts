@@ -6,7 +6,7 @@ import { FirebaseService } from '../../shared/firebase/firebase.service';
 import { TenantService } from '../tenant/tenant.service';
 import { IdentityRepository } from './identity.repository';
 import { RegisterDto } from './dto/register.dto';
-import { CreateUserDto, UpdateUserDto } from './dto/user.dto';
+import { ChangePasswordDto, CreateUserDto, UpdateUserDto } from './dto/user.dto';
 import { UserProfile } from './entities/user-profile.entity';
 import { TenantContext } from '../../shared/tenancy/tenant.context';
 import {
@@ -306,6 +306,24 @@ export class IdentityService {
     await this.users.updateProfile(store.userId, patch);
     return { ...current, ...patch };
   }
+
+  async changePassword(dto: ChangePasswordDto): Promise<{ success: boolean; message: string }> {
+    const store = this.tenantContext.getStore();
+    if (!store.userId) {
+      throw new AppException(ErrorCode.AUTH_REQUIRED, 'User is not authenticated');
+    }
+    const user = await this.users.findByUid(store.userId);
+    if (!user) {
+      throw new AppException(ErrorCode.USER_NOT_FOUND, 'User profile was not found');
+    }
+    try {
+      await this.firebase.auth.updateUser(store.userId, { password: dto.newPassword });
+      return { success: true, message: 'Password updated successfully' };
+    } catch (error) {
+      throw mapFirebaseUserError(error, this.logger);
+    }
+  }
+
 
   async listUsers(): Promise<UserProfile[]> {
     const users = await this.users.listByCurrentTenant();

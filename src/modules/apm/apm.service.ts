@@ -121,7 +121,7 @@ export class ApmService {
       this.firebase.db.doc(`tenants/${tenantId}`).get(),
       this.firebase.db.doc(`${tenantCollectionPath(tenantId, TENANT_COLLECTION.gymSaasSubscription)}/${tenantId}`).get(),
       this.collection().where('createdAt', '>=', istanbulMonthStart()).count().get(),
-      this.pricing.catalog(),
+      this.pricing.catalog('apm'),
     ]);
     // Names and prices come from the platform panel; the quota stays with the package id.
     const priced = new Map(catalog.plans.map((plan) => [plan.id, plan]));

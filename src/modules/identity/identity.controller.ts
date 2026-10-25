@@ -8,7 +8,7 @@ import { Throttle } from '@nestjs/throttler';
 import { ClientThrottlerGuard } from '../../shared/http/client-throttler.guard';
 import { TenantGuard } from '../../shared/tenancy/tenant.guard';
 import { RegisterDto } from './dto/register.dto';
-import { CreateUserDto, UpdateMeDto, UpdateUserDto } from './dto/user.dto';
+import { CreateUserDto, ChangePasswordDto, UpdateMeDto, UpdateUserDto } from './dto/user.dto';
 import { VerifyEmailDto, ResendVerificationDto } from './dto/verify-email.dto';
 import { IdentityService } from './identity.service';
 
@@ -92,6 +92,15 @@ export class IdentityController {
   updateMe(@Body() dto: UpdateMeDto) {
     return this.identity.updateMe(dto);
   }
+
+  @Post('change-password')
+  @UseGuards(FirebaseAuthGuard, TenantGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Change current user password' })
+  changePassword(@Body() dto: ChangePasswordDto) {
+    return this.identity.changePassword(dto);
+  }
+
 
   @Get('permission-catalog')
   @UseGuards(FirebaseAuthGuard, TenantGuard)

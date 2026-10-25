@@ -25,7 +25,7 @@ export class StaffRepository {
     return gymCollection(this.firebase, this.tenantContext, TENANT_COLLECTION.gymStaff);
   }
 
-  async create(dto: CreateStaffDto): Promise<GymStaff> {
+  async create(dto: CreateStaffDto, authUid?: string): Promise<GymStaff> {
     const ref = this.collection().doc();
     const staff: GymStaff = {
       ...createBaseFields(ref.id, this.tenantContext.getUserId()),

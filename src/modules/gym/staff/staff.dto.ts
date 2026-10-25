@@ -88,6 +88,15 @@ export class CreateStaffDto {
   @IsOptional()
   @IsString()
   notes?: string | null;
+
+  @ApiPropertyOptional({ description: 'Sisteme giriş şifresi (boş bırakılırsa güvenli rastgele şifre üretilir)' })
+  @IsOptional()
+  @IsString()
+  password?: string;
+
+  @ApiPropertyOptional({ description: 'Personele hoş geldin ve şifre belirleme davet maili gönderilsin mi' })
+  @IsOptional()
+  sendWelcomeEmail?: boolean;
 }
 
 export class UpdateStaffDto extends PartialType(CreateStaffDto) {}

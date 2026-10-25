@@ -18,6 +18,17 @@ import { PlatformErrorLogsController } from './logs/error-logs.controller';
 import { PlatformOrphanTenantsService } from './orphans/orphan-tenants.service';
 import { PlatformOrphanTenantsController } from './orphans/orphan-tenants.controller';
 import { PlatformSaasPricingController } from './pricing/saas-pricing.controller';
+import { HostingerMailClient } from './crm/hostinger-mail.client';
+import { CrmDirectoryService } from './crm/crm-directory.service';
+import { CrmMailService } from './crm/crm-mail.service';
+import { CrmNotificationsService } from './crm/crm-notifications.service';
+import { CrmCampaignsService } from './crm/crm-campaigns.service';
+import {
+  PlatformCrmCampaignsController,
+  PlatformCrmMailController,
+  PlatformCrmNotificationsController,
+} from './crm/crm.controller';
+import { TenantPlatformNotificationsController } from './crm/tenant-notifications.controller';
 
 @Module({
   controllers: [
@@ -31,6 +42,10 @@ import { PlatformSaasPricingController } from './pricing/saas-pricing.controller
     PlatformAuditController,
     PlatformOrphanTenantsController,
     PlatformSaasPricingController,
+    PlatformCrmMailController,
+    PlatformCrmCampaignsController,
+    PlatformCrmNotificationsController,
+    TenantPlatformNotificationsController,
   ],
   providers: [
     PlatformAdminGuard,
@@ -42,6 +57,11 @@ import { PlatformSaasPricingController } from './pricing/saas-pricing.controller
     PlatformDemosService,
     PlatformErrorLogsService,
     PlatformOrphanTenantsService,
+    HostingerMailClient,
+    CrmDirectoryService,
+    CrmMailService,
+    CrmNotificationsService,
+    CrmCampaignsService,
   ],
   exports: [
     PlatformAdminGuard,
@@ -51,6 +71,8 @@ import { PlatformSaasPricingController } from './pricing/saas-pricing.controller
     PlatformRevenueService,
     PlatformDemosService,
     PlatformErrorLogsService,
+    CrmCampaignsService,
+    CrmNotificationsService,
   ],
 })
 export class PlatformModule {}

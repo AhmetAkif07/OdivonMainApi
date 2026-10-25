@@ -4,7 +4,7 @@ import { FirebaseService } from '../../shared/firebase/firebase.service';
 import { TenantContext } from '../../shared/tenancy/tenant.context';
 import { gymToday } from '../gym/ops/receivables.math';
 import { daysUntil, effectiveSubscription, nextPeriod, receiptNo, SAAS_GRACE_DAYS, SAAS_REMINDER_DAYS, SaasCycle, TenantBillingState } from './saas-billing';
-import { SaasPricingService, STATIC_SAAS_PRICING } from '../saas-pricing/saas-pricing.service';
+import { pricingProduct, SaasPricingService, STATIC_SAAS_PRICING } from '../saas-pricing/saas-pricing.service';
 
 export interface SaasPaymentRecord {
   id: string;
@@ -137,7 +137,8 @@ export class SaasBillingService {
       updatedAt: paidAt,
     });
 
-    const amount = (await this.pricing.price(planId, billingCycle)) ?? 1490;
+    const product = pricingProduct(this.tenant.getStore().modules, planId);
+    const amount = (await this.pricing.price(planId, billingCycle, product)) ?? 1490;
     const paymentRecord: SaasPaymentRecord = {
       id: sessionId,
       receiptNo: recNo,

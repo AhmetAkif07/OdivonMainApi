@@ -28,3 +28,10 @@ export class UpdateSaasPlanPriceDto {
   @MaxLength(300)
   reason?: string;
 }
+
+export class ResetSaasPlanPriceDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  reason?: string;
+}

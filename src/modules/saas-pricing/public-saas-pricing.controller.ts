@@ -1,6 +1,8 @@
 import { Controller, Get, Header, Query } from '@nestjs/common';
 import { ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
-import { SaasPricingService } from './saas-pricing.service';
+import { AppException } from '../../shared/errors/app.exception';
+import { ErrorCode } from '../../shared/errors/error-codes';
+import { isProductModule, SaasPricingService } from './saas-pricing.service';
 
 /**
  * No sign-in: websites and apps show current Odivon subscription prices before registration.
@@ -13,14 +15,19 @@ export class PublicSaasPricingController {
 
   @Get()
   @Header('Cache-Control', 'public, max-age=60')
-  @ApiOperation({ summary: 'Güncel Odivon abonelik fiyatları (giriş gerektirmez)' })
-  @ApiQuery({ name: 'module', required: false, description: 'shared | apm | rentacar' })
-  async list(@Query('module') module?: string) {
-    const [catalog, plans] = await Promise.all([this.pricing.catalog(), this.pricing.activePlans(module || undefined)]);
+  @ApiOperation({ summary: 'Bir ürünün güncel Odivon abonelik fiyatları (giriş gerektirmez)' })
+  @ApiQuery({ name: 'product', required: false, description: 'Ürün modülü (vet, gym, farm, apm, …). Boşsa varsayılan fiyatlar.' })
+  async list(@Query('product') product?: string) {
+    if (product && !isProductModule(product)) {
+      throw new AppException(ErrorCode.VALIDATION_ERROR, `Bilinmeyen ürün: ${product}`);
+    }
+    const target = product && isProductModule(product) ? product : null;
+    const [catalog, plans] = await Promise.all([this.pricing.catalog(target), this.pricing.activePlans(target)]);
     return {
       currency: catalog.currency,
+      product: target,
       updatedAt: catalog.updatedAt,
-      plans: plans.map(({ id, name, module: planModule, monthly, yearly }) => ({ id, name, module: planModule, monthly, yearly })),
+      plans: plans.map(({ id, name, module, monthly, yearly }) => ({ id, name, module, monthly, yearly })),
     };
   }
 }

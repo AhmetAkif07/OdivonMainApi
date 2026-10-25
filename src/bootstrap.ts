@@ -10,6 +10,7 @@ import { GymRemindersService } from './modules/gym/reminders/reminders.service';
 import { HairJobsService } from './modules/hair/jobs/hair-jobs.service';
 import { SaasBillingService } from './modules/payments/saas-billing.service';
 import { PlatformDemosService } from './modules/platform/demos/demos.service';
+import { CrmCampaignsService } from './modules/platform/crm/crm-campaigns.service';
 import { ErrorLogService } from './shared/errors/error-log.service';
 import { setBackgroundRunner } from './shared/http/background';
 
@@ -102,4 +103,10 @@ export async function runHairJobs(): Promise<void> {
     throw new Error('Application is not bootstrapped');
   }
   await application.get(HairJobsService).runAll();
+  // CRM: start due scheduled campaigns and continue ones the panel left unfinished.
+  try {
+    await application.get(CrmCampaignsService).runJobs();
+  } catch (error) {
+    console.error('CRM campaign job failed', error);
+  }
 }

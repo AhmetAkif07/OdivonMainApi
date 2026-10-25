@@ -23,4 +23,6 @@ export interface GymStaff extends BaseDocument {
   commissionRate: number;
   notes: string | null;
   avatarUrl: string | null;
+  /** Firebase Auth kullanıcı kimliği (login UID) */
+  userId?: string | null;
 }

@@ -692,6 +692,173 @@ export class MailService {
     }
   }
 
+
+  sendGymStaffWelcomeEmail(input: {
+    to: string;
+    displayName: string;
+    tenantName: string;
+    roleTitle?: string;
+    password?: string;
+    resetLink?: string | null;
+    loginUrl?: string;
+  }): Promise<boolean> {
+    return runInBackground(this.deliverGymStaffWelcomeEmail(input));
+  }
+
+  private async deliverGymStaffWelcomeEmail(input: {
+    to: string;
+    displayName: string;
+    tenantName: string;
+    roleTitle?: string;
+    password?: string;
+    resetLink?: string | null;
+    loginUrl?: string;
+  }): Promise<boolean> {
+    if (!this.transporter && !this.hostingerApiConfigured()) {
+      await this.initTransporter();
+      if (!this.transporter) {
+        this.logger.warn(`Personel hos geldin maili gonderilemedi (${input.to}): e-posta saglayicisi yapilandirilmamis.`);
+        return false;
+      }
+    }
+
+    const from = process.env.SMTP_FROM || '"OdivonGYM" <info@odivon.com>';
+    const appUrl = process.env.APP_URL_GYM || process.env.APP_URL || 'https://gym.odivon.com';
+    const loginUrl = input.loginUrl || `${appUrl}/auth/login`;
+    const actionUrl = input.resetLink || loginUrl;
+    const recipientName = input.displayName.trim() || 'Degerli Calisanimiz';
+    const tenantName = input.tenantName.trim();
+    const roleTitle = input.roleTitle?.trim() || 'Kulup Personeli';
+    const password = input.password?.trim() || '';
+
+    const subject = `${tenantName} Ekibine Hos Geldiniz! 🚀 Giris Bilgileriniz`;
+
+    const credentialsHtml = password
+      ? `
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color: #1e293b; border: 1px solid #334155; border-radius: 16px; margin-bottom: 24px; padding: 20px;">
+                <tr>
+                  <td>
+                    <div style="font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; color: #818cf8; margin-bottom: 12px;">
+                      SISTEME GIRIS BILGILERINIZ 🔑
+                    </div>
+                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="font-size: 13px; color: #cbd5e1;">
+                      <tr>
+                        <td style="padding: 6px 0; color: #94a3b8;">Kurum / Salon:</td>
+                        <td style="padding: 6px 0; font-weight: 700; color: #ffffff; text-align: right;">${tenantName}</td>
+                      </tr>
+                      <tr>
+                        <td style="padding: 6px 0; color: #94a3b8;">Gorev / Rol:</td>
+                        <td style="padding: 6px 0; font-weight: 700; color: #ffffff; text-align: right;">${roleTitle}</td>
+                      </tr>
+                      <tr>
+                        <td style="padding: 6px 0; color: #94a3b8;">Giris E-Postasi:</td>
+                        <td style="padding: 6px 0; font-weight: 700; color: #ffffff; text-align: right;">${input.to}</td>
+                      </tr>
+                      <tr>
+                        <td style="padding: 6px 0; color: #94a3b8;">Gecici Sifreniz:</td>
+                        <td style="padding: 6px 0; text-align: right;">
+                          <span style="display: inline-block; font-family: monospace, Courier, sans-serif; background-color: #312e81; color: #c7d2fe; padding: 4px 10px; border-radius: 6px; font-weight: 800; font-size: 13px; letter-spacing: 0.5px;">
+                            ${password}
+                          </span>
+                        </td>
+                      </tr>
+                    </table>
+                    <div style="margin-top: 12px; padding-top: 10px; border-top: 1px solid #334155; font-size: 11px; color: #94a3b8;">
+                      * Bu gecici sifre ile sisteme dogrudan giris yapabilir veya asagidaki buton ile kendi kalici sifrenizi belirleyebilirsiniz.
+                    </div>
+                  </td>
+                </tr>
+              </table>`
+      : '';
+
+    const html = `
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${tenantName} Personel Giris Bilgileri</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #0b1120; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #f8fafc;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color: #0b1120; padding: 40px 16px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width: 600px; background-color: #0f172a; border: 1px solid #1e293b; border-radius: 24px; overflow: hidden; box-shadow: 0 20px 50px rgba(0,0,0,0.5);">
+          <tr>
+            <td style="background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 50%, #db2777 100%); padding: 36px 32px; text-align: left;">
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                <tr>
+                  <td>
+                    <div style="display: inline-block; background-color: rgba(255,255,255,0.2); padding: 6px 14px; border-radius: 20px; font-size: 11px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; color: #ffffff; margin-bottom: 12px;">
+                      PERSONEL YETKILENDIRME 🔑
+                    </div>
+                    <h1 style="margin: 0; font-size: 26px; font-weight: 900; color: #ffffff; letter-spacing: -0.5px; line-height: 1.2;">
+                      OdivonGYM Ekibine Hos Geldiniz!
+                    </h1>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 36px 32px;">
+              <p style="margin: 0 0 16px; font-size: 16px; font-weight: 700; color: #f8fafc;">
+                Sayin ${recipientName},
+              </p>
+              <p style="margin: 0 0 24px; font-size: 14px; color: #94a3b8; line-height: 1.6;">
+                <strong>${tenantName}</strong> bunyesinde <strong>${roleTitle}</strong> goreviyle kaydiniz gerceklestirilmistir. OdivonGYM yonetim portalina ve operasyon modullerine erisim saglamak icin kullanacaginiz hesap bilgileriniz asagidadir:
+              </p>
+
+              ${credentialsHtml}
+
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin-bottom: 24px;">
+                <tr>
+                  <td align="center">
+                    <a href="${actionUrl}" target="_blank" style="display: inline-block; background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%); color: #ffffff; font-size: 14px; font-weight: 800; text-decoration: none; padding: 16px 36px; border-radius: 12px; box-shadow: 0 10px 25px rgba(99,102,241,0.4); text-transform: uppercase; letter-spacing: 0.5px;">
+                      ${input.resetLink ? 'Sifrenizi Belirleyin & Giris Yapin ➜' : 'Yonetim Paneline Giris Yap ➜'}
+                    </a>
+                  </td>
+                </tr>
+              </table>
+
+              <p style="margin: 0; font-size: 12px; color: #64748b; line-height: 1.5; text-align: center;">
+                Giris yapmakta sorun yasarsaniz yoneticinize veya <a href="mailto:info@odivon.com" style="color: #818cf8; text-decoration: underline;">info@odivon.com</a> adresine danisabilirsiniz.
+              </p>
+            </td>
+          </tr>
+          <tr>
+            <td style="background-color: #090d16; padding: 24px 32px; border-top: 1px solid #1e293b; text-align: center;">
+              <p style="margin: 0 0 6px; font-size: 11px; font-weight: 700; color: #94a3b8;">
+                © ${new Date().getFullYear()} ${tenantName} • OdivonGYM
+              </p>
+              <p style="margin: 0; font-size: 10px; color: #475569;">
+                Bu e-posta personel yetkilendirme islemi nedeniyle gonderilmistir.
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+`.trim();
+
+    try {
+      const info = await this.sendMessage({
+        from,
+        to: input.to,
+        subject,
+        html,
+      });
+      this.logger.log(`Personel hos geldin maili gonderildi: ${input.to} (MessageId: ${info.messageId})`);
+      return true;
+    } catch (error: any) {
+      this.logger.error(`Personel hos geldin maili gonderim hatasi (${input.to}): ${error?.message || error}`);
+      return false;
+    }
+  }
+
   /** Short-lived code used by the public Rent A Car booking portal. */
   async sendRentacarOtp(to: string, code: string, tenantName: string): Promise<boolean> {
     if (!this.transporter && !this.hostingerApiConfigured()) {
