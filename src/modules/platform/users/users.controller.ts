@@ -3,13 +3,17 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { RequirePlatformAdmin, CurrentPlatformAdmin } from '../platform-admin.decorator';
 import { PlatformAdminUser } from '../platform-admin.guard';
 import { PlatformUsersService } from './users.service';
+import { PlatformTenantsService } from '../tenants/tenants.service';
 import { DeletePlatformUserDto, ListUsersQueryDto, UpdatePlatformUserDto } from './dto';
 
 @ApiTags('platform-users')
 @RequirePlatformAdmin()
 @Controller('platform/users')
 export class PlatformUsersController {
-  constructor(private readonly usersService: PlatformUsersService) {}
+  constructor(
+    private readonly usersService: PlatformUsersService,
+    private readonly tenantsService: PlatformTenantsService,
+  ) {}
 
   @Get()
   @ApiOperation({ summary: 'Platform genelinde kullanıcı ara / listele' })
@@ -59,6 +63,26 @@ export class PlatformUsersController {
     @CurrentPlatformAdmin() admin: PlatformAdminUser,
   ) {
     return this.usersService.generatePasswordResetLink(uid, admin);
+  }
+
+  @Post(':uid/verify-email')
+  @ApiOperation({ summary: 'Kullanıcının e-postasını elle doğrulanmış işaretle (Auth + profil)' })
+  async verifyEmail(
+    @Param('uid') uid: string,
+    @CurrentPlatformAdmin() admin: PlatformAdminUser,
+  ) {
+    const tenantId = await this.tenantsService.resolveUserTenantId(uid);
+    return this.tenantsService.markUserEmailVerified(tenantId, uid, admin);
+  }
+
+  @Post(':uid/resend-verification')
+  @ApiOperation({ summary: 'Kullanıcıya yeni e-posta doğrulama bağlantısı gönder' })
+  async resendVerification(
+    @Param('uid') uid: string,
+    @CurrentPlatformAdmin() admin: PlatformAdminUser,
+  ) {
+    const tenantId = await this.tenantsService.resolveUserTenantId(uid);
+    return this.tenantsService.resendUserVerification(tenantId, uid, admin);
   }
 
   @Post(':uid/revoke-sessions')

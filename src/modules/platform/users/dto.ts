@@ -19,6 +19,10 @@ export class ListUsersQueryDto {
   auth?: 'exists' | 'missing' | 'all';
 
   @IsOptional()
+  @IsEnum(['true', 'false'])
+  emailVerified?: 'true' | 'false';
+
+  @IsOptional()
   page?: string;
 
   @IsOptional()

@@ -690,6 +690,24 @@ export class PlatformTenantsService {
     return { success: true, email, expiresAt };
   }
 
+  /** Tenant of a user, from the Firestore profile or the Auth tenantId claim. */
+  async resolveUserTenantId(uid: string): Promise<string> {
+    const [profileSnap, auth] = await Promise.all([
+      this.usersCollection().doc(uid).get(),
+      this.firebase.auth.getUser(uid).catch(() => null),
+    ]);
+    const profile = profileSnap.exists ? (profileSnap.data() as UserProfile) : null;
+    const claimTenant = auth?.customClaims?.['tenantId'];
+    const tenantId = profile?.tenantId || (typeof claimTenant === 'string' ? claimTenant : '');
+    if (!profile && !auth) {
+      throw new AppException(ErrorCode.USER_NOT_FOUND, 'Kullanıcı bulunamadı.');
+    }
+    if (!tenantId) {
+      throw new AppException(ErrorCode.VALIDATION_ERROR, 'Kullanıcı bir işletmeye bağlı değil.');
+    }
+    return tenantId;
+  }
+
   /** Loads one user of the tenant without listing every Auth account. */
   private async findTenantMember(tenantId: string, uid: string) {
     const tenantDoc = await this.tenantsCollection().doc(tenantId).get();

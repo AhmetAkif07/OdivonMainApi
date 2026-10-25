@@ -16,6 +16,8 @@ export type PlatformUserListItem = Omit<UserProfile, 'role'> & {
   /** The uid has a Firestore users/{uid} profile. */
   hasProfile: boolean;
   lastSignInAt: string | null;
+  /** Firestore profile flag (product APIs check this one); null when there is no profile. */
+  profileEmailVerified: boolean | null;
 };
 
 @Injectable()
@@ -49,9 +51,14 @@ export class PlatformUsersService {
     const all: PlatformUserListItem[] = [];
     profiles.forEach((profile, uid) => {
       const auth = authUsers.get(uid);
+      // Never send the pending verification token to the panel
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { emailVerificationToken, ...safeProfile } = profile;
       all.push({
-        ...profile,
+        ...safeProfile,
         uid,
+        emailVerified: auth?.emailVerified ?? profile.emailVerified ?? false,
+        profileEmailVerified: profile.emailVerified ?? null,
         authExists: Boolean(auth),
         hasProfile: true,
         lastSignInAt: auth?.metadata.lastSignInTime ? new Date(auth.metadata.lastSignInTime).toISOString() : null,
@@ -68,6 +75,8 @@ export class PlatformUsersService {
         email: auth.email ?? '',
         displayName: auth.displayName ?? null,
         phone: auth.phoneNumber ?? null,
+        emailVerified: auth.emailVerified,
+        profileEmailVerified: null,
         status: auth.disabled ? 'inactive' : 'active',
         createdAt: new Date(auth.metadata.creationTime).toISOString(),
         updatedAt: new Date(auth.metadata.creationTime).toISOString(),
@@ -88,6 +97,10 @@ export class PlatformUsersService {
     }
     if (query.status) {
       items = items.filter((u) => u.status === query.status);
+    }
+    if (query.emailVerified === 'true' || query.emailVerified === 'false') {
+      const wanted = query.emailVerified === 'true';
+      items = items.filter((u) => (Boolean(u.emailVerified) && u.profileEmailVerified !== false) === wanted);
     }
     if (query.q && query.q.trim()) {
       const needle = query.q.trim().toLowerCase();
