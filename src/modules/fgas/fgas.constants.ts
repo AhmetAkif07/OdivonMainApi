@@ -12,9 +12,19 @@ const editor: PermissionMap = { fgasRecords: ['view', 'create', 'update', 'expor
 export const FGAS_ROLE_TEMPLATES = [
   { key: 'fgas-viewer', label: 'F-Gas Görüntüleyici', permissions: viewer },
   { key: 'fgas-technician', label: 'F-Gas Teknisyeni', permissions: editor },
-  { key: 'fgas-manager', label: 'F-Gas Yöneticisi', permissions: { fgasRecords: ['view', 'create', 'update', 'delete', 'export', 'approve'] } satisfies PermissionMap },
+  {
+    key: 'fgas-manager',
+    label: 'F-Gas Yöneticisi',
+    permissions: {
+      fgasRecords: ['view', 'create', 'update', 'delete', 'export', 'approve'],
+    } satisfies PermissionMap,
+  },
 ] as const;
 
 export const FGAS_AUDIT_EVENTS = {
-  created: 'fgas.record.created', updated: 'fgas.record.updated', archived: 'fgas.record.archived', restored: 'fgas.record.restored', snapshot: 'fgas.snapshot.created',
+  created: 'fgas.record.created',
+  updated: 'fgas.record.updated',
+  archived: 'fgas.record.archived',
+  restored: 'fgas.record.restored',
+  snapshot: 'fgas.snapshot.created',
 } as const;
