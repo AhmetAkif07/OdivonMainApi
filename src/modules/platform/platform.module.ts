@@ -4,6 +4,11 @@ import {
   SupportTicketsController,
 } from './tickets/tickets.controller';
 import { Module } from '@nestjs/common';
+import { APP_INTERCEPTOR } from '@nestjs/core';
+import { PlatformReleasesService } from './releases/releases.service';
+import { PlatformReleasesController } from './releases/releases.controller';
+import { ClientVersionTracker } from './releases/client-version-tracker.service';
+import { ClientVersionTrackingInterceptor } from './releases/client-version-tracking.interceptor';
 import { PlatformAdminGuard } from './platform-admin.guard';
 import { PlatformAuditService } from './audit/platform-audit.service';
 import { PlatformAuditController } from './audit/platform-audit.controller';
@@ -53,6 +58,7 @@ import { TenantPlatformNotificationsController } from './crm/tenant-notification
     PlatformCrmCampaignsController,
     PlatformCrmNotificationsController,
     TenantPlatformNotificationsController,
+    PlatformReleasesController,
   ],
   providers: [
     PlatformTicketsService,
@@ -70,6 +76,9 @@ import { TenantPlatformNotificationsController } from './crm/tenant-notification
     CrmMailService,
     CrmNotificationsService,
     CrmCampaignsService,
+    PlatformReleasesService,
+    ClientVersionTracker,
+    { provide: APP_INTERCEPTOR, useClass: ClientVersionTrackingInterceptor },
   ],
   exports: [
     PlatformTicketsService,

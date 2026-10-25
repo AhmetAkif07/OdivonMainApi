@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { FirebaseService } from '../../../shared/firebase/firebase.service';
-import { ROOT_COLLECTION, tenantCollectionPath } from '../../../shared/firebase/firestore-path';
+import { tenantCollectionPath } from '../../../shared/firebase/firestore-path';
 import { AppException } from '../../../shared/errors/app.exception';
 import { ErrorCode } from '../../../shared/errors/error-codes';
 import { PlatformAuditService } from '../audit/platform-audit.service';

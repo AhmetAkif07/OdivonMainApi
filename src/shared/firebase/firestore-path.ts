@@ -1,5 +1,6 @@
 export const TENANT_COLLECTION = {
   customers: 'customers',
+  versionHistory: 'versionHistory',
   patients: 'patients',
   appointments: 'appointments',
   examinations: 'examinations',
@@ -263,6 +264,7 @@ export const ROOT_COLLECTION = {
   platformErrorLogs: 'platformErrorLogs',
   platformAuditLogs: 'platformAuditLogs',
   platformSettings: 'platformSettings',
+  platformReleases: 'platformReleases',
   rentPublicTenants: 'rentPublicTenants',
   rentPublicOtps: 'rentPublicOtps',
   apmPublicBranches: 'apmPublicBranches',
