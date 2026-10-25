@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { FirebaseService } from '../../shared/firebase/firebase.service';
-import { tenantCollectionPath } from '../../shared/firebase/firestore-path';
+import { ROOT_COLLECTION, tenantCollectionPath } from '../../shared/firebase/firestore-path';
 import { AppException } from '../../shared/errors/app.exception';
 import { ErrorCode } from '../../shared/errors/error-codes';
 import { TenantContext } from '../../shared/tenancy/tenant.context';
@@ -212,15 +212,20 @@ export class FgasRepository {
       await this.firebase.db.doc(`tenants/${this.tenant.getTenantId()}`).get()
     ).data() as { planId?: string; membershipStatus?: string } | undefined;
     const limits = fgasEntitlements(tenant ?? {});
-    const [equipment, operations] = await Promise.all([
+    const [equipment, operations, users] = await Promise.all([
       this.collection(FGAS_COLLECTIONS.records).get(),
       this.collection(FGAS_COLLECTIONS.operations).get(),
+      this.firebase.db
+        .collection(ROOT_COLLECTION.users)
+        .where('tenantId', '==', this.tenant.getTenantId())
+        .get(),
     ]);
     return {
       ...limits,
       usage: {
         equipment: equipment.docs.filter((doc) => !doc.data()['archivedAt']).length,
         operations: operations.docs.filter((doc) => !doc.data()['archivedAt']).length,
+        users: users.docs.filter((doc) => doc.data()['status'] === 'active').length,
       },
     };
   }

@@ -17,6 +17,7 @@ import { RequireModule } from '../../shared/authorization/module.decorator';
 import { ModuleGuard } from '../../shared/authorization/module.guard';
 import { PermissionGuard } from '../../shared/authorization/permission.guard';
 import { RequirePermission } from '../../shared/authorization/require-permission.decorator';
+import { SubscriptionGuard } from '../../shared/authorization/subscription.guard';
 import { TenantGuard } from '../../shared/tenancy/tenant.guard';
 import { FGAS_ROLE_TEMPLATES } from './fgas.constants';
 import {
@@ -42,6 +43,7 @@ import { FgasService } from './fgas.service';
   FirebaseAuthGuard,
   TenantGuard,
   EmailVerifiedGuard,
+  SubscriptionGuard,
   ModuleGuard,
   PermissionGuard,
 )

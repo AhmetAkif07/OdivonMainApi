@@ -67,6 +67,37 @@ describe('FgasRepository', () => {
     });
   });
 
+  it('enforces paid plan capacity on the server and reports current usage', async () => {
+    const db = new FakeFirestore();
+    const tenant = new TenantContext();
+    const repository = new FgasRepository({ db } as never, tenant);
+    await db.doc('tenants/tenant-a').set({ planId: 'starter', membershipStatus: 'active' });
+    await db.doc('users/owner-a').set({ tenantId: 'tenant-a', status: 'active' });
+    for (let index = 0; index < 100; index += 1) {
+      await db
+        .collection(`tenants/tenant-a/${FGAS_COLLECTIONS.records}`)
+        .doc(`equipment-${index}`)
+        .set({ id: `equipment-${index}`, archivedAt: null });
+    }
+
+    await tenant.run(principal('tenant-a'), async () => {
+      await expect(
+        repository.create({
+          name: 'Limit üstü cihaz',
+          location: 'İstanbul',
+          equipmentType: 'air-conditioning',
+        }),
+      ).rejects.toMatchObject({ code: 'SUBSCRIPTION_LIMIT' });
+      await expect(repository.entitlements()).resolves.toMatchObject({
+        planId: 'starter',
+        maxEquipment: 100,
+        maxOperations: 2_500,
+        maxUsers: 3,
+        usage: { equipment: 100, operations: 0, users: 1 },
+      });
+    });
+  });
+
   it('stores operational records per tenant with optimistic versioning and immutable evidence', async () => {
     const db = new FakeFirestore();
     const tenant = new TenantContext();
