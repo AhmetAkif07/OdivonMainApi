@@ -100,14 +100,14 @@ describe('PaymentsService tenant and source boundaries', () => {
 
   it('sells the APM packages only to APM tenants, at exact kuruş amounts', async () => {
     modules = ['apm'];
-    expect(Object.keys(service.saasPlans())).toEqual(['apm_limited', 'apm_premium']);
+    expect(Object.keys(await service.saasPlans())).toEqual(['apm_limited', 'apm_premium']);
     expect((await service.createSaasOrder({ planId: 'apm_limited', billingCycle: 'monthly' })).amountKurus).toBe(3999);
     expect((await service.createSaasOrder({ planId: 'apm_premium', billingCycle: 'monthly' })).amountKurus).toBe(5999);
     await expect(service.createSaasOrder({ planId: 'pro', billingCycle: 'monthly' })).rejects.toThrow('not available');
     await expect(service.createSaasOrder({ planId: 'apm_premium', billingCycle: 'yearly' })).rejects.toThrow('Invalid SaaS plan');
 
     modules = ['gym'];
-    expect(Object.keys(service.saasPlans())).toEqual(['starter', 'pro', 'enterprise']);
+    expect(Object.keys(await service.saasPlans())).toEqual(['starter', 'pro', 'enterprise']);
     await expect(service.createSaasOrder({ planId: 'apm_limited', billingCycle: 'monthly' })).rejects.toThrow('not available');
   });
 });

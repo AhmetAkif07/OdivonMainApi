@@ -17,6 +17,7 @@ import { PlatformErrorLogsService } from './logs/error-logs.service';
 import { PlatformErrorLogsController } from './logs/error-logs.controller';
 import { PlatformOrphanTenantsService } from './orphans/orphan-tenants.service';
 import { PlatformOrphanTenantsController } from './orphans/orphan-tenants.controller';
+import { PlatformSaasPricingController } from './pricing/saas-pricing.controller';
 
 @Module({
   controllers: [
@@ -29,6 +30,7 @@ import { PlatformOrphanTenantsController } from './orphans/orphan-tenants.contro
     PlatformErrorLogsController,
     PlatformAuditController,
     PlatformOrphanTenantsController,
+    PlatformSaasPricingController,
   ],
   providers: [
     PlatformAdminGuard,

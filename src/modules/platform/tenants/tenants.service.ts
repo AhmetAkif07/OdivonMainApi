@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { UserRecord } from 'firebase-admin/auth';
 import { FirebaseService } from '../../../shared/firebase/firebase.service';
 import { ROOT_COLLECTION, TENANT_COLLECTION, tenantCollectionPath } from '../../../shared/firebase/firestore-path';
 import { AppException } from '../../../shared/errors/app.exception';
@@ -16,6 +17,31 @@ import {
   SuspendTenantDto,
   UpdateTenantDto,
 } from './dto';
+
+/** A tenant user as the panel sees it: Firebase Auth account joined with its Firestore profile. */
+export type PlatformTenantUser = {
+  uid: string;
+  tenantId: string;
+  role: UserProfile['role'] | null;
+  modules: UserProfile['modules'];
+  email: string;
+  displayName: string | null;
+  phone: string | null;
+  status: UserProfile['status'];
+  suspendedByPlatform?: boolean;
+  membershipStatus?: UserProfile['membershipStatus'];
+  createdAt: string;
+  updatedAt: string;
+  authExists: boolean;
+  hasProfile: boolean;
+  emailVerified: boolean;
+  authDisabled: boolean;
+  providers: string[];
+  lastSignInAt: string | null;
+  isOwner: boolean;
+  /** Earliest-created account of the tenant (the one who signed up first). */
+  isFirstRegistered: boolean;
+};
 
 @Injectable()
 export class PlatformTenantsService {
@@ -116,21 +142,11 @@ export class PlatformTenantsService {
     const now = new Date();
     const effective = computeTenantStatus(tenant, now);
 
-    // Fetch owner info
-    let ownerProfile: UserProfile | null = null;
-    if (tenant.ownerUid) {
-      const ownerSnap = await this.usersCollection().doc(tenant.ownerUid).get();
-      if (ownerSnap.exists) {
-        ownerProfile = ownerSnap.data() as UserProfile;
-      }
-    }
-
-    // User count for tenant
-    const usersCountSnap = await this.usersCollection()
-      .where('tenantId', '==', id)
-      .count()
-      .get();
-    const userCount = usersCountSnap.data().count;
+    // Tenant users (Firebase Auth joined with Firestore profiles), owner and first sign-up
+    const users = await this.loadTenantUsers(id, tenant.ownerUid);
+    const owner = users.find((u) => u.isOwner) ?? null;
+    const firstUser = users.find((u) => u.isFirstRegistered) ?? null;
+    const userCount = users.filter((u) => u.authExists).length;
 
     // Check if farm subscription exists
     let farmSubscription: Record<string, unknown> | null = null;
@@ -161,7 +177,8 @@ export class PlatformTenantsService {
         ...tenant,
         ...effective,
       },
-      owner: ownerProfile,
+      owner,
+      firstUser,
       userCount,
       farmSubscription,
       recentPayments,
@@ -463,9 +480,81 @@ export class PlatformTenantsService {
   }
 
   async listTenantUsers(tenantId: string) {
-    const snapshot = await this.usersCollection().where('tenantId', '==', tenantId).get();
-    return snapshot.docs
-      .map((d) => d.data() as UserProfile)
-      .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+    const tenantDoc = await this.tenantsCollection().doc(tenantId).get();
+    if (!tenantDoc.exists) {
+      throw new AppException(ErrorCode.TENANT_NOT_FOUND, 'Tenant not found');
+    }
+    const tenant = tenantDoc.data() as TenantDocument;
+    return this.loadTenantUsers(tenantId, tenant.ownerUid);
+  }
+
+  /**
+   * Firebase Auth is the source of truth: a uid belongs to the tenant when its Firestore profile,
+   * its Auth tenantId claim or the tenant's ownerUid says so. Owner first, then newest first.
+   */
+  private async loadTenantUsers(tenantId: string, ownerUid?: string | null): Promise<PlatformTenantUser[]> {
+    const [profilesSnap, authUsers] = await Promise.all([
+      this.usersCollection().where('tenantId', '==', tenantId).get(),
+      this.loadAuthUsers(),
+    ]);
+    const profiles = new Map(profilesSnap.docs.map((d) => [d.id, d.data() as UserProfile]));
+
+    const uids = new Set<string>(profiles.keys());
+    authUsers.forEach((auth, uid) => {
+      if (auth.customClaims?.['tenantId'] === tenantId) uids.add(uid);
+    });
+    if (ownerUid) uids.add(ownerUid);
+
+    const toIso = (value?: string) => (value ? new Date(value).toISOString() : null);
+    const users: PlatformTenantUser[] = [];
+    for (const uid of uids) {
+      const profile = profiles.get(uid);
+      const auth = authUsers.get(uid);
+      if (!profile && !auth) continue; // owner uid with neither an account nor a profile
+      const claims = auth?.customClaims ?? {};
+      const authCreatedAt = toIso(auth?.metadata.creationTime);
+      users.push({
+        uid,
+        tenantId,
+        role: profile?.role ?? (claims['role'] as UserProfile['role']) ?? null,
+        modules: profile?.modules ?? (Array.isArray(claims['modules']) ? (claims['modules'] as UserProfile['modules']) : []),
+        email: profile?.email || auth?.email || '',
+        displayName: profile?.displayName ?? auth?.displayName ?? null,
+        phone: profile?.phone ?? auth?.phoneNumber ?? null,
+        status: profile?.status ?? (auth?.disabled ? 'inactive' : 'active'),
+        suspendedByPlatform: profile?.suspendedByPlatform,
+        membershipStatus: profile?.membershipStatus,
+        createdAt: authCreatedAt ?? profile?.createdAt ?? '',
+        updatedAt: profile?.updatedAt ?? authCreatedAt ?? '',
+        authExists: Boolean(auth),
+        hasProfile: Boolean(profile),
+        emailVerified: auth?.emailVerified ?? profile?.emailVerified ?? false,
+        authDisabled: auth?.disabled ?? false,
+        providers: auth?.providerData.map((p) => p.providerId) ?? [],
+        lastSignInAt: toIso(auth?.metadata.lastSignInTime),
+        isOwner: Boolean(ownerUid) && uid === ownerUid,
+        isFirstRegistered: false,
+      });
+    }
+
+    const firstRegistered = users
+      .filter((u) => u.authExists && u.createdAt)
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt))[0];
+    if (firstRegistered) firstRegistered.isFirstRegistered = true;
+
+    return users.sort(
+      (a, b) => Number(b.isOwner) - Number(a.isOwner) || (b.createdAt || '').localeCompare(a.createdAt || ''),
+    );
+  }
+
+  private async loadAuthUsers() {
+    const users = new Map<string, UserRecord>();
+    let pageToken: string | undefined;
+    do {
+      const res = await this.firebase.auth.listUsers(1000, pageToken);
+      res.users.forEach((u) => users.set(u.uid, u));
+      pageToken = res.pageToken;
+    } while (pageToken);
+    return users;
   }
 }

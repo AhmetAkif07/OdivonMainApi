@@ -1,10 +1,10 @@
 import { randomUUID } from 'crypto';
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { FirebaseService } from '../../shared/firebase/firebase.service';
 import { TenantContext } from '../../shared/tenancy/tenant.context';
 import { gymToday } from '../gym/ops/receivables.math';
 import { daysUntil, effectiveSubscription, nextPeriod, receiptNo, SAAS_GRACE_DAYS, SAAS_REMINDER_DAYS, SaasCycle, TenantBillingState } from './saas-billing';
-import { SAAS_SANDBOX_PRICES } from './saas-prices';
+import { SaasPricingService, STATIC_SAAS_PRICING } from '../saas-pricing/saas-pricing.service';
 
 export interface SaasPaymentRecord {
   id: string;
@@ -38,6 +38,7 @@ export class SaasBillingService {
   constructor(
     private readonly firebase: FirebaseService,
     private readonly tenant: TenantContext,
+    @Optional() private readonly pricing: SaasPricingService = STATIC_SAAS_PRICING,
   ) {}
 
   private col(name: string, tenantId = this.tenant.getTenantId()) {
@@ -136,13 +137,13 @@ export class SaasBillingService {
       updatedAt: paidAt,
     });
 
-    const amount = (SAAS_SANDBOX_PRICES as any)[planId]?.[billingCycle] ?? 1490;
+    const amount = (await this.pricing.price(planId, billingCycle)) ?? 1490;
     const paymentRecord: SaasPaymentRecord = {
       id: sessionId,
       receiptNo: recNo,
       planId,
       billingCycle,
-      amountKurus: amount * 100,
+      amountKurus: Math.round(amount * 100),
       currency: 'TRY',
       mode: 'sandbox',
       periodStartsAt: period.startsAt,

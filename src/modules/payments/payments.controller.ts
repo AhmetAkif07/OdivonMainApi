@@ -34,6 +34,10 @@ export class PaymentsController {
   @ApiOperation({ summary: 'Server-authoritative SaaS sandbox prices' })
   saasPlans() { return this.payments.saasPlans(); }
 
+  @Get('saas-plans/catalog')
+  @ApiOperation({ summary: 'Plans this tenant can buy, with names and current prices' })
+  saasPlanCatalog() { return this.payments.saasPlanCatalog(); }
+
   @Post('saas-orders')
   @Roles('owner')
   @ApiOperation({ summary: 'Create a SaaS sandbox order for the current tenant' })

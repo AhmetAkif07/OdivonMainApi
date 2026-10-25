@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { AppException } from '../../shared/errors/app.exception';
 import { ErrorCode } from '../../shared/errors/error-codes';
 import { FirebaseService } from '../../shared/firebase/firebase.service';
@@ -8,6 +8,7 @@ import { effectiveSubscription, TenantBillingState } from '../payments/saas-bill
 import { APM_PLANS, ApmPlanId, ApmPlanLimitException, ApmSubscriptionRequiredException, isApmPlan, istanbulMonthStart } from './apm-plans';
 import { ApmAppointmentStatus, SaveApmAppointmentDto } from './apm.dto';
 import { ApmNotificationsService } from './apm-notifications.service';
+import { SaasPricingService, STATIC_SAAS_PRICING } from '../saas-pricing/saas-pricing.service';
 import { appointmentSlotIds } from './apm-time';
 
 export interface ApmAppointment {
@@ -82,6 +83,7 @@ export class ApmService {
     private readonly firebase: FirebaseService,
     private readonly tenantContext: TenantContext,
     private readonly notifications: ApmNotificationsService,
+    @Optional() private readonly pricing: SaasPricingService = STATIC_SAAS_PRICING,
   ) {}
 
   async appointments(from?: string, to?: string): Promise<ApmAppointment[]> {
@@ -115,11 +117,14 @@ export class ApmService {
   /** Package, trial/subscription state and this month's usage; drives the APM subscription page. */
   async subscription(): Promise<ApmSubscription> {
     const tenantId = this.tenantContext.getTenantId();
-    const [tenantSnapshot, subscriptionSnapshot, used] = await Promise.all([
+    const [tenantSnapshot, subscriptionSnapshot, used, catalog] = await Promise.all([
       this.firebase.db.doc(`tenants/${tenantId}`).get(),
       this.firebase.db.doc(`${tenantCollectionPath(tenantId, TENANT_COLLECTION.gymSaasSubscription)}/${tenantId}`).get(),
       this.collection().where('createdAt', '>=', istanbulMonthStart()).count().get(),
+      this.pricing.catalog(),
     ]);
+    // Names and prices come from the platform panel; the quota stays with the package id.
+    const priced = new Map(catalog.plans.map((plan) => [plan.id, plan]));
     const tenant = (tenantSnapshot.data() ?? {}) as TenantBillingState;
     const state = effectiveSubscription(tenant);
     const storedPlan = (subscriptionSnapshot.data() as { planId?: string } | undefined)?.planId;
@@ -131,14 +136,21 @@ export class ApmService {
     return {
       membershipStatus: state.membershipStatus,
       planId,
-      planName: planId ? APM_PLANS[planId].name : null,
+      planName: planId ? (priced.get(planId)?.name ?? APM_PLANS[planId].name) : null,
       trialEndsAt: tenant.trialEndsAt ?? null,
       subscriptionEndsAt: state.subscriptionEndsAt,
       inGrace: state.inGrace,
       usedThisMonth,
       monthlyLimit,
       canCreate: isOpen && (monthlyLimit === null || usedThisMonth < monthlyLimit),
-      plans: (Object.keys(APM_PLANS) as ApmPlanId[]).map((id) => ({ id, ...APM_PLANS[id] })),
+      plans: (Object.keys(APM_PLANS) as ApmPlanId[])
+        .filter((id) => priced.get(id)?.active !== false && priced.get(id)?.monthly !== null)
+        .map((id) => ({
+          id,
+          ...APM_PLANS[id],
+          name: priced.get(id)?.name ?? APM_PLANS[id].name,
+          monthlyPrice: priced.get(id)?.monthly ?? APM_PLANS[id].monthlyPrice,
+        })),
     };
   }
 

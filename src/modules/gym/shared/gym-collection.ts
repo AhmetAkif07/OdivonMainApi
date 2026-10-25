@@ -21,6 +21,6 @@ export async function listUndeleted<T extends { deletedAt?: string | null; creat
     .filter((item) => !isDeleted(item))
     .sort(
       (left, right) =>
-        (right.createdAt ?? '').localeCompare(left.createdAt ?? '') || (right.id ?? '').localeCompare(left.id ?? ''),
+        String(right.createdAt ?? '').localeCompare(String(left.createdAt ?? '')) || String(right.id ?? '').localeCompare(String(left.id ?? '')),
     );
 }

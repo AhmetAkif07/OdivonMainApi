@@ -12,9 +12,24 @@ export const SAAS_SANDBOX_PRICES = {
   rent_professional: { monthly: 5990, yearly: 59900 },
 } as const;
 
+/** Default display names; the platform panel can rename a plan (see modules/saas-pricing). */
+export const SAAS_PLAN_NAMES: Record<string, string> = {
+  starter: 'Başlangıç',
+  pro: 'Profesyonel',
+  enterprise: 'Kurumsal',
+  apm_limited: 'Sınırlı',
+  apm_premium: 'Premium',
+  rent_starter: 'Başlangıç',
+  rent_business: 'İşletme',
+  rent_professional: 'Profesyonel',
+};
+
 type SaasPlanPrices = Record<string, Partial<Record<'monthly' | 'yearly', number>>>;
 
-/** Price in TL of a plan and cycle, or undefined when that combination is not sold. */
+/**
+ * Code defaults only. The live price is SaasPricingService.price(), which applies the overrides
+ * saved from the platform panel (Firestore platformSettings/saasPricing).
+ */
 export function saasPlanPrice(planId: string, billingCycle: 'monthly' | 'yearly'): number | undefined {
   return (SAAS_SANDBOX_PRICES as SaasPlanPrices)[planId]?.[billingCycle];
 }

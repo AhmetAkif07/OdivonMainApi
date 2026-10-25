@@ -51,6 +51,11 @@ export class PackagesRepository {
       requiredDocuments: dto.requiredDocuments ?? [],
       branchId: null,
       branchName: null,
+      packageScope: dto.packageScope ?? (dto.trainerId ? 'trainer' : 'gym'),
+      trainerId: dto.trainerId ?? null,
+      trainerName: dto.trainerName ?? null,
+      trainerCommissionRate: dto.trainerCommissionRate ?? null,
+      trainerPricing: dto.trainerPricing ?? [],
     };
     await ref.set(item);
     return item;
@@ -68,11 +73,17 @@ export class PackagesRepository {
   async list(query: ListPackagesQueryDto) {
     const items = await listUndeleted<GymPackage>(this.collection());
     return items.filter((item) => {
-      if (query.activeOnly) {
-        return item.status === 'active';
+      if (query.activeOnly && item.status !== 'active') {
+        return false;
       }
-      if (query.status) {
-        return item.status === query.status;
+      if (query.status && item.status !== query.status) {
+        return false;
+      }
+      if (query.packageScope && (item.packageScope || 'gym') !== query.packageScope) {
+        return false;
+      }
+      if (query.trainerId && item.trainerId !== query.trainerId) {
+        return false;
       }
       return true;
     });

@@ -22,6 +22,7 @@ import { HairModule } from './modules/hair/hair.module';
 import { PaymentsModule } from './modules/payments/payments.module';
 import { ApmModule } from './modules/apm/apm.module';
 import { PlatformModule } from './modules/platform/platform.module';
+import { SaasPricingModule } from './modules/saas-pricing/saas-pricing.module';
 import { BeautyModule } from './modules/beauty/beauty.module';
 import { RentacarModule } from './modules/rentacar/rentacar.module';
 import { DrivingSchoolModule } from './modules/driving-school/driving-school.module';
@@ -52,6 +53,7 @@ import { FgasModule } from './modules/fgas/fgas.module';
     FoodLabelModule,
     FireSafeModule,
     FgasModule,
+    SaasPricingModule,
     PaymentsModule,
     ApmModule,
     PlatformModule,
