@@ -20,6 +20,8 @@ import { effectiveSubscription, TenantBillingState } from '../payments/saas-bill
 import { RolesService } from './roles/roles.service';
 import { MailService } from '../../shared/mail/mail.service';
 import { WelcomeModule } from '../../shared/mail/welcome-templates';
+import { verificationUrl } from '../../shared/mail/verification-url';
+import { fgasEntitlements } from '../../shared/product-platform/fgas-entitlements';
 
 const SAAS_TRIAL_DAYS = 14;
 
@@ -164,6 +166,8 @@ export class IdentityService {
       emailVerified: true,
       emailVerificationToken: null,
       emailVerificationExpiresAt: null,
+      emailVerifiedAt: nowIso,
+      emailVerifiedBy: 'link',
       updatedAt: nowIso,
     });
 
@@ -380,6 +384,20 @@ export class IdentityService {
 
   async createUser(dto: CreateUserDto): Promise<UserProfile> {
     const store = this.tenantContext.getStore();
+    if (store.modules?.includes('fgas')) {
+      const tenant = await this.tenants.getById(store.tenantId);
+      const limits = fgasEntitlements(tenant);
+      if (limits.maxUsers !== null) {
+        const activeUsers = (await this.users.listByCurrentTenant()).filter(
+          (user) => user.status === 'active',
+        ).length;
+        if (activeUsers >= limits.maxUsers)
+          throw new AppException(
+            ErrorCode.SUBSCRIPTION_LIMIT,
+            `${limits.planId} planının kullanıcı limiti doldu. Planınızı yükseltin.`,
+          );
+      }
+    }
     const roleIds = await this.roles.assertRolesExist(dto.roleIds);
     let uid: string | undefined;
     let profileCreated = false;
@@ -526,40 +544,6 @@ export class IdentityService {
       }
     }
   }
-}
-
-function verificationUrl(module: ProductModule, token: string): string {
-  if (module === 'drivingschool') {
-    const url =
-      process.env.APP_URL_DRIVINGSCHOOL?.trim() ||
-      (process.env.NODE_ENV === 'development'
-        ? 'http://localhost:4200'
-        : 'https://drivingschool.odivon.com');
-    return `${url.replace(/\/+$/, '')}/auth/verify-email?token=${encodeURIComponent(token)}`;
-  }
-  if (module === 'rentacar') {
-    const url =
-      process.env.APP_URL_RENTACAR?.trim() ||
-      (process.env.NODE_ENV === 'development'
-        ? 'http://localhost:4200'
-        : 'https://rent.odivon.com');
-    return `${url.replace(/\/+$/, '')}/auth/verify-email?token=${encodeURIComponent(token)}`;
-  }
-  if (module === 'gym') {
-    const url =
-      process.env.APP_URL_GYM?.trim() || process.env.APP_URL?.trim() || 'https://gym.odivon.com';
-    return `${url.replace(/\/+$/, '')}/auth/verify-email?token=${encodeURIComponent(token)}`;
-  }
-  if (module === 'spa') {
-    const url = process.env.APP_URL_SPA?.trim() || 'https://spa.odivon.com';
-    return `${url.replace(/\/+$/, '')}/auth/verify-email?token=${encodeURIComponent(token)}`;
-  }
-  if (module === 'vet') {
-    const url = process.env.APP_URL_VET?.trim() || 'https://vet.odivon.com';
-    return `${url.replace(/\/+$/, '')}/verify-email?token=${encodeURIComponent(token)}`;
-  }
-  const apiUrl = process.env.PUBLIC_API_URL?.trim() || 'https://mainapi.odivon.com';
-  return `${apiUrl.replace(/\/+$/, '')}/api/v1/identity/verification?token=${encodeURIComponent(token)}`;
 }
 
 function mapFirebaseUserError(

@@ -22,7 +22,7 @@ export class CreateSupportTicketDto {
   @ApiProperty({ example: 'Turnikeden geçerken kartım hata veriyor, lütfen yardımcı olun.' })
   @IsString()
   @IsNotEmpty()
-  @MinLength(10)
+  @MinLength(5)
   description!: string;
 
   @ApiProperty({ example: 'Ahmet Yılmaz' })

@@ -47,6 +47,9 @@ export class FgasService {
   complianceReport(from?: string, to?: string) {
     return this.records.complianceReport(from, to);
   }
+  entitlements() {
+    return this.records.entitlements();
+  }
   listOperations(kind: FgasOperationKind, query: FgasOperationListQueryDto) {
     return this.records.listOperations(kind, query);
   }

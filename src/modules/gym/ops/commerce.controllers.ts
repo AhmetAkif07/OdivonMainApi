@@ -307,6 +307,16 @@ export class GymAccountingController {
   removeCategory(@Param('id') id: string) {
     return this.commerce.removeAccountingCategory(id);
   }
+
+  @Get('expenses/analytics')
+  @RequirePermission('accounting', 'view')
+  getExpenseAnalytics(
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('branchId') branchId?: string,
+  ) {
+    return this.commerce.getExpenseAnalytics({ startDate, endDate, branchId });
+  }
 }
 
 @ApiTags('gym-einvoice')

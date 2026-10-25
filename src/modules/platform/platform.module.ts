@@ -4,6 +4,7 @@ import {
   SupportTicketsController,
 } from './tickets/tickets.controller';
 import { Module } from '@nestjs/common';
+import { MailModule } from '../../shared/mail/mail.module';
 import { APP_INTERCEPTOR } from '@nestjs/core';
 import { PlatformReleasesService } from './releases/releases.service';
 import { PlatformReleasesController } from './releases/releases.controller';
@@ -41,6 +42,7 @@ import {
 import { TenantPlatformNotificationsController } from './crm/tenant-notifications.controller';
 
 @Module({
+  imports: [MailModule],
   controllers: [
     SupportTicketsController,
     PlatformTicketsController,

@@ -12,6 +12,7 @@ import {
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { FirebaseAuthGuard } from '../../shared/auth/firebase-auth.guard';
 import { EmailVerifiedGuard } from '../../shared/auth/email-verified.guard';
+import { FirebaseAppCheckGuard } from '../../shared/auth/firebase-app-check.guard';
 import { RequireModule } from '../../shared/authorization/module.decorator';
 import { ModuleGuard } from '../../shared/authorization/module.guard';
 import { PermissionGuard } from '../../shared/authorization/permission.guard';
@@ -36,7 +37,14 @@ import { FgasService } from './fgas.service';
 @ApiTags('fgas')
 @ApiBearerAuth()
 @RequireModule('fgas')
-@UseGuards(FirebaseAuthGuard, TenantGuard, EmailVerifiedGuard, ModuleGuard, PermissionGuard)
+@UseGuards(
+  FirebaseAppCheckGuard,
+  FirebaseAuthGuard,
+  TenantGuard,
+  EmailVerifiedGuard,
+  ModuleGuard,
+  PermissionGuard,
+)
 @Controller('fgas')
 export class FgasController {
   constructor(private readonly service: FgasService) {}
@@ -59,6 +67,9 @@ export class FgasController {
     @Query('to') to?: string,
   ) {
     return this.service.complianceReport(from, to);
+  }
+  @Get('entitlements') @RequirePermission('fgasRecords', 'view') entitlements() {
+    return this.service.entitlements();
   }
   @Get('records')
   @RequirePermission('fgasRecords', 'view')

@@ -44,7 +44,8 @@ export class PlatformTicketsService {
 
     const ticket: Omit<SupportTicket, 'id'> = {
       trackingNumber,
-      tenantId: dto.tenantId || authContext?.tenantId || null,
+      // A signed-in user's tenant comes from their token, not from the form.
+      tenantId: authContext?.tenantId || dto.tenantId || null,
       tenantName: dto.tenantName || null,
       userId: authContext?.uid || null,
       userRole: authContext?.role || null,

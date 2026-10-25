@@ -9,21 +9,32 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { PlatformAdminGuard } from '../platform-admin.guard';
+import { Request } from 'express';
+import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { RequirePlatformAdmin } from '../platform-admin.decorator';
+import {
+  getOptionalDecodedToken,
+  OptionalFirebaseAuthGuard,
+} from '../../../shared/auth/optional-firebase-auth.guard';
 import { PlatformTicketsService } from './tickets.service';
 import { CreateSupportTicketDto, UpdateTicketStatusDto } from './dto';
 
 @ApiTags('Support & Tickets')
 @Controller('support/tickets')
+@UseGuards(OptionalFirebaseAuthGuard)
 export class SupportTicketsController {
   constructor(private readonly ticketsService: PlatformTicketsService) {}
 
   @Post()
-  @ApiOperation({ summary: 'Submit a new customer support ticket' })
-  createTicket(@Body() dto: CreateSupportTicketDto, @Req() req: any) {
-    const authUser = req.user
-      ? { uid: req.user.uid, tenantId: req.user.tenantId, role: req.user.role }
+  @ApiOperation({ summary: 'Submit a new customer support ticket (links the signed-in user when a token is sent)' })
+  createTicket(@Body() dto: CreateSupportTicketDto, @Req() req: Request) {
+    const user = getOptionalDecodedToken(req);
+    const authUser = user
+      ? {
+          uid: user.uid,
+          tenantId: typeof user['tenantId'] === 'string' ? user['tenantId'] : undefined,
+          role: typeof user['role'] === 'string' ? user['role'] : undefined,
+        }
       : undefined;
     return this.ticketsService.createTicket(dto, authUser);
   }
@@ -35,18 +46,20 @@ export class SupportTicketsController {
   }
 
   @Get('my-tickets')
-  @ApiOperation({ summary: 'Get tickets for user by email query' })
-  getMyTickets(@Query('email') email?: string, @Req() req?: any) {
-    const userEmail = email || req?.user?.email;
-    const userId = req?.user?.uid;
-    return this.ticketsService.getMyTickets(userEmail, userId);
+  @ApiOperation({ summary: "Signed-in user's tickets (by uid + email); anonymous callers search by ?email" })
+  getMyTickets(@Req() req: Request, @Query('email') email?: string) {
+    const user = getOptionalDecodedToken(req);
+    if (user) {
+      // A signed-in user only sees their own tickets, whatever ?email says.
+      return this.ticketsService.getMyTickets(user.email, user.uid);
+    }
+    return this.ticketsService.getMyTickets(email, undefined);
   }
 }
 
 @ApiTags('Platform Tickets (Super Admin)')
 @Controller('platform/tickets')
-@UseGuards(PlatformAdminGuard)
-@ApiBearerAuth()
+@RequirePlatformAdmin()
 export class PlatformTicketsController {
   constructor(private readonly ticketsService: PlatformTicketsService) {}
 

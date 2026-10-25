@@ -4,6 +4,7 @@ import { tenantCollectionPath } from '../../shared/firebase/firestore-path';
 import { AppException } from '../../shared/errors/app.exception';
 import { ErrorCode } from '../../shared/errors/error-codes';
 import { TenantContext } from '../../shared/tenancy/tenant.context';
+import { fgasEntitlements } from '../../shared/product-platform/fgas-entitlements';
 import {
   CompleteFgasOnboardingDto,
   CreateFgasOperationDto,
@@ -58,6 +59,7 @@ export class FgasRepository {
   }
 
   async create(dto: CreateFgasRecordDto): Promise<FgasRecord> {
+    await this.assertPlanCapacity('equipment');
     const now = new Date().toISOString();
     const ref = this.collection(FGAS_COLLECTIONS.records).doc();
     const record: FgasRecord = {
@@ -205,6 +207,24 @@ export class FgasRepository {
     return { onboardingCompleted: true, profile };
   }
 
+  async entitlements() {
+    const tenant = (
+      await this.firebase.db.doc(`tenants/${this.tenant.getTenantId()}`).get()
+    ).data() as { planId?: string; membershipStatus?: string } | undefined;
+    const limits = fgasEntitlements(tenant ?? {});
+    const [equipment, operations] = await Promise.all([
+      this.collection(FGAS_COLLECTIONS.records).get(),
+      this.collection(FGAS_COLLECTIONS.operations).get(),
+    ]);
+    return {
+      ...limits,
+      usage: {
+        equipment: equipment.docs.filter((doc) => !doc.data()['archivedAt']).length,
+        operations: operations.docs.filter((doc) => !doc.data()['archivedAt']).length,
+      },
+    };
+  }
+
   async complianceReport(from?: string, to?: string) {
     const [equipmentSnapshot, operationSnapshot, audit] = await Promise.all([
       this.collection(FGAS_COLLECTIONS.records).get(),
@@ -292,6 +312,7 @@ export class FgasRepository {
     kind: FgasOperationKind,
     dto: CreateFgasOperationDto,
   ): Promise<FgasOperation> {
+    await this.assertPlanCapacity('operations');
     const now = new Date().toISOString();
     const ref = this.collection(FGAS_COLLECTIONS.operations).doc();
     const text = (value?: string) => value?.trim() || null;
@@ -444,6 +465,25 @@ export class FgasRepository {
       throw new AppException(
         ErrorCode.VALIDATION_ERROR,
         `Tamamlanan kayıt için zorunlu alanlar eksik: ${fields.join(', ')}.`,
+      );
+  }
+
+  private async assertPlanCapacity(resource: 'equipment' | 'operations'): Promise<void> {
+    const tenant = (
+      await this.firebase.db.doc(`tenants/${this.tenant.getTenantId()}`).get()
+    ).data() as { planId?: string; membershipStatus?: string } | undefined;
+    const limits = fgasEntitlements(tenant ?? {});
+    const maximum = resource === 'equipment' ? limits.maxEquipment : limits.maxOperations;
+    if (maximum === null) return;
+    const collection =
+      resource === 'equipment' ? FGAS_COLLECTIONS.records : FGAS_COLLECTIONS.operations;
+    const count = (await this.collection(collection).get()).docs.filter(
+      (doc) => !doc.data()['archivedAt'],
+    ).length;
+    if (count >= maximum)
+      throw new AppException(
+        ErrorCode.SUBSCRIPTION_LIMIT,
+        `${limits.planId} planının ${resource === 'equipment' ? 'ekipman' : 'operasyon'} limiti doldu. Planınızı yükseltin.`,
       );
   }
 
