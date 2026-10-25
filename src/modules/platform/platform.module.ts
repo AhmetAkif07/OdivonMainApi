@@ -1,3 +1,8 @@
+import { PlatformTicketsService } from './tickets/tickets.service';
+import {
+  PlatformTicketsController,
+  SupportTicketsController,
+} from './tickets/tickets.controller';
 import { Module } from '@nestjs/common';
 import { PlatformAdminGuard } from './platform-admin.guard';
 import { PlatformAuditService } from './audit/platform-audit.service';
@@ -32,6 +37,8 @@ import { TenantPlatformNotificationsController } from './crm/tenant-notification
 
 @Module({
   controllers: [
+    SupportTicketsController,
+    PlatformTicketsController,
     PlatformMeController,
     PlatformDashboardController,
     PlatformTenantsController,
@@ -48,6 +55,7 @@ import { TenantPlatformNotificationsController } from './crm/tenant-notification
     TenantPlatformNotificationsController,
   ],
   providers: [
+    PlatformTicketsService,
     PlatformAdminGuard,
     PlatformAuditService,
     PlatformDashboardService,
@@ -64,6 +72,7 @@ import { TenantPlatformNotificationsController } from './crm/tenant-notification
     CrmCampaignsService,
   ],
   exports: [
+    PlatformTicketsService,
     PlatformAdminGuard,
     PlatformAuditService,
     PlatformTenantsService,
