@@ -23,6 +23,7 @@ import { WelcomeModule } from '../../shared/mail/welcome-templates';
 import { verificationUrl } from '../../shared/mail/verification-url';
 import { fgasEntitlements } from '../../shared/product-platform/fgas-entitlements';
 import { FIRE_SAFE_PLAN_LIMITS } from '../fire-safe/fire-safe.constants';
+import { FOOD_LABEL_PLAN_LIMITS } from '../food-label/food-label.constants';
 
 const SAAS_TRIAL_DAYS = 14;
 
@@ -59,8 +60,12 @@ export class IdentityService {
         now.getTime() + SAAS_TRIAL_DAYS * 24 * 60 * 60 * 1000,
       ).toISOString();
 
-      const requiresOnboarding = modules.some((module) =>
-        module === 'gym' || module === 'fgas' || module === 'fire-safe',
+      const requiresOnboarding = modules.some(
+        (module) =>
+          module === 'gym' ||
+          module === 'fgas' ||
+          module === 'fire-safe' ||
+          module === 'food-label',
       );
       const createdTenant = await this.tenants.create({
         name: dto.tenantName,
@@ -409,6 +414,25 @@ export class IdentityService {
           ? candidate
           : 'enterprise';
       const maxUsers = FIRE_SAFE_PLAN_LIMITS[planId].users;
+      if (maxUsers !== null) {
+        const activeUsers = (await this.users.listByCurrentTenant()).filter(
+          (user) => user.status === 'active',
+        ).length;
+        if (activeUsers >= maxUsers)
+          throw new AppException(
+            ErrorCode.SUBSCRIPTION_LIMIT,
+            `${planId} planının kullanıcı limiti doldu. Planınızı yükseltin.`,
+          );
+      }
+    }
+    if (store.modules?.includes('food-label')) {
+      const tenant = await this.tenants.getById(store.tenantId);
+      const candidate = tenant.membershipStatus === 'trial' ? 'pro' : tenant.planId;
+      const planId =
+        candidate === 'starter' || candidate === 'pro' || candidate === 'enterprise'
+          ? candidate
+          : 'enterprise';
+      const maxUsers = FOOD_LABEL_PLAN_LIMITS[planId].users;
       if (maxUsers !== null) {
         const activeUsers = (await this.users.listByCurrentTenant()).filter(
           (user) => user.status === 'active',

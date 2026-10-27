@@ -11,8 +11,13 @@ export class FirebaseAppCheckGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<Request>();
-    const productFlag = request.path?.startsWith('/fire-safe')
-      ? process.env['FIRE_SAFE_REQUIRE_APP_CHECK']
+    const productKey = request.path
+      ?.split('/')
+      .filter(Boolean)[0]
+      ?.toUpperCase()
+      .replaceAll('-', '_');
+    const productFlag = productKey
+      ? process.env[`${productKey}_REQUIRE_APP_CHECK`]
       : process.env['FGAS_REQUIRE_APP_CHECK'];
     if (process.env['ODIVON_REQUIRE_APP_CHECK'] !== 'true' && productFlag !== 'true') return true;
     const token = request.header('x-firebase-appcheck');
