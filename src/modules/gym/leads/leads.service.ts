@@ -1,9 +1,10 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { Transaction } from 'firebase-admin/firestore';
 import { AppException } from '../../../shared/errors/app.exception';
 import { ErrorCode } from '../../../shared/errors/error-codes';
 import { TENANT_COLLECTION } from '../../../shared/firebase/firestore-path';
 import { BaseDocument, createBaseFields, isDeleted, touchBaseFields } from '../../../shared/firestore/base-document';
+import { AccessSyncService } from '../access/access-sync.service';
 import { GymMember } from '../members/member.entity';
 import { GymStore } from '../shared/gym-store';
 import { ConvertLeadDto, FunnelQueryDto, LeadStageDto, RecordReferralDto, ReferralSettingsDto } from './leads.dto';
@@ -43,7 +44,10 @@ const LEADS = TENANT_COLLECTION.gymGuestMembers;
  */
 @Injectable()
 export class GymLeadsService {
-  constructor(private readonly store: GymStore) {}
+  constructor(
+    private readonly store: GymStore,
+    @Optional() private readonly accessSync?: AccessSyncService,
+  ) {}
 
   async funnel(query: FunnelQueryDto) {
     const leads = await this.store.list<Lead>(LEADS);
@@ -68,7 +72,7 @@ export class GymLeadsService {
   async convert(id: string, dto: ConvertLeadDto) {
     const settings = await this.referralSettings();
     const userId = this.store.userId();
-    return this.transaction(async (tx) => {
+    const result = await this.transaction(async (tx) => {
       const leadRef = this.ref(LEADS, id);
       const lead = this.alive<Lead>(await tx.get(leadRef));
       if (!lead) throw new AppException(ErrorCode.GYM_GUEST_NOT_FOUND, 'Guest not found');
@@ -95,6 +99,8 @@ export class GymLeadsService {
       const reward = referrer && !rewarded ? this.grantReward(tx, settings, referrer, member, lead.id) : null;
       return { leadId: lead.id, memberId: dto.memberId, referrerMemberId: referrer?.uid ?? null, reward };
     });
+    await this.syncExtendedReferrer(result.referrerMemberId, result.reward);
+    return result;
   }
 
   /** Records that an existing member brought a new member who signed up without a lead record. */
@@ -104,7 +110,7 @@ export class GymLeadsService {
     }
     const settings = await this.referralSettings();
     const userId = this.store.userId();
-    return this.transaction(async (tx) => {
+    const result = await this.transaction(async (tx) => {
       const [member, referrer] = await this.readMembers(tx, dto.memberId, dto.referrerMemberId);
       if (!member || !referrer) throw new AppException(ErrorCode.GYM_MEMBER_NOT_FOUND, 'Member not found');
       const previous = (member as GymMember & { referredByMemberId?: string }).referredByMemberId;
@@ -121,6 +127,16 @@ export class GymLeadsService {
       const reward = rewarded ? null : this.grantReward(tx, settings, referrer, member, null);
       return { memberId: member.uid, referrerMemberId: referrer.uid, reward };
     });
+    await this.syncExtendedReferrer(result.referrerMemberId, result.reward);
+    return result;
+  }
+
+  /** A "days" reward moves the referrer's end date: queue it for the turnstiles too. */
+  private async syncExtendedReferrer(referrerId: string | null, reward: ReferralReward | null) {
+    if (!this.accessSync || !referrerId || reward?.status !== 'granted' || reward.type !== 'days') return;
+    const snapshot = await this.ref(TENANT_COLLECTION.gymMembers, referrerId).get();
+    const referrer = this.alive<GymMember>(snapshot);
+    if (referrer) await this.accessSync.syncMemberSafely({ ...referrer, uid: referrer.uid ?? snapshot.id });
   }
 
   async referralSettings(): Promise<ReferralSettings> {

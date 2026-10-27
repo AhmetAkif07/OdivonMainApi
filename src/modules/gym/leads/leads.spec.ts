@@ -152,6 +152,24 @@ describe('GymLeadsService', () => {
     expect(rows('gymMemberNotifications')).toHaveLength(1);
   });
 
+  it('queues the new end date for the turnstiles when days are added', async () => {
+    const accessSync = { syncMemberSafely: jest.fn(async () => undefined) };
+    const context = new TenantContext();
+    service = new GymLeadsService(new GymStore({ db } as never, context), accessSync as never);
+    as = (fn) => context.run({ tenantId: 't1', userId: 'staff-1', role: 'owner', modules: ['gym'], email: '' }, fn);
+    settings({ enabled: true, rewardType: 'days', rewardDays: 10 });
+    member('active', { membershipStatus: 'active', membershipEndsAt: '2026-10-05T00:00:00.000Z' });
+    member('expired', { membershipStatus: 'expired', membershipEndsAt: '2026-09-01T00:00:00.000Z' });
+    member('n1');
+    member('n2');
+    await as(() => service.recordReferral({ referrerMemberId: 'active', memberId: 'n1' }));
+    await as(() => service.recordReferral({ referrerMemberId: 'expired', memberId: 'n2' }));
+    expect(accessSync.syncMemberSafely).toHaveBeenCalledTimes(1);
+    expect(accessSync.syncMemberSafely).toHaveBeenCalledWith(
+      expect.objectContaining({ uid: 'active', membershipEndsAt: '2026-10-15T00:00:00.000Z' }),
+    );
+  });
+
   it('refuses self referrals, a second referrer and converting a lead to another member', async () => {
     member('a');
     member('b');
