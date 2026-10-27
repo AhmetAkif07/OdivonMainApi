@@ -21,6 +21,7 @@ import { SubscriptionGuard } from '../../shared/authorization/subscription.guard
 import { TenantGuard } from '../../shared/tenancy/tenant.guard';
 import { FIRE_SAFE_ROLE_TEMPLATES } from './fire-safe.constants';
 import {
+  CompleteFireSafeOnboardingDto,
   CreateFireSafeRecordDto,
   FireSafeListQueryDto,
   UpdateFireSafeRecordDto,
@@ -55,6 +56,11 @@ export class FireSafeController {
   }
   @Get('entitlements') @RequirePermission('fireSafeRecords', 'view') entitlements() {
     return this.service.entitlements();
+  }
+  @Post('onboarding/complete')
+  @RequirePermission('fireSafeRecords', 'update')
+  completeOnboarding(@Body() dto: CompleteFireSafeOnboardingDto) {
+    return this.service.completeOnboarding(dto);
   }
   @Get('reports/compliance') @RequirePermission('fireSafeRecords', 'export') complianceReport() {
     return this.service.complianceReport();

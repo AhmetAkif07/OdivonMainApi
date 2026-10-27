@@ -10,8 +10,11 @@ export class FirebaseAppCheckGuard implements CanActivate {
   constructor(private readonly firebase: FirebaseService) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    if (process.env['FGAS_REQUIRE_APP_CHECK'] !== 'true') return true;
     const request = context.switchToHttp().getRequest<Request>();
+    const productFlag = request.path?.startsWith('/fire-safe')
+      ? process.env['FIRE_SAFE_REQUIRE_APP_CHECK']
+      : process.env['FGAS_REQUIRE_APP_CHECK'];
+    if (process.env['ODIVON_REQUIRE_APP_CHECK'] !== 'true' && productFlag !== 'true') return true;
     const token = request.header('x-firebase-appcheck');
     if (!token)
       throw new AppException(ErrorCode.AUTH_REQUIRED, 'Firebase App Check token is required');

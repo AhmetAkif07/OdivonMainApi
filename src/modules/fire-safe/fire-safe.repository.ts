@@ -5,6 +5,7 @@ import { AppException } from '../../shared/errors/app.exception';
 import { ErrorCode } from '../../shared/errors/error-codes';
 import { TenantContext } from '../../shared/tenancy/tenant.context';
 import {
+  CompleteFireSafeOnboardingDto,
   CreateFireSafeRecordDto,
   FireSafeListQueryDto,
   UpdateFireSafeRecordDto,
@@ -196,6 +197,27 @@ export class FireSafeRepository {
       (doc) => !doc.data()['archivedAt'],
     ).length;
     return { planId: normalized, ...FIRE_SAFE_PLAN_LIMITS[normalized], usage: { records } };
+  }
+
+  async completeOnboarding(dto: CompleteFireSafeOnboardingDto) {
+    const tenantId = this.tenant.getTenantId();
+    const now = new Date().toISOString();
+    const profile = {
+      ...dto,
+      legalName: dto.legalName.trim(),
+      primaryFacility: dto.primaryFacility.trim(),
+      safetyManagerName: dto.safetyManagerName.trim(),
+      safetyManagerEmail: dto.safetyManagerEmail.trim().toLowerCase(),
+      taxNumber: dto.taxNumber?.trim() ?? null,
+      safetyManagerPhone: dto.safetyManagerPhone?.trim() ?? null,
+      authorityName: dto.authorityName?.trim() ?? null,
+      completedAt: now,
+      completedBy: this.tenant.getUserId(),
+    };
+    await this.firebase.db
+      .doc(`tenants/${tenantId}`)
+      .update({ onboardingCompleted: true, fireSafeProfile: profile, updatedAt: now });
+    return { onboardingCompleted: true, profile };
   }
 
   async complianceReport() {

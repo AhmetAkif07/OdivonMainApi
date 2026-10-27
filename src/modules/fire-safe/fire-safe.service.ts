@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import {
+  CompleteFireSafeOnboardingDto,
   CreateFireSafeRecordDto,
   FireSafeListQueryDto,
   UpdateFireSafeRecordDto,
@@ -41,5 +42,8 @@ export class FireSafeService {
   }
   complianceReport() {
     return this.records.complianceReport();
+  }
+  completeOnboarding(dto: CompleteFireSafeOnboardingDto) {
+    return this.records.completeOnboarding(dto);
   }
 }
