@@ -12,8 +12,9 @@ import type { GymPackage } from '../gym/packages/package.entity';
 import { fulfillGymPayment, isGymSource } from './gym-fulfillment';
 import { GymPaymentCredentialsService } from './gym-payment-credentials.service';
 import { IyzicoProvider } from './iyzico.provider';
+import { PaytrProvider, paytrSessionId, verifyPaytrCallbackHash } from './paytr.provider';
 import { CreateCheckoutDto, CreateSaasOrderDto, MemberCheckoutDto } from './payments.dto';
-import { CheckoutInput, IyzicoCredentials, PaymentProvider, PaymentProviderId, PaymentSession, PaymentSource } from './payment-provider';
+import { CheckoutInput, IyzicoCredentials, PaymentProvider, PaymentProviderId, PaymentSession, PaymentSource, VerifiedPayment } from './payment-provider';
 import { nextPeriod, receiptNo, SaasCycle } from './saas-billing';
 import { SAAS_PLAN_MODULE } from './saas-prices';
 import { pricingProduct, SaasPlanPricing, SaasPricingService, STATIC_SAAS_PRICING } from '../saas-pricing/saas-pricing.service';
@@ -56,6 +57,7 @@ export class PaymentsService {
     @Optional() private readonly gymCredentials?: GymPaymentCredentialsService,
     @Optional() private readonly accessSync?: AccessSyncService,
     @Optional() private readonly pricing: SaasPricingService = STATIC_SAAS_PRICING,
+    @Optional() private readonly paytr: PaytrProvider = new PaytrProvider(),
   ) {
     this.providers = new Map([[iyzico.id, iyzico]]);
   }
@@ -296,6 +298,39 @@ export class PaymentsService {
       if (!credentials) throw new AppException(ErrorCode.INVALID_STATUS, 'The gym payment keys are no longer available');
     }
     const verified = await provider.verifyCheckout(token, { id, amountKurus: session.amountKurus }, credentials);
+    return this.applyVerified(id, session, verified);
+  }
+
+  /**
+   * PayTR notification for SaaS subscriptions (set once in the PayTR panel). PayTR gives no retrieve
+   * call here, so the signed hash is the proof of the result; the amount is checked against the session.
+   */
+  async handlePaytrNotification(body: Record<string, string | undefined>) {
+    const merchantOid = String(body['merchant_oid'] ?? '');
+    const status = String(body['status'] ?? '');
+    const totalAmount = String(body['total_amount'] ?? '');
+    const credentials = this.paytr.platformCredentials();
+    if (!verifyPaytrCallbackHash(credentials, { merchantOid, status, totalAmount, hash: String(body['hash'] ?? '') })) {
+      throw new AppException(ErrorCode.FINANCE_INVALID, 'PayTR notification could not be verified');
+    }
+    const id = paytrSessionId(merchantOid);
+    const session = id ? (await this.sessions().doc(id).get()).data() as PaymentSession | undefined : undefined;
+    if (!id || !session || session.provider !== 'paytr' || session.source !== 'saas_subscription') {
+      throw new AppException(ErrorCode.INVALID_STATUS, 'Unknown checkout');
+    }
+    if (session.status === 'succeeded' || session.status === 'failed') return { status: session.status };
+    if (Number(totalAmount) !== session.amountKurus) {
+      throw new AppException(ErrorCode.FINANCE_INVALID, 'PayTR amount does not match the order');
+    }
+    return this.applyVerified(id, session, {
+      status: status === 'success' ? 'succeeded' : 'failed',
+      providerPaymentId: merchantOid,
+    });
+  }
+
+  /** Applies a verified provider result to its session once; repeated results are no-ops. */
+  private async applyVerified(id: string, session: PaymentSession, verified: VerifiedPayment) {
+    const ref = this.sessions().doc(id);
     let renewedMember: GymMember | null = null;
     await this.firebase.db.runTransaction(async (tx) => {
       const lock = this.firebase.db.doc(`tenants/${session.tenantId}/paymentReservations/${session.source}_${session.sourceId}`);
@@ -310,7 +345,7 @@ export class PaymentsService {
       const [latest, reservation] = await Promise.all([tx.get(ref), tx.get(lock)]);
       const current = latest.data() as PaymentSession;
       // An abandoned (superseded or expired) session can still be paid on an old tab: honour it.
-      if (current.token !== token || !['pending', 'abandoned'].includes(current.status)) return;
+      if (current.token !== session.token || !['pending', 'abandoned'].includes(current.status)) return;
       // Gym effects read their documents here, before the first write of the transaction.
       const fulfil = verified.status === 'succeeded' && isGymSource(current.source) && !current.fulfilledAt;
       if (fulfil) {
@@ -393,6 +428,15 @@ export class PaymentsService {
 
   // ─── Internals ───────────────────────────────────────────────────────────────────────────
 
+  /** Provider for Odivon's own SaaS subscription payments: iyzico unless SAAS_PAYMENT_PROVIDER=paytr. */
+  private saasProviderId(): PaymentProviderId {
+    return process.env.SAAS_PAYMENT_PROVIDER === 'paytr' ? 'paytr' : 'iyzico';
+  }
+
+  private providerMode(id: PaymentProviderId): 'sandbox' | 'live' {
+    return id === 'paytr' ? this.paytr.mode() : this.providers.get('iyzico')!.mode();
+  }
+
   private async startCheckout(input: {
     source: PaymentSource;
     sourceId: string;
@@ -406,16 +450,16 @@ export class PaymentsService {
     const tenantId = this.tenant.getTenantId();
     // SaaS subscription payments go to the platform account; everything else to the gym's own.
     const platform = input.source === 'saas_subscription';
+    const selected: PaymentProviderId = platform ? this.saasProviderId() : 'iyzico';
     let credentials: IyzicoCredentials | undefined;
     if (platform) {
       // Odivon's own account: no per-gym provider choice, only the platform keys are needed.
-      if (!this.providers.get('iyzico')!.configured()) throw new AppException(ErrorCode.INVALID_STATUS, 'Online subscription payment is not available yet');
+      const configured = selected === 'paytr' ? this.paytr.configured() : this.providers.get('iyzico')!.configured();
+      if (!configured) throw new AppException(ErrorCode.INVALID_STATUS, 'Online subscription payment is not available yet');
     } else {
       credentials = (await this.gymCredentials?.resolve(tenantId)) ?? undefined;
       if (!credentials) throw new AppException(ErrorCode.INVALID_STATUS, 'Card payments are not set up for this gym');
     }
-    const selected = 'iyzico' as const;
-    const provider = this.providers.get(selected)!;
     const now = new Date();
     const id = randomUUID();
     const session: PaymentSession = {
@@ -424,7 +468,7 @@ export class PaymentsService {
       providerPaymentId: null, createdBy: this.tenant.getUserId(), createdAt: now.toISOString(), updatedAt: now.toISOString(),
       userId: input.userId, returnOrigin: this.returnOrigin(input.origin), fulfilledAt: null,
       credentialScope: platform ? 'platform' : 'tenant',
-      mode: platform ? provider.mode() : credentials!.mode,
+      mode: platform ? this.providerMode(selected) : credentials!.mode,
     };
     const ref = this.sessions().doc(id);
     const lock = this.firebase.db.doc(`tenants/${tenantId}/paymentReservations/${input.source}_${input.sourceId}`);
@@ -457,7 +501,10 @@ export class PaymentsService {
       buyer: { id: input.buyerId, ...input.buyer, ip: input.ip },
     };
     try {
-      const checkout = await provider.createCheckout(checkoutInput, credentials);
+      // PayTR sends the buyer back to the panel result page; its result arrives by notification.
+      const checkout = selected === 'paytr'
+        ? await this.paytr.createCheckout({ ...checkoutInput, callbackUrl: (await this.returnUrl(id, 'pending')) ?? checkoutInput.callbackUrl })
+        : await this.providers.get('iyzico')!.createCheckout(checkoutInput, credentials);
       await this.firebase.db.runTransaction(async (tx) => {
         tx.update(ref, { token: checkout.token, paymentPageUrl: checkout.paymentPageUrl,
           status: 'pending', updatedAt: new Date().toISOString() });

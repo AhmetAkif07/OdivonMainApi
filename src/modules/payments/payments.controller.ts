@@ -76,6 +76,19 @@ export class PaymentCallbackController {
     if (returnUrl) return response.redirect(303, returnUrl);
     return response.status(outcome === 'error' ? 400 : 200).json({ status: outcome });
   }
+
+  /** PayTR notification (form-encoded). It must answer plain `OK`; anything else makes PayTR retry. */
+  @Post('paytr')
+  @ApiOperation({ summary: 'PayTR notification; signed by PayTR and checked against the session amount' })
+  async paytrNotification(@Body() body: Record<string, string | undefined>, @Res() response: Response) {
+    try {
+      await this.payments.handlePaytrNotification(body);
+      return response.status(200).type('text/plain').send('OK');
+    } catch (error) {
+      this.logger.warn(`PayTR notification failed: ${(error as Error).message}`);
+      return response.status(400).type('text/plain').send('FAILED');
+    }
+  }
 }
 
 @ApiTags('payment-webhooks')
