@@ -16,7 +16,7 @@ export interface GymAuditLog {
   actorId: string;
   actorEmail: string;
   actorRole: string;
-  actorType: 'staff' | 'member';
+  actorType: 'staff' | 'member' | 'system';
   method: string;
   /** e.g. `POST /gym/receivables/:id/payments` */
   route: string;
@@ -26,8 +26,14 @@ export interface GymAuditLog {
   label: string;
   entityId: string | null;
   targetUserId: string | null;
+  /** Every member the action touched (target, referrer…); the member history is read through it. Older rows lack it. */
+  memberIds?: string[];
   request: unknown;
   changes: Record<string, { from: unknown; to: unknown }> | null;
+  /** Field-level before/after of member records a non-member route changed, keyed by member id. */
+  memberChanges?: Record<string, Record<string, { from: unknown; to: unknown }>> | null;
+  /** Response kept for a few routes whose result is not visible elsewhere (e.g. a referral reward). */
+  outcome?: unknown;
   result: 'success' | 'error';
   statusCode: number;
   errorCode: string | null;
@@ -37,7 +43,11 @@ export interface GymAuditLog {
   durationMs: number;
 }
 
+/** What the member history shows: no IP / browser and no failed attempts. */
+export type MemberHistoryEntry = Omit<GymAuditLog, 'ip' | 'userAgent' | 'errorMessage' | 'tenantId'>;
+
 const SCAN_BATCH = 200;
+const HISTORY_FETCH = 500;
 const SCAN_MAX = 3000;
 
 @Injectable()
@@ -119,6 +129,52 @@ export class GymAuditService {
     const hasMore = matches.length > limit || (!exhausted && scanned >= SCAN_MAX);
     return new PaginatedResult(page, limit, hasMore && last ? encodeCursor({ createdAt: last.createdAt, id: last.id }) : null);
   }
+
+  /**
+   * One member's history, newest first: every successful action whose target was the member or that
+   * changed the member's record. Two queries (`targetUserId`, and `memberIds` for newer rows that also
+   * name e.g. a referrer) are merged. Each is ordered by `createdAt` when its composite index exists;
+   * until then it falls back to an unordered read sorted in memory.
+   */
+  async memberHistory(memberId: string, limit = 100, before?: string): Promise<{ items: MemberHistoryEntry[]; nextBefore: string | null }> {
+    const size = Math.min(Math.max(limit, 1), 300);
+    const collection = this.collection(this.tenantContext.getTenantId());
+    const read = async (field: string, op: '==' | 'array-contains') => {
+      const base = collection.where(field, op, memberId);
+      try {
+        let ordered = base.orderBy('createdAt', 'desc');
+        if (before) ordered = ordered.where('createdAt', '<', before);
+        return (await ordered.limit(size + 1).get()).docs.map((doc) => doc.data() as GymAuditLog);
+      } catch (error) {
+        if (!isMissingIndex(error)) throw error;
+        this.logger.warn(`gymAuditLogs index for ${field} is missing; reading member history unordered`);
+        return (await base.limit(HISTORY_FETCH).get()).docs.map((doc) => doc.data() as GymAuditLog);
+      }
+    };
+    const [byTarget, byMember] = await Promise.all([read('targetUserId', '=='), read('memberIds', 'array-contains')]);
+    const merged = new Map<string, GymAuditLog>();
+    for (const item of [...byTarget, ...byMember]) {
+      if (item.result !== 'success') continue;
+      if (before && item.createdAt >= before) continue;
+      merged.set(item.id, item);
+    }
+    const sorted = [...merged.values()].sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0));
+    const page = sorted.slice(0, size);
+    const nextBefore = sorted.length > size ? (page.at(-1)?.createdAt ?? null) : null;
+    return { items: page.map(toHistoryEntry), nextBefore };
+  }
+}
+
+function toHistoryEntry(item: GymAuditLog): MemberHistoryEntry {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { ip, userAgent, errorMessage, tenantId, ...rest } = item;
+  return rest;
+}
+
+/** Firestore answers FAILED_PRECONDITION (code 9) when a query needs a composite index that does not exist. */
+function isMissingIndex(error: unknown): boolean {
+  const record = error as { code?: unknown; message?: unknown } | null;
+  return record?.code === 9 || record?.code === 'failed-precondition' || /requires an index/i.test(String(record?.message ?? ''));
 }
 
 function matchesFilters(item: GymAuditLog, query: ListGymAuditQueryDto): boolean {

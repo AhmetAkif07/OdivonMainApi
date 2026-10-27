@@ -86,6 +86,9 @@ describe('PaymentsService member card payments', () => {
     await service.handleCallback(session.id, token);
     expect(doc(`${T}/gymMembers/m1`)['walletBalance']).toBe(150);
     expect(rows('gymWalletTx')).toEqual([expect.objectContaining({ type: 'deposit', amount: 250, paymentMethod: 'card', userId: 'm1' })]);
+    expect(rows('gymAuditLogs')).toEqual([
+      expect.objectContaining({ label: 'Online bakiye yükleme', memberChanges: { m1: { walletBalance: { from: -100, to: 150 } } } }),
+    ]);
     expect(rows('gymAccountingEntries')).toEqual([expect.objectContaining({ type: 'income', amount: 250, paymentMethod: 'card', providerPaymentId: 'pay-1' })]);
     expect(doc(`paymentSessions/${session.id}`)).toMatchObject({ status: 'succeeded', fulfilledAt: NOW.toISOString() });
     expect(await service.returnUrl(session.id, 'succeeded')).toBe(
@@ -106,6 +109,10 @@ describe('PaymentsService member card payments', () => {
     expect(String(doc(`${T}/gymMembers/m1`)['membershipEndsAt'])).toBe('2027-01-08T00:00:00.000Z'); // 10 Oct + 90 days
     expect(rows('gymAccountingEntries')).toEqual([expect.objectContaining({ category: 'membership', amount: 3000, paymentMethod: 'card' })]);
     expect(accessSync.syncMemberSafely).toHaveBeenCalledTimes(1);
+    // the member's history shows the card purchase and how the end date moved
+    const [entry] = rows('gymAuditLogs');
+    expect(entry).toMatchObject({ actorType: 'system', label: 'Online paket satın alımı: 3 Aylık', targetUserId: 'm1', memberIds: ['m1'] });
+    expect((entry['memberChanges'] as Record<string, Record<string, unknown>>)['m1']).toHaveProperty('membershipEndsAt');
     // default return origin when the browser origin is unknown
     expect(await service.returnUrl(session.id, 'succeeded')).toContain('https://odivon-main-api-a2095.web.app/payment-result');
   });

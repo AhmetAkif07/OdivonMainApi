@@ -1,5 +1,6 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsIn, IsISO8601, IsOptional, IsString, MaxLength } from 'class-validator';
+import { Type } from 'class-transformer';
+import { IsIn, IsInt, IsISO8601, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
 import { PagingQueryDto } from '../../../shared/http/paging.dto';
 
 export class ListGymAuditQueryDto extends PagingQueryDto {
@@ -49,4 +50,19 @@ export class ListGymAuditQueryDto extends PagingQueryDto {
   @IsString()
   @MaxLength(100)
   q?: string;
+}
+
+export class MemberHistoryQueryDto {
+  @ApiPropertyOptional({ default: 100, maximum: 300 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(300)
+  limit?: number;
+
+  @ApiPropertyOptional({ description: 'ISO tarih-saat; bundan eski kayıtlar (sayfalama)' })
+  @IsOptional()
+  @IsISO8601()
+  before?: string;
 }
