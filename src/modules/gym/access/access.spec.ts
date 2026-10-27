@@ -341,6 +341,23 @@ describe('desired-state recomputation', () => {
     expect(await env.sync.syncMember('t1', stranger, NOW)).toBe(0);
   });
 
+  it('lists the most recently changed items first and counts delivered ones as pending', async () => {
+    const env = setup();
+    seedGate(env.db, 't1', 'g1');
+    const first = seedMember(env.db, 't1', 'm1');
+    const second = seedMember(env.db, 't1', 'm2');
+    await env.sync.syncMember('t1', first, NOW);
+    await env.sync.syncMember('t1', second, new Date(NOW.getTime() + 1000));
+    env.db.docs.set('tenants/t1/gymDeviceCommands/g1_m2', {
+      ...env.db.docs.get('tenants/t1/gymDeviceCommands/g1_m2')!,
+      status: 'delivered',
+    });
+    // m1's end date is edited later: it moves to the top although it was created first.
+    await env.sync.syncMember('t1', { ...(first as object), membershipEndsAt: '2026-12-31T09:00:00.000Z' } as never, new Date(NOW.getTime() + 2000));
+    const page = await env.context.run(admin('t1'), () => env.sync.list({ gateId: 'g1', status: 'pending' } as never));
+    expect(page.items.map((item) => (item as Record<string, unknown>)['memberId'])).toEqual(['m1', 'm2']);
+  });
+
   it('asks the agent to remove the old device user when the member number changes', async () => {
     const env = setup();
     seedGate(env.db, 't1', 'g1');
