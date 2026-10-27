@@ -9,6 +9,7 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  Max,
   Min,
   ValidateNested,
 } from 'class-validator';
@@ -41,6 +42,13 @@ export class PatchMobileMeDto {
   @IsOptional()
   @IsBoolean()
   autoRenew?: boolean;
+
+  /** Weekly workout goal shown on the app dashboard ring. */
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(7)
+  weeklyWorkoutTarget?: number;
 }
 
 export class WorkoutLogSetDto {
@@ -92,6 +100,11 @@ export class StartWorkoutSessionDto {
 
   @IsString()
   startedAt!: string;
+
+  /** The plan day being trained (`days[].id`); lets the app suggest the next day. */
+  @IsOptional()
+  @IsString()
+  dayId?: string;
 }
 
 export class CompleteWorkoutSessionSetDto {
@@ -216,6 +229,12 @@ export class MemberWorkoutPlanDto {
   @IsArray()
   @ArrayMaxSize(200)
   exercises?: Record<string, unknown>[];
+
+  /** Structured days; when sent it replaces `exercises` (which is then derived from it). */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(14)
+  days?: Record<string, unknown>[];
 }
 
 /** Also the PATCH body of `/gym/mobile/measurements/:id`: every field is optional. */

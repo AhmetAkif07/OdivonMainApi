@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { GymAccessModule } from '../access/access.module';
 import { PaymentsModule } from '../../payments/payments.module';
+import { GymExercisesModule } from '../exercises/exercises.module';
 import { GymLeadsModule } from '../leads/leads.module';
 import { GymMembersModule } from '../members/members.module';
 import { GymPackagesModule } from '../packages/packages.module';
@@ -12,7 +13,16 @@ import { GymMemberRecordsService } from './member-records.service';
 import { GymMobileService } from './mobile.service';
 
 @Module({
-  imports: [GymMembersModule, GymPackagesModule, GymOpsModule, GymStaffModule, GymAccessModule, GymLeadsModule, PaymentsModule],
+  imports: [
+    GymMembersModule,
+    GymPackagesModule,
+    GymOpsModule,
+    GymStaffModule,
+    GymAccessModule,
+    GymLeadsModule,
+    GymExercisesModule,
+    PaymentsModule,
+  ],
   controllers: [GymMobileController],
   providers: [GymMemberGuard, GymMobileService, GymMemberRecordsService],
 })

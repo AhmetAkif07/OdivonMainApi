@@ -362,6 +362,11 @@ export class GymRecordDto {
   @IsArray()
   exercises?: unknown[];
 
+  /** Workout plan / template days (`workout-plan.normalize.ts`); replaces `exercises` when sent. */
+  @IsOptional()
+  @IsArray()
+  days?: unknown[];
+
   @IsOptional()
   @IsArray()
   items?: unknown[];

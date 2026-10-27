@@ -4,6 +4,7 @@ import { ErrorCode } from '../../../shared/errors/error-codes';
 import { TENANT_COLLECTION } from '../../../shared/firebase/firestore-path';
 import { BaseDocument } from '../../../shared/firestore/base-document';
 import { GymStore } from '../shared/gym-store';
+import { normalizePlanContent, planContent } from '../shared/workout-plan.normalize';
 import {
   CreateMeasurementDto,
   MemberWorkoutPlanDto,
@@ -112,7 +113,7 @@ export class GymMemberRecordsService {
       title,
       description: dto.description ?? '',
       notes: dto.notes ?? '',
-      exercises: cleanExercises(dto.exercises ?? []),
+      ...normalizePlanContent({ days: dto.days, exercises: dto.exercises ?? [] }),
       status: dto.status ?? 'active',
       startDate: dto.startDate || new Date().toISOString(),
       endDate: dto.endDate ?? null,
@@ -126,8 +127,9 @@ export class GymMemberRecordsService {
    */
   async updateWorkoutPlan(id: string, dto: MemberWorkoutPlanDto) {
     const plan = await this.own(TENANT_COLLECTION.gymWorkoutPlans, id, ErrorCode.GYM_WORKOUT_NOT_FOUND, 'Workout not found');
-    const { status, ...content } = dto;
-    const changesContent = Object.values(content).some((value) => value !== undefined);
+    const { status, days, exercises, ...content } = dto;
+    const changesContent =
+      days !== undefined || exercises !== undefined || Object.values(content).some((value) => value !== undefined);
     if (changesContent && plan['createdByMember'] !== true) {
       throw new AppException(ErrorCode.GYM_MEMBER_FORBIDDEN, 'Only the trainer can edit an assigned plan');
     }
@@ -142,7 +144,7 @@ export class GymMemberRecordsService {
       {
         ...content,
         title: content.title?.trim(),
-        exercises: content.exercises ? cleanExercises(content.exercises) : undefined,
+        ...normalizePlanContent({ days, exercises }),
         status,
       },
     );
@@ -258,7 +260,7 @@ function toWorkoutPlan(item: Doc) {
     title: String(item['title'] ?? 'Program'),
     description: String(item['description'] ?? ''),
     notes: String(item['notes'] ?? ''),
-    exercises: Array.isArray(item['exercises']) ? item['exercises'] : [],
+    ...planContent(item),
     status: String(item['status'] ?? 'active'),
     startDate: String(item['startDate'] ?? item.createdAt),
     endDate: stringOrNull(item['endDate']),
@@ -267,25 +269,3 @@ function toWorkoutPlan(item: Doc) {
   };
 }
 
-const EXERCISE_TEXT = ['id', 'name', 'muscleGroup', 'equipmentName', 'dayName', 'notes'] as const;
-const EXERCISE_NUMBER = ['sets', 'weight', 'restSeconds', 'duration'] as const;
-
-/** Keeps only the known exercise fields so a member cannot store arbitrary data on a plan. */
-function cleanExercises(exercises: Record<string, unknown>[]) {
-  return exercises
-    .filter((exercise) => exercise && typeof exercise === 'object' && typeof exercise['name'] === 'string' && exercise['name'].trim())
-    .map((exercise) => {
-      const out: Record<string, unknown> = {};
-      for (const key of EXERCISE_TEXT) {
-        if (typeof exercise[key] === 'string' && exercise[key]) out[key] = (exercise[key] as string).slice(0, 500);
-      }
-      for (const key of EXERCISE_NUMBER) {
-        const value = numberOrNull(exercise[key]);
-        if (value !== null) out[key] = value;
-      }
-      const reps = exercise['reps'];
-      if (typeof reps === 'number' && Number.isFinite(reps)) out['reps'] = reps;
-      else if (typeof reps === 'string' && reps) out['reps'] = reps.slice(0, 50);
-      return out;
-    });
-}

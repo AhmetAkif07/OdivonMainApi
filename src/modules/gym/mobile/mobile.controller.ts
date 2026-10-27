@@ -9,6 +9,8 @@ import { TenantGuard } from '../../../shared/tenancy/tenant.guard';
 import { Request } from 'express';
 import { MemberCheckoutDto } from '../../payments/payments.dto';
 import { PaymentsService } from '../../payments/payments.service';
+import { CreateExerciseDto, ExerciseQueryDto } from '../exercises/exercise.dto';
+import { GymExercisesService } from '../exercises/exercises.service';
 import { GymLeadsService } from '../leads/leads.service';
 import { GymClassBookingService } from '../ops/class-booking.service';
 import { CreateProgramRequestDto } from '../ops/program-request.dto';
@@ -51,6 +53,7 @@ export class GymMobileController {
     private readonly leads: GymLeadsService,
     private readonly onlinePayments: PaymentsService,
     private readonly records: GymMemberRecordsService,
+    private readonly exercises: GymExercisesService,
   ) {}
 
   @Get('home')
@@ -123,6 +126,27 @@ export class GymMobileController {
   @Delete('workout-plans/:id')
   removeWorkoutPlan(@Param('id') id: string) {
     return this.records.removeWorkoutPlan(id);
+  }
+
+  /** Built-in + gym exercises + the member's own private ones. */
+  @Get('exercises')
+  exerciseCatalog(@Query() query: ExerciseQueryDto) {
+    return this.exercises.listForMember(query);
+  }
+
+  @Get('exercises/:id')
+  exercise(@Param('id') id: string) {
+    return this.exercises.get(id);
+  }
+
+  @Post('exercises')
+  createExercise(@Body() dto: CreateExerciseDto) {
+    return this.exercises.createForMember(dto);
+  }
+
+  @Delete('exercises/:id')
+  removeExercise(@Param('id') id: string) {
+    return this.exercises.removeForMember(id);
   }
 
   @Get('program-requests')

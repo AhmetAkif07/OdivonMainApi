@@ -5,11 +5,22 @@ import { TENANT_COLLECTION } from '../../../shared/firebase/firestore-path';
 import { BaseDocument } from '../../../shared/firestore/base-document';
 import { TenantContext } from '../../../shared/tenancy/tenant.context';
 import { isLeadStage, LeadRecord, stageChange } from '../leads/leads.rules';
+import { PaginatedResult } from '../../../shared/http/paginated.result';
 import { GymStore } from '../shared/gym-store';
+import { normalizePlanContent, planContent } from '../shared/workout-plan.normalize';
 import { GymListQueryDto, GymRecordDto } from '../shared/ops.dto';
 import { ResolveProgramRequestDto, toProgramRequest } from './program-request.dto';
 
 type Doc = BaseDocument & Record<string, unknown>;
+
+/** Plans and templates always answer with both `days` and the legacy `exercises`. */
+function withPlanContent(item: Doc): Doc {
+  return { ...item, ...planContent(item) };
+}
+
+function withPlanPage(page: PaginatedResult<Doc>) {
+  return new PaginatedResult(page.items.map(withPlanContent), page.limit, page.nextCursor);
+}
 
 @Injectable()
 export class GymSportService {
@@ -117,19 +128,20 @@ export class GymSportService {
     return this.store.softDelete(TENANT_COLLECTION.gymPtAppointments, id, ErrorCode.GYM_PT_NOT_FOUND, 'Appointment not found');
   }
 
-  listWorkouts(query: GymListQueryDto) {
-    return this.store.page<Doc>(TENANT_COLLECTION.gymWorkoutPlans, query, (item) => {
+  async listWorkouts(query: GymListQueryDto) {
+    const page = await this.store.page<Doc>(TENANT_COLLECTION.gymWorkoutPlans, query, (item) => {
       if (query.userId && item['userId'] !== query.userId) return false;
       return true;
     });
+    return withPlanPage(page);
   }
 
   async createWorkout(dto: GymRecordDto) {
     const userId = dto.userId || this.store.userId();
-    const created = await this.store.create(TENANT_COLLECTION.gymWorkoutPlans, {
+    const created = await this.store.create<Doc>(TENANT_COLLECTION.gymWorkoutPlans, {
       ...dto,
       userId,
-      exercises: dto.exercises ?? [],
+      ...normalizePlanContent({ days: dto.days, exercises: dto.exercises ?? [] }),
       status: dto.status ?? 'active',
       startDate: dto.startDate || new Date().toISOString(),
     });
@@ -141,7 +153,7 @@ export class GymSportService {
       readAt: null,
     });
     await this.fulfillPendingProgramRequests(userId, created.id);
-    return created;
+    return withPlanContent(created);
   }
 
   async listProgramRequests() {
@@ -229,34 +241,43 @@ export class GymSportService {
     return current;
   }
 
-  updateWorkout(id: string, dto: GymRecordDto) {
-    return this.store.update(TENANT_COLLECTION.gymWorkoutPlans, id, ErrorCode.GYM_WORKOUT_NOT_FOUND, 'Workout not found', dto);
+  async updateWorkout(id: string, dto: GymRecordDto) {
+    const updated = await this.store.update<Doc>(
+      TENANT_COLLECTION.gymWorkoutPlans,
+      id,
+      ErrorCode.GYM_WORKOUT_NOT_FOUND,
+      'Workout not found',
+      { ...dto, ...normalizePlanContent(dto) },
+    );
+    return withPlanContent(updated);
   }
 
   removeWorkout(id: string) {
     return this.store.softDelete(TENANT_COLLECTION.gymWorkoutPlans, id, ErrorCode.GYM_WORKOUT_NOT_FOUND, 'Workout not found');
   }
 
-  listTemplates(query: GymListQueryDto) {
-    return this.store.page<Doc>(TENANT_COLLECTION.gymWorkoutTemplates, query);
+  async listTemplates(query: GymListQueryDto) {
+    return withPlanPage(await this.store.page<Doc>(TENANT_COLLECTION.gymWorkoutTemplates, query));
   }
 
-  createTemplate(dto: GymRecordDto) {
-    return this.store.create(TENANT_COLLECTION.gymWorkoutTemplates, {
+  async createTemplate(dto: GymRecordDto) {
+    const created = await this.store.create<Doc>(TENANT_COLLECTION.gymWorkoutTemplates, {
       ...dto,
-      exercises: dto.exercises ?? [],
+      ...normalizePlanContent({ days: dto.days, exercises: dto.exercises ?? [] }),
       isSystemDefault: false,
     });
+    return withPlanContent(created);
   }
 
-  updateTemplate(id: string, dto: GymRecordDto) {
-    return this.store.update(
+  async updateTemplate(id: string, dto: GymRecordDto) {
+    const updated = await this.store.update<Doc>(
       TENANT_COLLECTION.gymWorkoutTemplates,
       id,
       ErrorCode.GYM_TEMPLATE_NOT_FOUND,
       'Template not found',
-      dto,
+      { ...dto, ...normalizePlanContent(dto) },
     );
+    return withPlanContent(updated);
   }
 
   removeTemplate(id: string) {

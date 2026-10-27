@@ -16,6 +16,7 @@ import {
 } from './access/access.controllers';
 import { AgentAuthGuard } from './access/agent-auth.guard';
 import { GymAuditController } from './audit/gym-audit.controller';
+import { GymExercisesController } from './exercises/exercises.controller';
 import { GymRemindersController } from './reminders/reminders.controller';
 import { GymReportsController } from './reports/reports.controller';
 import { BranchesController } from './branches/branches.controller';
@@ -60,6 +61,7 @@ const STAFF_CONTROLLERS: Type[] = [
   GymAppointmentsController,
   GymWorkoutsController,
   GymWorkoutTemplatesController,
+  GymExercisesController,
   GymMeasurementsController,
   GymWaterController,
   GymGuestsController,

@@ -66,6 +66,7 @@ export const TENANT_COLLECTION = {
   gymGuestMembers: 'gymGuestMembers',
   gymFacilities: 'gymFacilities',
   gymEquipment: 'gymEquipment',
+  gymExercises: 'gymExercises',
   gymSuppliers: 'gymSuppliers',
   gymSupplierCategories: 'gymSupplierCategories',
   gymStockCounts: 'gymStockCounts',

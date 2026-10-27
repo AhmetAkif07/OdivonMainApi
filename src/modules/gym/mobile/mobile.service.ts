@@ -12,6 +12,7 @@ import { PackagesRepository } from '../packages/packages.repository';
 import { StaffRepository } from '../staff/staff.repository';
 import { CreateProgramRequestDto, toProgramRequest } from '../ops/program-request.dto';
 import { GymStore } from '../shared/gym-store';
+import { planContent } from '../shared/workout-plan.normalize';
 import { packageCredits } from '../shared/membership';
 import { creditsLeft, nextSessionDate } from '../ops/class-booking.math';
 import {
@@ -33,6 +34,9 @@ import { ACHIEVEMENT_DEFS, computeBmi, computeStreak } from './mobile.stats';
 import { settleWorkoutSession } from './workout-session.math';
 
 const QR_TTL_MS = 45_000;
+const DEFAULT_WEEKLY_TARGET = 3;
+/** Weeks start on Monday in Türkiye time (UTC+3, no DST). */
+const WEEK_TZ_OFFSET_MS = 3 * 3_600_000;
 type Doc = BaseDocument & Record<string, unknown>;
 
 @Injectable()
@@ -48,23 +52,23 @@ export class GymMobileService {
   async home() {
     const member = await this.currentMember();
     const userId = member.uid;
-    const [workouts, appointments, measurements, logs, announcements] = await Promise.all([
+    const [workouts, appointments, measurements, logs, announcements, sessions] = await Promise.all([
       this.store.list<Doc>(TENANT_COLLECTION.gymWorkoutPlans),
       this.store.list<Doc>(TENANT_COLLECTION.gymPtAppointments),
       this.store.list<Doc>(TENANT_COLLECTION.gymMeasurements),
       this.store.list<Doc>(TENANT_COLLECTION.gymAccessLogs),
       this.listAnnouncements(),
+      this.store.list<Doc>(TENANT_COLLECTION.gymWorkoutSessions),
     ]);
     await this.ensureExpiryNotifications(member);
 
     const myWorkouts = workouts.filter((item) => item['userId'] === userId && item['status'] === 'active');
-    const todayWorkout = myWorkouts[0]
-      ? {
-          planId: myWorkouts[0].id,
-          title: String(myWorkouts[0]['title'] ?? 'Antrenman'),
-          trainerName: (myWorkouts[0]['trainerName'] as string | null) ?? null,
-        }
-      : null;
+    const completedSessions = sessions
+      .filter((item) => item['userId'] === userId && item['status'] === 'completed')
+      .sort((left, right) => String(right['completedAt'] ?? '').localeCompare(String(left['completedAt'] ?? '')));
+    const todayWorkout = pickTodayWorkout(myWorkouts, completedSessions);
+    const week = summarizeWeek(completedSessions, member.weeklyWorkoutTarget ?? DEFAULT_WEEKLY_TARGET);
+    const lastSession = completedSessions[0] ? toWorkoutSession(completedSessions[0], null) : null;
 
     const now = Date.now();
     const nextAppointment = appointments
@@ -104,6 +108,10 @@ export class GymMobileService {
       },
       membership: this.membershipSummary(member),
       todayWorkout,
+      weeklyGoal: { target: week.target, done: week.done },
+      week: { volumeKg: week.volumeKg, activeDurationMs: week.activeDurationMs },
+      streak: monthlyProgress.streak,
+      lastSession,
       nextAppointment,
       lastMeasurement,
       visitsThisMonth,
@@ -132,6 +140,7 @@ export class GymMobileService {
       memberNumber: member.memberNumber,
       walletBalance: member.walletBalance ?? 0,
       autoRenew: Boolean((member as GymMember & { autoRenew?: boolean }).autoRenew),
+      weeklyWorkoutTarget: member.weeklyWorkoutTarget ?? DEFAULT_WEEKLY_TARGET,
       membership: this.membershipSummary(member),
     };
   }
@@ -152,6 +161,7 @@ export class GymMobileService {
           : member.emergencyContactRelation,
       language: dto.language !== undefined ? dto.language : member.language,
       autoRenew: dto.autoRenew !== undefined ? dto.autoRenew : (member as GymMember & { autoRenew?: boolean }).autoRenew,
+      weeklyWorkoutTarget: dto.weeklyWorkoutTarget ?? member.weeklyWorkoutTarget,
     });
     return this.me();
   }
@@ -252,29 +262,31 @@ export class GymMobileService {
 
   async getWorkout(id: string) {
     const plan = await this.ownWorkout(id);
-    const logs = await this.store.list<Doc>(TENANT_COLLECTION.gymWorkoutLogs);
-    const mine = logs.filter((item) => item['userId'] === this.store.userId());
-    const exercises = Array.isArray(plan['exercises']) ? (plan['exercises'] as Record<string, unknown>[]) : [];
+    const mine = await this.performanceHistory();
+    const { days, exercises } = planContent(plan);
+    const withPrevious = <T extends { name: string; exerciseId?: string }>(exercise: T) => ({
+      ...exercise,
+      previous: previousSet(mine, exercise.name, undefined, exercise.exerciseId),
+    });
     return {
       ...toWorkoutSummary(plan),
       description: (plan['description'] as string | null) ?? null,
       notes: (plan['notes'] as string | null) ?? null,
-      exercises: exercises.map((exercise) => {
-        const name = String(exercise['name'] ?? '');
-        return {
-          id: (exercise['id'] as string | undefined) ?? null,
-          name,
-          muscleGroup: (exercise['muscleGroup'] as string | undefined) ?? null,
-          equipmentName: (exercise['equipmentName'] as string | undefined) ?? null,
-          dayName: (exercise['dayName'] as string | undefined) ?? null,
-          sets: numberOrNull(exercise['sets']),
-          reps: exercise['reps'] ?? null,
-          weight: numberOrNull(exercise['weight']),
-          restSeconds: numberOrNull(exercise['restSeconds']),
-          notes: (exercise['notes'] as string | undefined) ?? null,
-          previous: previousSet(mine, name),
-        };
-      }),
+      days: days.map((day) => ({ ...day, exercises: day.exercises.map(withPrevious) })),
+      exercises: exercises.map((exercise) => ({
+        id: exercise.id,
+        exerciseId: exercise.exerciseId ?? null,
+        name: exercise.name,
+        muscleGroup: exercise.muscleGroup ?? null,
+        equipmentName: exercise.equipmentName ?? null,
+        dayName: exercise.dayName ?? null,
+        sets: exercise.sets ?? null,
+        reps: exercise.reps ?? null,
+        weight: exercise.weight ?? null,
+        restSeconds: exercise.restSeconds ?? null,
+        notes: exercise.notes ?? null,
+        previous: previousSet(mine, exercise.name, undefined, exercise.exerciseId),
+      })),
     };
   }
 
@@ -336,6 +348,8 @@ export class GymMobileService {
       userId,
       planId: plan.id,
       planTitle: (plan['title'] as string | null) ?? null,
+      dayId: dto.dayId ?? null,
+      dayName: dto.dayId ? (planContent(plan).days.find((day) => day.id === dto.dayId)?.name ?? null) : null,
       startedAt: dto.startedAt,
       status: 'active',
       settled: false,
@@ -374,7 +388,11 @@ export class GymMobileService {
       this.store.list<Doc>(TENANT_COLLECTION.gymWorkoutSessions),
     ]);
     const priorBestKg: Record<string, number> = {};
-    for (const log of logs.filter((item) => item['userId'] === userId)) {
+    const history = [
+      ...logs.filter((item) => item['userId'] === userId),
+      ...sessionPerformance(sessions.filter((item) => item.id !== id), userId),
+    ];
+    for (const log of history) {
       const name = String(log['exerciseName'] ?? '');
       const at = new Date(String(log['performedAt'] ?? log.createdAt)).getTime();
       if (Number.isNaN(at) || at >= new Date(dto.startedAt).getTime()) continue;
@@ -1059,6 +1077,16 @@ export class GymMobileService {
     return item;
   }
 
+  /** The member's per-exercise history: manual workout logs plus completed live sessions. */
+  private async performanceHistory() {
+    const userId = this.store.userId();
+    const [logs, sessions] = await Promise.all([
+      this.store.list<Doc>(TENANT_COLLECTION.gymWorkoutLogs),
+      this.store.list<Doc>(TENANT_COLLECTION.gymWorkoutSessions),
+    ]);
+    return [...logs.filter((item) => item['userId'] === userId), ...sessionPerformance(sessions, userId)];
+  }
+
   private async ownWorkout(id: string) {
     const plan = await this.store.getOrThrow<Doc>(
       TENANT_COLLECTION.gymWorkoutPlans,
@@ -1248,10 +1276,97 @@ function countVisitsSince(logs: Doc[], userId: string, since: string | null): nu
   }).length;
 }
 
-function previousSet(logs: Doc[], exerciseName: string, before?: string) {
+/**
+ * Completed live-session sets as workout-log-shaped entries (one per exercise), so the
+ * "previous" values and PR checks also see workouts done with the live session screen.
+ */
+export function sessionPerformance(sessions: Doc[], userId: string): Doc[] {
+  const entries: Doc[] = [];
+  for (const session of sessions) {
+    if (session['userId'] !== userId || session['status'] !== 'completed') continue;
+    const sets = Array.isArray(session['sets']) ? (session['sets'] as Record<string, unknown>[]) : [];
+    const byExercise = new Map<string, Doc>();
+    for (const set of sets) {
+      const exerciseName = String(set['exerciseName'] ?? '');
+      if (!exerciseName) continue;
+      const exerciseId = (set['exerciseId'] as string | undefined) || null;
+      const key = exerciseId ?? exerciseName;
+      let entry = byExercise.get(key);
+      if (!entry) {
+        entry = {
+          ...session,
+          id: `${session.id}:${key}`,
+          exerciseName,
+          exerciseId,
+          performedAt: String(session['completedAt'] ?? session.createdAt),
+          sets: [],
+        } as Doc;
+        byExercise.set(key, entry);
+      }
+      (entry['sets'] as Record<string, unknown>[]).push({
+        setIndex: set['index'],
+        kg: set['weight'],
+        reps: set['reps'],
+        completed: set['status'] === 'completed',
+      });
+    }
+    entries.push(...byExercise.values());
+  }
+  return entries;
+}
+
+/** The active plan trained most recently (else the newest), and the day after the last one trained. */
+export function pickTodayWorkout(activePlans: Doc[], completedSessions: Doc[]) {
+  if (!activePlans.length) return null;
+  const lastSession = completedSessions.find((session) => activePlans.some((plan) => plan.id === session['planId']));
+  const plan = activePlans.find((item) => item.id === lastSession?.['planId']) ?? activePlans[0];
+  const { days } = planContent(plan);
+  const lastForPlan = completedSessions.find((session) => session['planId'] === plan.id && session['dayId']);
+  const lastIndex = lastForPlan ? days.findIndex((day) => day.id === lastForPlan['dayId']) : -1;
+  const day = days.length ? days[(lastIndex + 1) % days.length] : null;
+  return {
+    planId: plan.id,
+    title: String(plan['title'] ?? 'Antrenman'),
+    trainerName: (plan['trainerName'] as string | null) ?? null,
+    createdByMember: plan['createdByMember'] === true,
+    dayId: day?.id ?? null,
+    dayName: day ? day.name || `${day.order}. Gün` : null,
+    dayOrder: day?.order ?? null,
+    dayCount: days.length,
+    exerciseCount: day?.exercises.length ?? 0,
+    muscleGroups: day ? [...new Set(day.exercises.map((exercise) => exercise.muscleGroup).filter(Boolean))] : [],
+  };
+}
+
+export function weekStart(now = Date.now()): number {
+  const local = new Date(now + WEEK_TZ_OFFSET_MS);
+  const daysSinceMonday = (local.getUTCDay() + 6) % 7;
+  const midnight = Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate());
+  return midnight - daysSinceMonday * 86_400_000 - WEEK_TZ_OFFSET_MS;
+}
+
+export function summarizeWeek(completedSessions: Doc[], target: number, now = Date.now()) {
+  const start = weekStart(now);
+  const thisWeek = completedSessions.filter((session) => {
+    const at = new Date(String(session['completedAt'] ?? '')).getTime();
+    return !Number.isNaN(at) && at >= start && at <= now;
+  });
+  return {
+    target,
+    done: thisWeek.length,
+    volumeKg: Math.round(thisWeek.reduce((sum, session) => sum + (numberOrNull(session['volumeKg']) ?? 0), 0)),
+    activeDurationMs: thisWeek.reduce((sum, session) => sum + (numberOrNull(session['activeDurationMs']) ?? 0), 0),
+  };
+}
+
+function previousSet(logs: Doc[], exerciseName: string, before?: string, exerciseId?: string | null) {
   const cutoff = before ? new Date(before).getTime() : Number.POSITIVE_INFINITY;
   const mine = logs
-    .filter((item) => String(item['exerciseName'] ?? '') === exerciseName)
+    .filter((item) =>
+      exerciseId && item['exerciseId']
+        ? item['exerciseId'] === exerciseId
+        : String(item['exerciseName'] ?? '') === exerciseName,
+    )
     .filter((item) => {
       const time = new Date(String(item['performedAt'] ?? item.createdAt)).getTime();
       return !Number.isNaN(time) && time < cutoff;
@@ -1291,6 +1406,8 @@ function toWorkoutSummary(item: Doc) {
     startDate: (item['startDate'] as string | undefined) ?? item.createdAt,
     endDate: (item['endDate'] as string | null | undefined) ?? null,
     exerciseCount: Array.isArray(item['exercises']) ? item['exercises'].length : 0,
+    dayCount: planContent(item).days.length,
+    trainerId: (item['trainerId'] as string | null) ?? null,
     createdByMember: item['createdByMember'] === true,
   };
 }
@@ -1301,6 +1418,8 @@ function toWorkoutSession(item: Doc, streak: number | null) {
     id: item.id,
     planId: String(item['planId'] ?? ''),
     title: (item['planTitle'] as string | null) ?? null,
+    dayId: (item['dayId'] as string | null) ?? null,
+    dayName: (item['dayName'] as string | null) ?? null,
     status: String(item['status'] ?? 'active'),
     startedAt: (item['startedAt'] as string | null) ?? item.createdAt,
     completedAt: (item['completedAt'] as string | null) ?? null,

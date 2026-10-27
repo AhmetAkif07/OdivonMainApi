@@ -76,7 +76,32 @@ describe('GymMemberRecordsService', () => {
       exercises: [{ name: 'Bench', sets: 4, reps: '8-10', hack: 'x' }, { name: '' }],
     });
     expect(plan).toMatchObject({ title: 'Push', userId: 'u1', createdByMember: true, trainerId: null });
-    expect(plan.exercises).toEqual([{ name: 'Bench', sets: 4, reps: '8-10' }]);
+    expect(plan.exercises).toEqual([{ id: 'ex-1-0', name: 'Bench', sets: 4, reps: '8-10', dayName: '1. Gün' }]);
+    expect(plan.days).toEqual([
+      { id: 'day-1', name: '', order: 1, exercises: [{ id: 'ex-1-0', name: 'Bench', sets: 4, reps: '8-10' }] },
+    ]);
+  });
+
+  it('stores structured days and the derived legacy list', async () => {
+    await service.createWorkoutPlan({
+      title: 'PPL',
+      days: [
+        { id: 'a', name: 'İtiş', exercises: [{ name: 'Bench', exerciseId: 'sys-ex-bench-press', sets: 3 }] },
+        { id: 'b', name: 'Çekiş', exercises: [{ name: 'Row' }] },
+      ],
+    });
+    const stored = store.create.mock.calls[0][1] as { days: { id: string; order: number }[]; exercises: { dayName: string }[] };
+    expect(stored.days.map((day) => [day.id, day.order])).toEqual([
+      ['a', 1],
+      ['b', 2],
+    ]);
+    expect(stored.exercises.map((exercise) => exercise.dayName)).toEqual(['1. Gün: İtiş', '2. Gün: Çekiş']);
+  });
+
+  it('refuses day edits on a trainer-assigned plan but allows a status change', async () => {
+    store.getOrThrow.mockResolvedValue({ id: 'p', userId: 'u1', createdByMember: false, exercises: [] });
+    await expect(service.updateWorkoutPlan('p', { days: [] })).rejects.toMatchObject({ code: ErrorCode.GYM_MEMBER_FORBIDDEN });
+    await expect(service.updateWorkoutPlan('p', { status: 'paused' })).resolves.toMatchObject({ status: 'paused' });
   });
 
   it('rejects a plan without a title', async () => {

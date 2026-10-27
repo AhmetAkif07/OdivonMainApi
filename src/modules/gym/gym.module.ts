@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { GymAuditModule } from './audit/gym-audit.module';
 import { GymBranchesModule } from './branches/branches.module';
 import { GymController } from './gym.controller';
+import { GymExercisesModule } from './exercises/exercises.module';
 import { GymInfoModule } from './info/gym-info.module';
 import { GymLeadsModule } from './leads/leads.module';
 import { GymMembersModule } from './members/members.module';
@@ -24,6 +25,7 @@ import { GymStaffModule } from './staff/staff.module';
     GymMembersModule,
     GymOnboardingModule,
     GymOpsModule,
+    GymExercisesModule,
     GymMobileModule,
     GymRemindersModule,
     GymLeadsModule,

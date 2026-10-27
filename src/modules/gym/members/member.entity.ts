@@ -46,6 +46,8 @@ export interface GymMember extends BaseDocument {
   /** Booked classes not attended (marked by staff or closed automatically the next day). */
   noShowCount?: number;
   waterTargetMl?: number;
+  /** Workouts per week the member aims for (mobile dashboard ring). */
+  weeklyWorkoutTarget?: number;
   /** Lead (guest-member record) this member was converted from, and its source. */
   leadId?: string | null;
   leadSource?: string | null;
