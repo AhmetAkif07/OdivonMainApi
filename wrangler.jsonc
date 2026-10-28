@@ -8,6 +8,11 @@
     "nodejs_compat"
   ],
   "workers_dev": true,
+  // Paid plan: run the Worker near Firestore instead of near each user. A request makes several
+  // Firestore round trips, so this saves more than the one extra hop it adds.
+  "placement": {
+    "mode": "smart"
+  },
   "minify": true,
   "define": {
     "process.env.NODE_ENV": "\"production\""

@@ -53,15 +53,16 @@ generated during the Worker build and served as a static asset to keep Worker
 startup within Cloudflare's limit.
 `/health` checks actual Firestore connectivity. Firestore uses REST on Workers;
 the protobuf schemas are prepared at isolate startup because Workers disallows
-dynamic code generation during requests. Nest also starts outside requests;
+dynamic code generation during requests. Nest starts on the first request (or cron)
+of each isolate, so the 1 s startup limit does not grow with the route count;
 Firestore initialization is deferred until the first database operation.
 
 `test:worker` runs the bundled API in the Workers runtime with mocked outbound
 Firestore responses, covering success/error decoding, authentication rejection,
 input validation and OpenAPI. It does not validate real Firebase credentials,
 authenticated CRUD, or production CPU usage. Test those after adding real secrets.
-The Free plan's CPU limit still applies; fitting the bundle size does not guarantee
-that every authenticated request will fit that limit. The throttle is per isolate.
+The Worker runs on the Workers Paid plan (30 s CPU per request); the first request of a
+new isolate also pays the Nest start. The throttle is per isolate.
 
 ### Verification and welcome emails
 

@@ -97,13 +97,22 @@ export class MembersRepository {
     const term = (query.q ?? '').toLocaleLowerCase('tr');
     const items = await listUndeleted<GymMember>(this.collection());
     return items.filter((item) => {
-      if (typeof query.archived === 'boolean' && item.isArchived !== query.archived) {
+      if (query.status) {
+        if (query.status === 'active_or_trial') {
+          if (item.isArchived) return false;
+          if (item.membershipStatus !== 'active' && item.membershipStatus !== 'trial') return false;
+          if (item.membershipEndsAt && new Date(item.membershipEndsAt).getTime() <= Date.now()) return false;
+        } else if (item.membershipStatus !== query.status) {
+          return false;
+        }
+      }
+      if (typeof query.archived === 'boolean' && Boolean(item.isArchived) !== query.archived) {
         return false;
       }
       if (!term) {
         return true;
       }
-      return `${item.displayName} ${item.email} ${item.phone ?? ''} ${item.nationalId ?? ''} ${item.memberNumber}`
+      return `${item.displayName} ${item.email} ${item.phone ?? ''} ${item.nationalId ?? ''} ${item.memberNumber} ${item.rfidCardNumber ?? ''}`
         .toLocaleLowerCase('tr')
         .includes(term);
     });
@@ -168,10 +177,36 @@ export class MembersRepository {
       ...touchBaseFields(this.tenantContext.getUserId(), now),
     };
     await this.collection().doc(id).set(updated);
+    if (dto.rfidCardNumber && dto.rfidCardNumber.trim() && dto.rfidCardNumber.trim() !== current.rfidCardNumber) {
+      await this.backfillCardAccessLogs(updated.uid, updated.displayName, updated.photoURL ?? null, dto.rfidCardNumber.trim()).catch((err) =>
+        this.logger.warn(`Card access log backfill skipped: ${err?.message ?? err}`),
+      );
+    }
     if (dto.displayName) {
       await this.users.updateProfile(id, { displayName: dto.displayName, updatedAt: now });
     }
     return updated;
+  }
+
+  private async backfillCardAccessLogs(uid: string, displayName: string, photoURL: string | null, cardNumber: string): Promise<void> {
+    const logsCol = gymCollection(this.firebase, this.tenantContext, TENANT_COLLECTION.gymAccessLogs);
+    const snap = await logsCol.where('card', '==', cardNumber).limit(50).get();
+    if (snap.empty) return;
+    const now = new Date().toISOString();
+    await Promise.all(
+      snap.docs.map(async (doc) => {
+        const data = doc.data();
+        if (!data['userId']) {
+          await doc.ref.update({
+            userId: uid,
+            userName: displayName,
+            userPhoto: photoURL,
+            rfidCardNumber: cardNumber,
+            updatedAt: now,
+          });
+        }
+      }),
+    );
   }
 
   async save(member: GymMember): Promise<GymMember> {

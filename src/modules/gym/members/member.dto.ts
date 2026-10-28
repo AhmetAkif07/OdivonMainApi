@@ -287,4 +287,9 @@ export class ListMembersQueryDto extends PagingQueryDto {
   @Transform(({ value }) => (value === undefined || value === '' ? undefined : value === true || value === 'true'))
   @IsBoolean()
   archived?: boolean;
+
+  @ApiPropertyOptional({ description: 'active | trial | expired | cancelled | active_or_trial' })
+  @IsOptional()
+  @IsString()
+  status?: string;
 }

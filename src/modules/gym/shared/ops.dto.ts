@@ -570,6 +570,14 @@ export class GymRecordDto {
 
   @IsOptional()
   @IsString()
+  card?: string | null;
+
+  @IsOptional()
+  @IsString()
+  deviceUserId?: string | null;
+
+  @IsOptional()
+  @IsString()
   uid?: string;
 
   @IsOptional()

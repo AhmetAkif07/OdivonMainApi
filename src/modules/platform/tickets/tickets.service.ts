@@ -2,8 +2,17 @@ import { Injectable, Logger } from '@nestjs/common';
 import { FirebaseService } from '../../../shared/firebase/firebase.service';
 import { AppException } from '../../../shared/errors/app.exception';
 import { ErrorCode } from '../../../shared/errors/error-codes';
-import { SupportTicket, TicketStatus } from './tickets.entity';
+import { ROOT_COLLECTION } from '../../../shared/firebase/firestore-path';
+import { TenantDocument } from '../../tenant/entities/tenant.entity';
+import { SupportTicket, TicketGroup, TicketStatus } from './tickets.entity';
 import { CreateSupportTicketDto, UpdateTicketStatusDto } from './dto';
+import {
+  PRODUCT_LABELS,
+  UNKNOWN_GROUP,
+  groupTicketsByProduct,
+  groupTicketsByTenant,
+  resolveTicketProduct,
+} from './ticket-grouping';
 
 const COLLECTION_NAME = 'supportTickets';
 
@@ -34,19 +43,25 @@ export class PlatformTicketsService {
 
   async createTicket(
     dto: CreateSupportTicketDto,
-    authContext?: { uid?: string; tenantId?: string; role?: string },
+    authContext?: { uid?: string; tenantId?: string; role?: string; modules?: string[] },
   ): Promise<SupportTicket> {
     const trackingNumber = this.generateTrackingNumber();
     const now = new Date().toISOString();
+
+    // A signed-in user's tenant comes from their token, not from the form.
+    const tenantId = authContext?.tenantId || dto.tenantId || null;
+    const tenant = tenantId ? (await this.loadTenants([tenantId])).get(tenantId) : undefined;
+    const product = resolveTicketProduct(dto.product, authContext?.modules, tenant?.modules);
 
     const categoryLabel =
       dto.categoryLabel || CATEGORY_NAMES[dto.category] || dto.category;
 
     const ticket: Omit<SupportTicket, 'id'> = {
       trackingNumber,
-      // A signed-in user's tenant comes from their token, not from the form.
-      tenantId: authContext?.tenantId || dto.tenantId || null,
-      tenantName: dto.tenantName || null,
+      tenantId,
+      tenantName: tenant?.name || dto.tenantName?.trim() || null,
+      product,
+      productLabel: product ? PRODUCT_LABELS[product] : null,
       userId: authContext?.uid || null,
       userRole: authContext?.role || null,
       category: dto.category,
@@ -109,9 +124,46 @@ export class PlatformTicketsService {
     );
   }
 
+  /** Reads tenant docs in one round trip (one subrequest per 100 ids). */
+  private async loadTenants(ids: string[]): Promise<Map<string, TenantDocument>> {
+    const unique = [...new Set(ids.filter(Boolean))];
+    const out = new Map<string, TenantDocument>();
+    const col = this.firebase.db.collection(ROOT_COLLECTION.tenants);
+    for (let i = 0; i < unique.length; i += 100) {
+      const chunk = unique.slice(i, i + 100);
+      try {
+        const snaps = await this.firebase.db.getAll(...chunk.map((id) => col.doc(id)));
+        snaps.forEach((snap) => {
+          if (snap.exists) out.set(snap.id, snap.data() as TenantDocument);
+        });
+      } catch (err) {
+        this.logger.warn(`Ticket tenant lookup failed: ${(err as Error).message}`);
+      }
+    }
+    return out;
+  }
+
+  /** Fills product and tenant name on tickets saved before those fields existed. */
+  private async enrichTickets(tickets: SupportTicket[]): Promise<SupportTicket[]> {
+    const needs = tickets.filter((t) => t.tenantId && (!t.product || !t.tenantName));
+    const tenants = needs.length ? await this.loadTenants(needs.map((t) => t.tenantId as string)) : new Map();
+    return tickets.map((t) => {
+      const tenant = t.tenantId ? tenants.get(t.tenantId) : undefined;
+      const product = t.product || resolveTicketProduct(null, tenant?.modules);
+      return {
+        ...t,
+        tenantName: t.tenantName || tenant?.name || null,
+        product: product ?? null,
+        productLabel: product ? t.productLabel || PRODUCT_LABELS[product] : null,
+      };
+    });
+  }
+
   async listPlatformTickets(params: {
     status?: string;
     search?: string;
+    product?: string;
+    tenantId?: string;
     page?: number;
     pageSize?: number;
   }): Promise<{
@@ -120,6 +172,7 @@ export class PlatformTicketsService {
     page: number;
     pageSize: number;
     counts: Record<TicketStatus | 'all', number>;
+    groups: { products: TicketGroup[]; tenants: TicketGroup[] };
   }> {
     const snapshot = await this.firebase.db.collection(COLLECTION_NAME).get();
     let all: SupportTicket[] = [];
@@ -127,6 +180,7 @@ export class PlatformTicketsService {
     snapshot.forEach((doc) => {
       all.push({ id: doc.id, ...(doc.data() as Omit<SupportTicket, 'id'>) });
     });
+    all = await this.enrichTickets(all);
 
     all.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
@@ -151,8 +205,22 @@ export class PlatformTicketsService {
           t.fullName?.toLowerCase().includes(q) ||
           t.email?.toLowerCase().includes(q) ||
           t.subject?.toLowerCase().includes(q) ||
-          t.tenantName?.toLowerCase().includes(q),
+          t.tenantName?.toLowerCase().includes(q) ||
+          t.tenantId?.toLowerCase().includes(q) ||
+          t.productLabel?.toLowerCase().includes(q),
       );
+    }
+
+    // Group totals follow the status + search filters, not the product/tenant pick itself.
+    const groups = { products: groupTicketsByProduct(all), tenants: groupTicketsByTenant(all) };
+
+    if (params.product && params.product !== 'all') {
+      const p = params.product;
+      all = all.filter((t) => (p === UNKNOWN_GROUP ? !t.product : t.product === p));
+    }
+    if (params.tenantId && params.tenantId !== 'all') {
+      const id = params.tenantId;
+      all = all.filter((t) => (id === UNKNOWN_GROUP ? !t.tenantId : t.tenantId === id));
     }
 
     const page = Math.max(1, Number(params.page) || 1);
@@ -166,6 +234,7 @@ export class PlatformTicketsService {
       page,
       pageSize,
       counts,
+      groups,
     };
   }
 
@@ -175,10 +244,8 @@ export class PlatformTicketsService {
     if (!doc.exists) {
       throw new AppException(ErrorCode.CRM_NOT_FOUND, 'Talep kaydı bulunamadı.');
     }
-    return {
-      id: doc.id,
-      ...(doc.data() as Omit<SupportTicket, 'id'>),
-    };
+    const [ticket] = await this.enrichTickets([{ id: doc.id, ...(doc.data() as Omit<SupportTicket, 'id'>) }]);
+    return ticket;
   }
 
   async updatePlatformTicket(
@@ -204,6 +271,10 @@ export class PlatformTicketsService {
     if (dto.priority !== undefined) {
       patch.priority = dto.priority;
     }
+    if (dto.product !== undefined) {
+      patch.product = dto.product;
+      patch.productLabel = PRODUCT_LABELS[dto.product];
+    }
     if (dto.status === 'approved' || dto.status === 'in_progress') {
       patch.approvedAt = (doc.data() as any)?.approvedAt || now;
     }
@@ -215,9 +286,7 @@ export class PlatformTicketsService {
     this.logger.log(`Support ticket ${cleanId} updated to ${dto.status}`);
 
     const updated = await docRef.get();
-    return {
-      id: updated.id,
-      ...(updated.data() as Omit<SupportTicket, 'id'>),
-    };
+    const [ticket] = await this.enrichTickets([{ id: updated.id, ...(updated.data() as Omit<SupportTicket, 'id'>) }]);
+    return ticket;
   }
 }

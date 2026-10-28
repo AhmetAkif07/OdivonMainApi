@@ -73,8 +73,11 @@ export class GymOpsService {
   }
 
   createAccessLog(dto: GymRecordDto) {
+    const cardNo = dto.card?.trim() || dto.rfidCardNumber?.trim() || null;
     return this.store.create(TENANT_COLLECTION.gymAccessLogs, {
       ...dto,
+      card: cardNo,
+      rfidCardNumber: cardNo,
       timestamp: dto.timestamp || new Date().toISOString(),
       createdAt: new Date().toISOString(),
     });
@@ -118,9 +121,10 @@ export class GymOpsService {
         member = null;
       }
     }
-    if (!member && dto.rfidCardNumber) {
+    const scannedCard = (dto.rfidCardNumber || dto.card)?.trim() || null;
+    if (!member && scannedCard) {
       const all = await this.members.list({});
-      member = all.find((item) => item.rfidCardNumber === dto.rfidCardNumber) ?? null;
+      member = all.find((item) => item.rfidCardNumber?.trim() === scannedCard) ?? null;
     }
     let allowed = true;
     let status = 'granted';
@@ -154,10 +158,14 @@ export class GymOpsService {
         message = 'Giriş saati penceresi dışında.';
       }
     }
+    const resolvedCard = scannedCard ?? member?.rfidCardNumber ?? null;
     const log = await this.store.create(TENANT_COLLECTION.gymAccessLogs, {
       userId: member?.uid ?? null,
       userName: member?.displayName ?? dto.userName ?? 'Bilinmeyen',
       userPhoto: member?.photoURL ?? null,
+      card: resolvedCard,
+      rfidCardNumber: resolvedCard,
+      deviceUserId: member?.memberNumber ?? dto.deviceUserId ?? null,
       direction: dto.direction ?? 'in',
       method: dto.method ?? 'qr',
       status,
@@ -189,10 +197,14 @@ export class GymOpsService {
   }
 
   private async denyScan(dto: GymRecordDto, message: string) {
+    const cardNo = (dto.card || dto.rfidCardNumber)?.trim() || null;
     const log = await this.store.create(TENANT_COLLECTION.gymAccessLogs, {
       userId: null,
       userName: dto.userName ?? 'Bilinmeyen',
       userPhoto: null,
+      card: cardNo,
+      rfidCardNumber: cardNo,
+      deviceUserId: dto.deviceUserId ?? null,
       direction: dto.direction ?? 'in',
       method: dto.method ?? 'qr',
       status: 'denied',

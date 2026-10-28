@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsEmail, IsIn, IsNotEmpty, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 import { TicketPriority, TicketStatus } from './tickets.entity';
+import { PRODUCT_MODULES, ProductModule } from '../../../shared/authorization/constants';
 
 export class CreateSupportTicketDto {
   @ApiProperty({ example: 'technical_support' })
@@ -53,6 +54,11 @@ export class CreateSupportTicketDto {
   @IsOptional()
   @IsString()
   tenantName?: string;
+
+  @ApiPropertyOptional({ enum: PRODUCT_MODULES, description: 'Product the ticket is sent from; inferred from the tenant when left out' })
+  @IsOptional()
+  @IsIn(PRODUCT_MODULES)
+  product?: ProductModule;
 }
 
 export class UpdateTicketStatusDto {
@@ -69,4 +75,9 @@ export class UpdateTicketStatusDto {
   @IsOptional()
   @IsIn(['low', 'normal', 'high', 'urgent'])
   priority?: TicketPriority;
+
+  @ApiPropertyOptional({ enum: PRODUCT_MODULES, description: 'Correct the product a ticket is filed under' })
+  @IsOptional()
+  @IsIn(PRODUCT_MODULES)
+  product?: ProductModule;
 }

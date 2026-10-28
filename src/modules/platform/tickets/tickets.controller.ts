@@ -34,6 +34,7 @@ export class SupportTicketsController {
           uid: user.uid,
           tenantId: typeof user['tenantId'] === 'string' ? user['tenantId'] : undefined,
           role: typeof user['role'] === 'string' ? user['role'] : undefined,
+          modules: Array.isArray(user['modules']) ? (user['modules'] as string[]) : undefined,
         }
       : undefined;
     return this.ticketsService.createTicket(dto, authUser);
@@ -64,16 +65,20 @@ export class PlatformTicketsController {
   constructor(private readonly ticketsService: PlatformTicketsService) {}
 
   @Get()
-  @ApiOperation({ summary: 'List all support tickets with filtering' })
+  @ApiOperation({ summary: 'List support tickets; filter by status/search/product/tenantId ("unknown" = none) and get per-product and per-tenant groups' })
   listTickets(
     @Query('status') status?: string,
     @Query('search') search?: string,
+    @Query('product') product?: string,
+    @Query('tenantId') tenantId?: string,
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
   ) {
     return this.ticketsService.listPlatformTickets({
       status,
       search,
+      product,
+      tenantId,
       page: page ? Number(page) : undefined,
       pageSize: pageSize ? Number(pageSize) : undefined,
     });
