@@ -16,6 +16,7 @@ export const DEFAULT_CORS_ORIGINS: readonly string[] = [
   'https://admin.odivon.com',
   'https://odivon-main-api-a2095.web.app',
   'https://odivon-main-api-a2095.firebaseapp.com',
+  'https://farm.odivon.com',
   'https://odivonfarm.web.app',
   'https://odivonprohair.dogangns-98.workers.dev',
   'https://odivon-gym-client.dogangns-98.workers.dev',

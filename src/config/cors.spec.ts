@@ -6,6 +6,7 @@ describe('CORS origins', () => {
   it('allows the hair client and local dev servers', () => {
     expect(isCorsOriginAllowed('https://hair.odivon.com', allowed)).toBe(true);
     expect(isCorsOriginAllowed('https://beauty.odivon.com', allowed)).toBe(true);
+    expect(isCorsOriginAllowed('https://farm.odivon.com', allowed)).toBe(true);
     expect(isCorsOriginAllowed('http://localhost:4200', allowed)).toBe(true);
     expect(isCorsOriginAllowed('http://127.0.0.1:8080', allowed)).toBe(true);
   });
