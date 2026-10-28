@@ -238,11 +238,39 @@ export class GymRecordDto {
 
   @IsOptional()
   @IsNumber()
+  rightBicep?: number;
+
+  @IsOptional()
+  @IsNumber()
+  leftBicep?: number;
+
+  @IsOptional()
+  @IsNumber()
   thigh?: number;
 
   @IsOptional()
   @IsNumber()
+  rightThigh?: number;
+
+  @IsOptional()
+  @IsNumber()
+  leftThigh?: number;
+
+  @IsOptional()
+  @IsNumber()
   calf?: number;
+
+  @IsOptional()
+  @IsNumber()
+  rightCalf?: number;
+
+  @IsOptional()
+  @IsNumber()
+  leftCalf?: number;
+
+  @IsOptional()
+  @IsNumber()
+  muscleMassKg?: number;
 
   @IsOptional()
   @IsNumber()
