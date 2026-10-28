@@ -137,25 +137,6 @@ const TRAINER_DAYS = [
   },
 ];
 
-const OWN_DAYS = [
-  {
-    name: 'Üst Vücut',
-    items: [
-      ex('dumbbell-bench-press', 'Dumbbell Bench Press', 'chest', 'dumbbell', 3, 10, 24, 2),
-      ex('dumbbell-row', 'Tek Kol Dumbbell Row', 'back', 'dumbbell', 3, 10, 26, 2),
-      ex('hammer-curl', 'Hammer Curl', 'arms', 'dumbbell', 3, 12, 12, 1, 60),
-    ],
-  },
-  {
-    name: 'Alt Vücut',
-    items: [
-      ex('goblet-squat', 'Goblet Squat', 'legs', 'dumbbell', 3, 12, 24, 2),
-      ex('bulgarian-split-squat', 'Bulgarian Split Squat', 'legs', 'dumbbell', 3, 10, 14, 2),
-      ex('push-up', 'Şınav', 'chest', 'bodyweight', 3, 15, 0, 0, 60),
-    ],
-  },
-];
-
 function planDays(days, planKey) {
   return days.map((day, index) => ({
     id: `${planKey}-day-${index + 1}`,
@@ -205,20 +186,12 @@ function plan({ title, description, days, trainer, startMs }) {
 }
 
 const trainerDays = planDays(TRAINER_DAYS, 'ppl');
-const ownDays = planDays(OWN_DAYS, 'own');
 const trainerPlan = plan({
   title: 'İtiş / Çekiş / Bacak',
-  description: 'Haftada 3 gün, kuvvet ve hacim odaklı program.',
+  description: 'Haftada 3 gün, kuvvet ve hacim odaklı salon programı.',
   days: trainerDays,
   trainer: true,
   startMs: now - 28 * DAY_MS,
-});
-const ownPlan = plan({
-  title: 'Evde / Dumbbell Günü',
-  description: 'Salona gidemediğim günler için.',
-  days: ownDays,
-  trainer: false,
-  startMs: now - 12 * DAY_MS,
 });
 
 // Measurements first: session calories use the latest weight.
@@ -247,28 +220,27 @@ const measurements = [
 });
 const weightAt = (ms) => [...measurements].reverse().find((item) => new Date(item.date).getTime() <= ms)?.weight ?? 70;
 
-// Sessions: about three a week over the last three weeks, cycling the trainer plan's days;
-// one own-plan session in between. Ends yesterday so "today" is the next day in the cycle.
+// Sessions: about three a week over the last three weeks, cycling the trainer plan's days.
+// Ends yesterday so "today" is the next day in the cycle.
 const SCHEDULE = [
-  { daysAgo: 20, plan: 'trainer' },
-  { daysAgo: 18, plan: 'trainer' },
-  { daysAgo: 16, plan: 'trainer' },
-  { daysAgo: 13, plan: 'trainer' },
-  { daysAgo: 11, plan: 'own' },
-  { daysAgo: 10, plan: 'trainer' },
-  { daysAgo: 8, plan: 'trainer' },
-  { daysAgo: 6, plan: 'trainer' },
-  { daysAgo: 3, plan: 'trainer' },
-  { daysAgo: 1, plan: 'trainer' },
+  { daysAgo: 20 },
+  { daysAgo: 18 },
+  { daysAgo: 16 },
+  { daysAgo: 13 },
+  { daysAgo: 10 },
+  { daysAgo: 8 },
+  { daysAgo: 6 },
+  { daysAgo: 3 },
+  { daysAgo: 1 },
 ];
 
 const bestKg = {};
 const lastVolume = {};
-const counters = { trainer: 0, own: 0 };
-const sessions = SCHEDULE.map(({ daysAgo, plan: which }, sessionIndex) => {
-  const source = which === 'trainer' ? trainerPlan : ownPlan;
-  const templateDays = which === 'trainer' ? TRAINER_DAYS : OWN_DAYS;
-  const cycle = counters[which]++;
+let trainerCycle = 0;
+const sessions = SCHEDULE.map(({ daysAgo }, sessionIndex) => {
+  const source = trainerPlan;
+  const templateDays = TRAINER_DAYS;
+  const cycle = trainerCycle++;
   const dayIndex = cycle % source.days.length;
   const round = Math.floor(cycle / source.days.length);
   const day = source.days[dayIndex];
@@ -374,7 +346,7 @@ const accessLogs = sessions.map((session) => {
 });
 
 const writes = [
-  ['gymWorkoutPlans', [trainerPlan, ownPlan]],
+  ['gymWorkoutPlans', [trainerPlan]],
   ['gymMeasurements', measurements],
   ['gymWorkoutSessions', sessions],
   ['gymAccessLogs', accessLogs],
