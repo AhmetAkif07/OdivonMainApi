@@ -448,6 +448,7 @@ describe('events and heartbeat', () => {
           { ...base, eventId: 'e2', userId: null, card: '0012345678' },
           { ...base, eventId: 'e3', userId: '77', card: null },
           { ...base, eventId: 'e4', userId: null, card: '999' },
+          { ...base, eventId: 'e5', userId: '1042', card: null, verifyMode: '2' },
         ],
       },
       NOW,
@@ -458,6 +459,7 @@ describe('events and heartbeat', () => {
     expect(log('e2')).toMatchObject({ userId: 'm2', card: '0012345678' });
     expect(log('e3')).toMatchObject({ userId: null, userName: '#77' });
     expect(log('e4')).toMatchObject({ userId: null, userName: 'Kart 999' });
+    expect(log('e5')).toMatchObject({ userId: 'm1', method: 'rfid', rawVerifyMode: '2' });
   });
 
   it('marks gates online only while both the device and the agent report', async () => {

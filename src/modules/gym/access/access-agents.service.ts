@@ -492,6 +492,10 @@ function buildAccessLog(
 
 function verifyMethod(mode: string | null): string {
   const value = (mode ?? '').toLowerCase();
+  // ZK Standalone SDK: 0 parola/PIN, 1 parmak izi, 2 RF kart.
+  if (value === '0') return 'pin';
+  if (value === '1') return 'fingerprint';
+  if (value === '2') return 'rfid';
   if (value.includes('face')) return 'face';
   if (value.includes('card') || value.includes('rfid')) return 'rfid';
   if (value.includes('finger') || value === 'fp') return 'fingerprint';
