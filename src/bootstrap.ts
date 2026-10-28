@@ -13,6 +13,7 @@ import { PlatformDemosService } from './modules/platform/demos/demos.service';
 import { CrmCampaignsService } from './modules/platform/crm/crm-campaigns.service';
 import { ErrorLogService } from './shared/errors/error-log.service';
 import { setBackgroundRunner } from './shared/http/background';
+import { installFastRouteRegistration } from './shared/http/fast-route-registration';
 
 let application: INestApplication | null = null;
 
@@ -22,6 +23,7 @@ export async function bootstrap(
 ): Promise<void> {
   const config = loadConfiguration();
   setBackgroundRunner(options.waitUntil ?? null);
+  installFastRouteRegistration();
   // The Worker boots inside the isolate startup CPU budget: there, Nest's ~1000 "dependencies
   // initialized" / "Mapped route" lines are dropped instead of being serialized one by one.
   const startupLogs = options.startupLogs !== false;
