@@ -1,4 +1,4 @@
-import { pickTodayWorkout, sessionPerformance, summarizeWeek, weekStart } from './mobile.service';
+import { lastSet, pickTodayWorkout, previousSet, sessionPerformance, summarizeWeek, weekStart } from './mobile.service';
 
 const plan = (id: string, extra: Record<string, unknown> = {}) =>
   ({
@@ -126,5 +126,31 @@ describe('mobile today helpers', () => {
       { setIndex: 1, kg: 60, reps: 10, completed: true },
       { setIndex: 2, kg: 70, reps: 8, completed: false },
     ]);
+  });
+});
+
+describe('previousSet / lastSet', () => {
+  const entry = (at: string, kgs: number[]) =>
+    ({
+      id: at,
+      createdAt: at,
+      exerciseName: 'Deadlift',
+      exerciseId: 'sys-ex-deadlift',
+      performedAt: at,
+      sets: kgs.map((kg) => ({ kg, reps: 5, completed: true })),
+    }) as never;
+  const history = [entry('2026-10-20T15:00:00Z', [100, 100]), entry('2026-10-27T15:00:00Z', [90, 95])];
+
+  it('previousSet is the all-time weight record', () => {
+    expect(previousSet(history, 'Deadlift', undefined, 'sys-ex-deadlift')).toMatchObject({ kg: 100 });
+  });
+
+  it('lastSet is the top set of the most recent workout', () => {
+    expect(lastSet(history, 'Deadlift', undefined, 'sys-ex-deadlift')).toMatchObject({ kg: 95, at: '2026-10-27T15:00:00Z' });
+  });
+
+  it('both are null for a new exercise', () => {
+    expect(previousSet([], 'Deadlift')).toBeNull();
+    expect(lastSet([], 'Deadlift')).toBeNull();
   });
 });

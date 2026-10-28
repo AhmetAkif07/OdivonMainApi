@@ -267,6 +267,7 @@ export class GymMobileService {
     const withPrevious = <T extends { name: string; exerciseId?: string }>(exercise: T) => ({
       ...exercise,
       previous: previousSet(mine, exercise.name, undefined, exercise.exerciseId),
+      last: lastSet(mine, exercise.name, undefined, exercise.exerciseId),
     });
     return {
       ...toWorkoutSummary(plan),
@@ -286,6 +287,7 @@ export class GymMobileService {
         restSeconds: exercise.restSeconds ?? null,
         notes: exercise.notes ?? null,
         previous: previousSet(mine, exercise.name, undefined, exercise.exerciseId),
+        last: lastSet(mine, exercise.name, undefined, exercise.exerciseId),
       })),
     };
   }
@@ -1359,9 +1361,10 @@ export function summarizeWeek(completedSessions: Doc[], target: number, now = Da
   };
 }
 
-function previousSet(logs: Doc[], exerciseName: string, before?: string, exerciseId?: string | null) {
+/** The exercise's entries before `before`, matched by catalog id first, then by name. */
+function exerciseHistory(logs: Doc[], exerciseName: string, before?: string, exerciseId?: string | null) {
   const cutoff = before ? new Date(before).getTime() : Number.POSITIVE_INFINITY;
-  const mine = logs
+  return logs
     .filter((item) =>
       exerciseId && item['exerciseId']
         ? item['exerciseId'] === exerciseId
@@ -1371,6 +1374,11 @@ function previousSet(logs: Doc[], exerciseName: string, before?: string, exercis
       const time = new Date(String(item['performedAt'] ?? item.createdAt)).getTime();
       return !Number.isNaN(time) && time < cutoff;
     });
+}
+
+/** Heaviest completed set ever: the weight record a new set has to beat to count as a PR. */
+export function previousSet(logs: Doc[], exerciseName: string, before?: string, exerciseId?: string | null) {
+  const mine = exerciseHistory(logs, exerciseName, before, exerciseId);
   let maxKg: number | null = null;
   let reps: number | null = null;
   let at: string | null = null;
@@ -1395,6 +1403,15 @@ function previousSet(logs: Doc[], exerciseName: string, before?: string, exercis
     return null;
   }
   return { kg: maxKg, reps, at };
+}
+
+/** Top set of the most recent time the exercise was done: the weight to start from next time. */
+export function lastSet(logs: Doc[], exerciseName: string, before?: string, exerciseId?: string | null) {
+  const performedAt = (item: Doc) => String(item['performedAt'] ?? item.createdAt);
+  const latest = exerciseHistory(logs, exerciseName, before, exerciseId).sort((left, right) =>
+    performedAt(right).localeCompare(performedAt(left)),
+  )[0];
+  return latest ? previousSet([latest], exerciseName, undefined, exerciseId) : null;
 }
 
 function toWorkoutSummary(item: Doc) {
