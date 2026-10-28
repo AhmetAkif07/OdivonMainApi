@@ -333,6 +333,15 @@ describe('desired-state recomputation', () => {
     expect(await env.sync.syncMember('t1', member, NOW)).toBe(1);
     expect(await env.sync.syncMember('t1', { ...(member as object), notes: 'x' } as never, NOW)).toBe(0);
     expect(env.db.docs.has('tenants/t1/gymDeviceCommands/zk_m1')).toBe(false);
+    const gates = await env.repo.listGates('t1');
+    const decorated = await env.context.run(admin('t1'), () => env.agents.decorateGates(gates, NOW.getTime()));
+    const zk = decorated.find((gate) => gate.id === 'zk');
+    expect(zk).toMatchObject({
+      protocol: 'zk-tcp-4370',
+      port: 4370,
+      capabilities: { events: true, userSync: false, doorOpen: false },
+      adapterStatus: 'hardware_pending',
+    });
 
     await env.sync.syncMember('t1', { ...(member as object), membershipStatus: 'cancelled' } as never, NOW);
     expect(env.db.docs.get('tenants/t1/gymDeviceCommands/g1_m1')).toMatchObject({ enabled: false, version: 2, status: 'pending' });

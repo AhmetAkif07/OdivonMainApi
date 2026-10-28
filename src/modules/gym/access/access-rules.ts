@@ -23,8 +23,10 @@ export const PROTOCOL_TABLE: Record<
     defaultPort: 80,
   },
   'zk-tcp-4370': {
-    capabilities: { events: false, userSync: false, doorOpen: false },
-    adapterStatus: 'not_validated',
+    // Edge Agent can read historical + real-time ZK attendance events. User writes
+    // stay disabled until expiry/card semantics are verified on supported hardware.
+    capabilities: { events: true, userSync: false, doorOpen: false },
+    adapterStatus: 'hardware_pending',
     defaultPort: 4370,
   },
   'vendor-sdk': {
