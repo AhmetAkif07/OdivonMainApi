@@ -1,3 +1,4 @@
+import * as crypto from 'crypto';
 import { Body, Controller, Injectable, Logger, Post, Req, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Request } from 'express';
@@ -5,6 +6,7 @@ import { FirebaseAuthGuard, getDecodedToken } from '../../../shared/auth/firebas
 import { ProductModule } from '../../../shared/authorization/constants';
 import { FirebaseService } from '../../../shared/firebase/firebase.service';
 import { MailService } from '../../../shared/mail/mail.service';
+import { verificationUrl } from '../../../shared/mail/verification-url';
 import {
   TENANT_COLLECTION,
   tenantCollectionPath,
@@ -12,7 +14,7 @@ import {
 import { IdentityRepository } from '../../identity/identity.repository';
 import { TenantService } from '../../tenant/tenant.service';
 import { farmInvalid, farmPrecondition } from '../shared/farm-errors';
-import { TRIAL_DAYS, trialSubscription } from '../shared/farm-plans';
+import { trialSubscription } from '../shared/farm-plans';
 import { FarmOnboardingDto } from './farm-core.dto';
 import { ownerMemberCard } from './farm-core.service';
 
@@ -50,6 +52,8 @@ export class FarmOnboardingService {
     const displayName = dto.displayName.trim();
     const db = this.firebase.db;
     const path = (name: string) => tenantCollectionPath(tenant.id, name);
+    // The farm stays locked (EmailVerifiedGuard) until the owner opens the link in this e-mail.
+    const verificationToken = crypto.randomBytes(32).toString('hex');
     try {
       const now = new Date().toISOString();
       await this.users.createProfile({
@@ -58,6 +62,9 @@ export class FarmOnboardingService {
         role: 'owner',
         modules,
         email: cleanEmail,
+        emailVerified: false,
+        emailVerificationToken: verificationToken,
+        emailVerificationExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
         displayName,
         phone: dto.phone?.trim() || null,
         status: 'active',
@@ -97,15 +104,18 @@ export class FarmOnboardingService {
       await this.tenants.hardDelete(tenant.id).catch((err) => this.logger.error(err));
       throw error;
     }
+    // The welcome e-mail follows once the address is verified (IdentityService.verifyEmail).
     this.mail
-      .sendModuleWelcome({
+      .sendVerificationEmail({
         module: 'farm',
         to: cleanEmail,
-        displayName: displayName,
-        tenantName: dto.farmName,
-        trialDays: TRIAL_DAYS,
+        displayName,
+        tenantName: dto.farmName.trim(),
+        verificationLink: verificationUrl('farm', verificationToken),
       })
-      ?.catch((err) => this.logger.error(`Hoş geldin maili gönderilemedi (${cleanEmail}): ${err?.message || err}`));
+      ?.catch((err) =>
+        this.logger.error(`Doğrulama maili gönderilemedi (${cleanEmail}): ${err?.message || err}`),
+      );
     return { tenantId: tenant.id };
   }
 }

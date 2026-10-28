@@ -64,6 +64,7 @@ PUBLIC_API_URL=https://mainapi.odivon.com
 Doğrulama bağlantıları modüle göre dinamik olarak oluşturulur:
 - **GYM:** `https://gym.odivon.com/auth/verify-email?token=...`
 - **VET:** `https://vet.odivon.com/verify-email?token=...`
+- **FARM:** `https://farm.odivon.com/auth/verify-email?token=...` (`/farm/onboarding` bu e-postayı gönderir; doğrulanana kadar `/farm/*` uçları `EMAIL_NOT_VERIFIED` döner)
 - **Diğer Modüller / Yedek:** MainApi'nin OdivonGYM tasarım diliyle yenilenen ortak `/api/v1/identity/verification` sayfasına gider. Sayfada modern karanlık tema, ambient glow orblar ve cam (glassmorphism) kart tasarımı yer alır; onay düğmesine basıldığında hesap doğrulanır ve hoş geldin e-postası iletilir.
 
 > [!WARNING]

@@ -133,7 +133,26 @@ describe('IdentityService.register', () => {
     }));
   });
 
-  it.each(['farm', 'hair', 'beauty', 'apm'] as const)(
+  it('links farm sign-ups to the OdivonFARM verify page', async () => {
+    firebase.auth.createUser.mockResolvedValue({ uid: 'uid-4' });
+    tenants.create.mockResolvedValue({ id: 'tenant-4' });
+    users.createProfile.mockResolvedValue({});
+    firebase.auth.setCustomUserClaims.mockResolvedValue(undefined);
+
+    await service.register({
+      email: 'farm@example.com',
+      password: 'password1',
+      tenantName: 'Business',
+      module: 'farm',
+    });
+
+    expect(mail.sendVerificationEmail).toHaveBeenCalledWith(expect.objectContaining({
+      module: 'farm',
+      verificationLink: expect.stringContaining('https://farm.odivon.com/auth/verify-email?token='),
+    }));
+  });
+
+  it.each(['hair', 'beauty', 'apm'] as const)(
     'uses the shared confirmation page for %s instead of the Gym site',
     async (module) => {
       firebase.auth.createUser.mockResolvedValue({ uid: 'uid-3' });

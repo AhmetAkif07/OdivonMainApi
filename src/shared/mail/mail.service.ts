@@ -344,8 +344,8 @@ export class MailService {
     }
 
     const brand = input.module === 'gym' ? 'OdivonGYM' : MODULE_VERIFICATION_NAMES[input.module];
-    const tenantLabel = input.module === 'gym' ? 'Salon Adı' : input.module === 'vet' ? 'Klinik Adı' : 'İşletme Adı';
-    const accountDescription = input.module === 'gym' ? 'spor salonunuz' : input.module === 'vet' ? 'kliniğiniz' : 'işletmeniz';
+    const tenantLabel = input.module === 'gym' ? 'Salon Adı' : input.module === 'vet' ? 'Klinik Adı' : input.module === 'farm' ? 'Çiftlik Adı' : 'İşletme Adı';
+    const accountDescription = input.module === 'gym' ? 'spor salonunuz' : input.module === 'vet' ? 'kliniğiniz' : input.module === 'farm' ? 'çiftliğiniz' : 'işletmeniz';
     const from = { name: brand, address: fromAddress() };
     const recipientName = input.displayName?.trim() || 'İşletme Yöneticisi';
     const tenantName = input.tenantName.trim();

@@ -27,6 +27,12 @@ export function verificationUrl(module: ProductModule, token: string): string {
     const url = process.env.APP_URL_SPA?.trim() || 'https://spa.odivon.com';
     return `${url.replace(/\/+$/, '')}/auth/verify-email?token=${encodeURIComponent(token)}`;
   }
+  if (module === 'farm') {
+    const url =
+      process.env.APP_URL_FARM?.trim() ||
+      (process.env.NODE_ENV === 'development' ? 'http://localhost:4200' : 'https://farm.odivon.com');
+    return `${url.replace(/\/+$/, '')}/auth/verify-email?token=${encodeURIComponent(token)}`;
+  }
   if (module === 'vet') {
     const url = process.env.APP_URL_VET?.trim() || 'https://vet.odivon.com';
     return `${url.replace(/\/+$/, '')}/verify-email?token=${encodeURIComponent(token)}`;
