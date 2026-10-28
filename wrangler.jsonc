@@ -4,10 +4,14 @@
   "main": "worker/index.mjs",
   "account_id": "3c85686b125d141ad80870db15cabded",
   "compatibility_date": "2026-09-21",
-  "compatibility_flags": ["nodejs_compat"],
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
   "workers_dev": true,
   "minify": true,
-  "define": { "process.env.NODE_ENV": "\"production\"" },
+  "define": {
+    "process.env.NODE_ENV": "\"production\""
+  },
   "alias": {
     "pino": "./node_modules/pino/pino.js",
     "node-fetch": "./worker/node-fetch.mjs",
@@ -16,18 +20,77 @@
     "@nestjs/microservices": "./worker/unsupported.cjs",
     // OpenAPI is generated at build time; skip the @Api* decorators at isolate startup.
     "@nestjs/swagger": "./worker/swagger.cjs",
+    // No DTO uses @IsPhoneNumber; skip its phone metadata at isolate startup (see worker/phone.cjs).
+    "libphonenumber-js/max": "./worker/phone.cjs",
     "class-transformer/storage": "class-transformer/cjs/storage.js"
   },
-  "build": { "command": "npm run build && node scripts/worker-assets.mjs && node scripts/generate-openapi.mjs", "watch_dir": ["src", "worker", "scripts"] },
-  "assets": { "directory": ".wrangler/assets" },
-  "routes": [{ "pattern": "mainapi.odivon.com", "custom_domain": true }],
+  "build": {
+    "command": "npm run build && node scripts/worker-assets.mjs && node scripts/generate-openapi.mjs",
+    "watch_dir": [
+      "src",
+      "worker",
+      "scripts"
+    ]
+  },
+  "assets": {
+    "directory": ".wrangler/assets"
+  },
+  "routes": [
+    {
+      "pattern": "mainapi.odivon.com",
+      "custom_domain": true
+    }
+  ],
   // 05:00 UTC = 08:00 Europe/Istanbul: daily gym reminders (see runScheduledJobs).
-  "triggers": { "crons": ["0 5 * * *"] },
+  // Hourly at :15: hair SMS reminders and package expiry (runHairJobs; worker/index.mjs dispatches on it).
+  "triggers": {
+    "crons": [
+      "0 5 * * *",
+      "15 * * * *"
+    ]
+  },
   "vars": {
     "NODE_ENV": "production",
     "PORT": "3000",
     "FIRESTORE_PREFER_REST": "true",
-    "FIREBASE_PROJECT_ID": "odivon-main-api-a2095"
+    "FIREBASE_PROJECT_ID": "odivon-main-api-a2095",
+    "APP_URL": "https://gym.odivon.com",
+    "APP_URL_GYM": "https://gym.odivon.com",
+    "APP_URL_VET": "https://vet.odivon.com",
+    "APP_URL_RENTACAR": "https://rent.odivon.com",
+    "APP_URL_SPA": "https://spa.odivon.com",
+    "APP_URL_PARKING": "https://park.odivon.com",
+    "PUBLIC_API_URL": "https://mainapi.odivon.com",
+    "SMTP_HOST": "smtp.hostinger.com",
+    "SMTP_PORT": "465",
+    "SMTP_SECURE": "true",
+    "SMTP_USER": "info@odivon.com",
+    "SMTP_FROM": "\"OdivonGYM\" <info@odivon.com>"
   },
-  "observability": { "enabled": true }
+  "previews": {
+    "vars": {
+      "NODE_ENV": "test",
+      "PORT": "3000",
+      "FIRESTORE_PREFER_REST": "true",
+      "FIREBASE_PROJECT_ID": "demo-odivon",
+      "APP_URL": "https://preview.invalid",
+      "APP_URL_GYM": "https://preview.invalid",
+      "APP_URL_VET": "https://preview.invalid",
+      "APP_URL_RENTACAR": "https://preview.invalid",
+      "APP_URL_SPA": "https://preview.invalid",
+      "APP_URL_PARKING": "https://preview.invalid",
+      "PUBLIC_API_URL": "https://preview.invalid",
+      "SMTP_HOST": "localhost",
+      "SMTP_PORT": "1025",
+      "SMTP_SECURE": "false",
+      "SMTP_USER": "preview@example.invalid",
+      "SMTP_FROM": "\"Odivon Preview\" <preview@example.invalid>"
+    },
+    "define": {
+      "process.env.NODE_ENV": "\"test\""
+    }
+  },
+  "observability": {
+    "enabled": true
+  }
 }

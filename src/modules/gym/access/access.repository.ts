@@ -71,6 +71,23 @@ export class AccessRepository {
     return snapshot.docs.map((doc) => doc.data() as GymMember);
   }
 
+  /** Members whose `field` equals one of `values` (Firestore `in` takes at most 30 values per query). */
+  async findMembersByField(tenantId: string, field: string, values: (string | number)[]): Promise<GymMember[]> {
+    const chunks: (string | number)[][] = [];
+    for (let i = 0; i < values.length; i += 30) chunks.push(values.slice(i, i + 30));
+    const snapshots = await Promise.all(chunks.map((chunk) => this.members(tenantId).where(field, 'in', chunk).get()));
+    const seen = new Set<string>();
+    const members: GymMember[] = [];
+    for (const snapshot of snapshots) {
+      for (const doc of snapshot.docs) {
+        if (seen.has(doc.id)) continue;
+        seen.add(doc.id);
+        members.push(doc.data() as GymMember);
+      }
+    }
+    return members;
+  }
+
   /** Aggregation count: billed per 1000 index entries instead of per document. */
   async countSyncDocs(tenantId: string, gateId: string, status: string): Promise<number> {
     const snapshot = await this.syncDocs(tenantId).where('gateId', '==', gateId).where('status', '==', status).count().get();

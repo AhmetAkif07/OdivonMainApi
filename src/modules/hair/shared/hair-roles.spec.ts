@@ -23,7 +23,10 @@ describe('hair default roles', () => {
   it('scopes stylists to their own rows', () => {
     expect(scopeFor('stylist', 'hairAppointments')).toBe('own');
     expect(scopeFor('stylist', 'hairCommissions')).toBe('own');
-    expect(scopeFor('cashier', 'hairReports')).toBe('limited');
+    expect(scopeFor('cashier', 'hairReports')).toBe('own');
+    expect(scopeFor('cashier', 'hairDashboard')).toBe('own');
+    expect(scopeFor('cashier', 'hairCommissions')).toBe('own');
+    expect(scopeFor('receptionist', 'hairReports')).toBe('limited');
     expect(scopeFor('admin', 'hairAppointments')).toBe('all');
   });
 });

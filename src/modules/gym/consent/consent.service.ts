@@ -1,6 +1,4 @@
 import { Injectable } from '@nestjs/common';
-import { AppException } from '../../../shared/errors/app.exception';
-import { ErrorCode } from '../../../shared/errors/error-codes';
 import { BaseDocument } from '../../../shared/firestore/base-document';
 import { MembersRepository } from '../members/members.repository';
 import { GymStore } from '../shared/gym-store';
@@ -190,6 +188,7 @@ export class GymConsentService {
         consentedAt: member.healthConsentAt ?? undefined,
       },
       camera_cctv: { status: 'none' },
+      cookie_policy: { status: 'none' },
     };
 
     for (const log of memberLogs) {

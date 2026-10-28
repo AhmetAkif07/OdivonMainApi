@@ -17,7 +17,7 @@ export class SubscribeDto {
 @ApiBearerAuth()
 @Roles('owner', 'admin')
 @UseGuards(FirebaseAuthGuard, TenantGuard, RoleGuard)
-@Controller(['saas-billing', 'gym/saas-billing', 'vet/saas-billing'])
+@Controller(['saas-billing', 'gym/saas-billing', 'vet/saas-billing', 'beauty/saas-billing'])
 export class SaasBillingController {
   constructor(private readonly billing: SaasBillingService) {}
 

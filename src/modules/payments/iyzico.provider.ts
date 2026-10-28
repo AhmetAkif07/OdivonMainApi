@@ -10,6 +10,7 @@ const BASKET_NAMES: Record<PaymentSource, string> = {
   gym_receivable: 'Spor salonu taksit ödemesi',
   gym_member_package: 'Spor salonu üyelik paketi',
   gym_wallet_topup: 'Spor salonu cüzdan yüklemesi',
+  rentacar_reservation: 'Araç kiralama rezervasyonu',
 };
 
 const SANDBOX_URL = 'https://sandbox-api.iyzipay.com';

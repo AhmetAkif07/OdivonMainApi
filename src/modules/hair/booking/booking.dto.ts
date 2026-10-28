@@ -103,7 +103,25 @@ export class PublicBookAppointmentDto {
   @MaxLength(1000)
   notes?: string;
 
-  @ApiPropertyOptional({ description: 'Turnstile / reCAPTCHA token (verified when the server has a secret)' })
+  @ApiPropertyOptional({ description: 'Cloudflare Turnstile token (verified when the server has TURNSTILE_SECRET)' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(4000)
+  captchaToken?: string;
+
+  @ApiPropertyOptional({ description: 'SMS code from POST …/otp; required when info.requireBookingOtp is true' })
+  @IsOptional()
+  @Matches(/^\d{6}$/)
+  otpCode?: string;
+}
+
+export class PublicOtpRequestDto {
+  @ApiProperty({ example: '05321234567' })
+  @IsString()
+  @Length(7, 32)
+  phone!: string;
+
+  @ApiPropertyOptional({ description: 'Cloudflare Turnstile token (verified when the server has TURNSTILE_SECRET)' })
   @IsOptional()
   @IsString()
   @MaxLength(4000)

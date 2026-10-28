@@ -1,4 +1,4 @@
-import { GymConsentService, GYM_CONSENT_COLLECTIONS } from './consent.service';
+import { GymConsentService } from './consent.service';
 import { DEFAULT_CONSENT_TEXTS } from './consent.default-texts';
 
 describe('GymConsentService', () => {

@@ -1,4 +1,4 @@
-import { IdentityService } from './identity.service';
+﻿import { IdentityService } from './identity.service';
 import { ErrorCode } from '../../shared/errors/error-codes';
 import { AppException } from '../../shared/errors/app.exception';
 
@@ -25,8 +25,15 @@ describe('IdentityService.register', () => {
   const tenantContext = {
     getStore: jest.fn(),
   };
+  
   const roles = {
-    assertRolesExist: jest.fn(),
+    assertRolesExist: jest.fn().mockResolvedValue([]),
+    resolvePermissions: jest.fn().mockResolvedValue([]),
+  };
+  const mail = {
+    sendWelcomeGymOwner: jest.fn().mockResolvedValue(true),
+    sendModuleWelcome: jest.fn().mockResolvedValue(true),
+    sendVerificationEmail: jest.fn().mockResolvedValue(true),
   };
 
   let service: IdentityService;
@@ -39,6 +46,7 @@ describe('IdentityService.register', () => {
       users as never,
       tenantContext as never,
       roles as never,
+      mail as never,
     );
   });
 
@@ -66,6 +74,10 @@ describe('IdentityService.register', () => {
       role: 'owner',
       modules: ['vet'],
     });
+    expect(mail.sendVerificationEmail).toHaveBeenCalledWith(expect.objectContaining({
+      module: 'vet',
+      verificationLink: expect.stringContaining('https://vet.odivon.com/verify-email?token='),
+    }));
   });
 
   it('registers a gym tenant with trial membership', async () => {
@@ -96,6 +108,71 @@ describe('IdentityService.register', () => {
       role: 'owner',
       modules: ['gym'],
     });
+    expect(mail.sendVerificationEmail).toHaveBeenCalledWith(expect.objectContaining({
+      module: 'gym',
+      verificationLink: expect.stringContaining('https://gym.odivon.com/auth/verify-email?token='),
+    }));
+  });
+
+    it('uses the spa site for spa module email verification', async () => {
+    firebase.auth.createUser.mockResolvedValue({ uid: 'uid-spa' });
+    tenants.create.mockResolvedValue({ id: 'tenant-spa' });
+    users.createProfile.mockResolvedValue({});
+    firebase.auth.setCustomUserClaims.mockResolvedValue(undefined);
+
+    await service.register({
+      email: 'owner@spa.com',
+      password: 'password1',
+      tenantName: 'Odivon Spa',
+      module: 'spa',
+    });
+
+    expect(mail.sendVerificationEmail).toHaveBeenCalledWith(expect.objectContaining({
+      module: 'spa',
+      verificationLink: expect.stringContaining('https://spa.odivon.com/auth/verify-email?token='),
+    }));
+  });
+
+  it.each(['farm', 'hair', 'beauty', 'apm'] as const)(
+    'uses the shared confirmation page for %s instead of the Gym site',
+    async (module) => {
+      firebase.auth.createUser.mockResolvedValue({ uid: 'uid-3' });
+      tenants.create.mockResolvedValue({ id: 'tenant-3' });
+      users.createProfile.mockResolvedValue({});
+      firebase.auth.setCustomUserClaims.mockResolvedValue(undefined);
+
+      await service.register({
+        email: `${module}@example.com`,
+        password: 'password1',
+        tenantName: 'Business',
+        module,
+      });
+
+      expect(mail.sendVerificationEmail).toHaveBeenCalledWith(expect.objectContaining({
+        module,
+        verificationLink: expect.stringContaining('https://mainapi.odivon.com/api/v1/identity/verification?token='),
+      }));
+    },
+  );
+
+  it('does not send welcome mail on registration before email is verified', async () => {
+    firebase.auth.createUser.mockResolvedValue({ uid: 'uid-3' });
+    tenants.create.mockResolvedValue({ id: 'tenant-3' });
+    users.createProfile.mockResolvedValue({});
+    firebase.auth.setCustomUserClaims.mockResolvedValue(undefined);
+
+    const result = await service.register({
+      email: 'spa@example.com',
+      password: 'password1',
+      tenantName: 'Spa',
+      module: 'spa',
+      displayName: 'Owner',
+    });
+
+    expect(result.modules).toEqual(['spa']);
+    expect(mail.sendModuleWelcome).not.toHaveBeenCalled();
+    expect(mail.sendWelcomeGymOwner).not.toHaveBeenCalled();
+    expect(firebase.auth.deleteUser).not.toHaveBeenCalled();
   });
 
   it('explains missing Firebase Authentication configuration', async () => {
@@ -134,9 +211,183 @@ describe('IdentityService.register', () => {
   });
 });
 
-describe('IdentityService.me', () => {
+
+describe('IdentityService.resendVerification', () => {
+  const profile = {
+    uid: 'uid-1',
+    email: 'owner@example.com',
+    tenantId: 'tenant-1',
+    emailVerified: false,
+    displayName: 'Owner',
+    modules: ['vet'],
+  };
+  const users = {
+    findByEmail: jest.fn(),
+    updateProfile: jest.fn().mockResolvedValue(undefined),
+  };
+  const tenants = { getById: jest.fn().mockResolvedValue({ name: 'Gym' }) };
+  const mail = { sendVerificationEmail: jest.fn() };
+  const service = new IdentityService(
+    {} as never,
+    tenants as never,
+    users as never,
+    {} as never,
+    {} as never,
+    mail as never,
+  );
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    users.findByEmail.mockResolvedValue(profile);
+    users.updateProfile.mockResolvedValue(undefined);
+    tenants.getById.mockResolvedValue({ name: 'Gym' });
+  });
+
+  it('waits for SMTP acceptance before reporting success', async () => {
+    mail.sendVerificationEmail.mockResolvedValue(true);
+
+    await expect(service.resendVerification(' OWNER@example.com ')).resolves.toEqual({ success: true });
+    expect(users.findByEmail).toHaveBeenCalledWith('owner@example.com');
+    expect(mail.sendVerificationEmail).toHaveBeenCalledWith(expect.objectContaining({
+      to: profile.email,
+      verificationLink: expect.stringContaining('https://vet.odivon.com/verify-email?token='),
+      module: 'vet',
+    }));
+  });
+
+  it('reports a service error when SMTP rejects the message', async () => {
+    mail.sendVerificationEmail.mockResolvedValue(false);
+
+    await expect(service.resendVerification(profile.email)).rejects.toMatchObject({ status: 503 });
+  });
+
+  it('keeps the generic response for an unknown address', async () => {
+    users.findByEmail.mockResolvedValue(null);
+
+    await expect(service.resendVerification('unknown@example.com')).resolves.toEqual({ success: true });
+    expect(mail.sendVerificationEmail).not.toHaveBeenCalled();
+  });
+});
+
+  describe('IdentityService.verifyEmail', () => {
+  it('verifies user and updates auth + firestore profile', async () => {
+    const firebase = { auth: { updateUser: jest.fn().mockResolvedValue({}) } };
+    const tenants = { getById: jest.fn().mockResolvedValue({ id: 't-1', name: 'Gym 1' }) };
+    const users = {
+      findByVerificationToken: jest.fn().mockResolvedValue({
+        uid: 'uid-1',
+        email: 'test@example.com',
+        tenantId: 't-1',
+        modules: ['gym'],
+        displayName: 'Test',
+        emailVerificationExpiresAt: new Date(Date.now() + 100000).toISOString(),
+      }),
+      updateProfile: jest.fn().mockResolvedValue(undefined),
+    };
+    const tenantContext = { getStore: jest.fn() };
+    const roles = { assertRolesExist: jest.fn(), resolvePermissions: jest.fn() };
+    const mail = { sendWelcomeGymOwner: jest.fn().mockResolvedValue(true) };
+
+    const service = new IdentityService(
+      firebase as never,
+      tenants as never,
+      users as never,
+      tenantContext as never,
+      roles as never,
+      mail as never,
+    );
+
+    const result = await service.verifyEmail('valid-token');
+    expect(result).toEqual({ success: true, email: 'test@example.com' });
+    expect(firebase.auth.updateUser).toHaveBeenCalledWith('uid-1', { emailVerified: true });
+    expect(users.updateProfile).toHaveBeenCalledWith(
+      'uid-1',
+      expect.objectContaining({ emailVerified: true, emailVerificationToken: null })
+    );
+    expect(mail.sendWelcomeGymOwner).toHaveBeenCalledWith(expect.objectContaining({
+      to: 'test@example.com',
+      tenantName: 'Gym 1',
+    }));
+  });
+
+  it('sends module welcome email for non-gym owner after email verification', async () => {
+    const firebase = { auth: { updateUser: jest.fn().mockResolvedValue({}) } };
+    const tenants = { getById: jest.fn().mockResolvedValue({ id: 't-2', name: 'Vet Clinic' }) };
+    const users = {
+      findByVerificationToken: jest.fn().mockResolvedValue({
+        uid: 'uid-2',
+        email: 'vet@example.com',
+        tenantId: 't-2',
+        modules: ['vet'],
+        displayName: 'Vet Doctor',
+        emailVerificationExpiresAt: new Date(Date.now() + 100000).toISOString(),
+      }),
+      updateProfile: jest.fn().mockResolvedValue(undefined),
+    };
+    const mail = { sendModuleWelcome: jest.fn().mockResolvedValue(true) };
+
+    const service = new IdentityService(
+      firebase as never,
+      tenants as never,
+      users as never,
+      {} as never,
+      {} as never,
+      mail as never,
+    );
+
+    const result = await service.verifyEmail('valid-token-vet');
+    expect(result).toEqual({ success: true, email: 'vet@example.com' });
+    expect(mail.sendModuleWelcome).toHaveBeenCalledWith(expect.objectContaining({
+      module: 'vet',
+      to: 'vet@example.com',
+      displayName: 'Vet Doctor',
+      tenantName: 'Vet Clinic',
+      trialDays: 14,
+    }));
+  });
+
+  it('throws VERIFICATION_TOKEN_INVALID for invalid token', async () => {
+    const firebase = { auth: { updateUser: jest.fn() } };
+    const tenants = { getById: jest.fn() };
+    const users = { findByVerificationToken: jest.fn().mockResolvedValue(null) };
+    const tenantContext = { getStore: jest.fn() };
+    const roles = { assertRolesExist: jest.fn() };
+    const mail = {};
+
+    const service = new IdentityService(
+      firebase as never,
+      tenants as never,
+      users as never,
+      tenantContext as never,
+      roles as never,
+      mail as never,
+    );
+
+    await expect(service.verifyEmail('invalid-token')).rejects.toThrow(AppException);
+  });
+
+  it('keeps the verification token when Firebase Auth cannot be updated', async () => {
+    const firebase = { auth: { updateUser: jest.fn().mockRejectedValue(new Error('Firebase unavailable')) } };
+    const users = {
+      findByVerificationToken: jest.fn().mockResolvedValue({
+        uid: 'uid-1',
+        email: 'vet@example.com',
+        tenantId: 't-1',
+        modules: ['vet'],
+        emailVerificationExpiresAt: new Date(Date.now() + 100000).toISOString(),
+      }),
+      updateProfile: jest.fn(),
+    };
+    const service = new IdentityService(firebase as never, {} as never, users as never, {} as never, {} as never, {} as never);
+
+    await expect(service.verifyEmail('valid-token')).rejects.toMatchObject({ status: 503 });
+    expect(users.updateProfile).not.toHaveBeenCalled();
+  });
+});
+
+  describe('IdentityService.me', () => {
   it('uses Firestore profile plus tenant summary, not claims alone', async () => {
-    const firebase = { auth: {} };
+    const firebase = { auth: { getUser: jest.fn().mockResolvedValue(null) } };
     const tenants = {
       getById: jest.fn().mockResolvedValue({ id: 't1', name: 'Clinic', status: 'active' }),
     };
@@ -152,13 +403,7 @@ describe('IdentityService.me', () => {
     const tenantContext = {
       getStore: jest.fn().mockReturnValue({ userId: 'u1', tenantId: 't1' }),
     };
-    const service = new IdentityService(
-      firebase as never,
-      tenants as never,
-      users as never,
-      tenantContext as never,
-      {} as never,
-    );
+    const service = new IdentityService(firebase as never, tenants as never, users as never, tenantContext as never, {} as never, {} as never);
 
     await expect(service.me()).resolves.toMatchObject({
       uid: 'u1',
@@ -171,20 +416,20 @@ describe('IdentityService.me', () => {
       tenant: { id: 't1', name: 'Clinic', status: 'active' },
     });
     const result = await service.me();
-    expect(result.permissions.customers).toEqual(['view', 'create', 'update', 'delete']);
+    expect(result.permissions.customers).toEqual(['view', 'create', 'update', 'delete', 'export', 'approve', 'refund']);
     expect(result.permissions.members).toBeUndefined();
   });
 
   it('filters gym permissions for gym tenants', async () => {
     const service = new IdentityService(
-      { auth: {} } as never,
+      { auth: { getUser: jest.fn().mockResolvedValue(null) } } as never,
       {
         getById: jest.fn().mockResolvedValue({
           id: 'g1',
           name: 'Gym',
           status: 'active',
           membershipStatus: 'trial',
-          trialEndsAt: '2026-10-01T00:00:00.000Z',
+          trialEndsAt: '2029-10-01T00:00:00.000Z',
           onboardingCompleted: false,
         }),
       } as never,
@@ -199,10 +444,11 @@ describe('IdentityService.me', () => {
       } as never,
       { getStore: jest.fn().mockReturnValue({ userId: 'u3', tenantId: 'g1' }) } as never,
       {} as never,
+      {} as never,
     );
 
     const result = await service.me();
-    expect(result.permissions.members).toEqual(['view', 'create', 'update', 'delete']);
+    expect(result.permissions.members).toEqual(['view', 'create', 'update', 'delete', 'export', 'approve', 'refund']);
     expect(result.permissions.customers).toBeUndefined();
     expect(result.onboardingCompleted).toBe(false);
     expect(result.membershipStatus).toBe('trial');
@@ -210,7 +456,7 @@ describe('IdentityService.me', () => {
 
   it('returns role-derived permissions for non-owner users', async () => {
     const service = new IdentityService(
-      { auth: {} } as never,
+      { auth: { getUser: jest.fn().mockResolvedValue(null) } } as never,
       { getById: jest.fn().mockResolvedValue({ id: 't1', name: 'Clinic', status: 'active' }) } as never,
       {
         findByUid: jest.fn().mockResolvedValue({
@@ -230,6 +476,7 @@ describe('IdentityService.me', () => {
         }),
       } as never,
       {} as never,
+      {} as never,
     );
 
     await expect(service.me()).resolves.toMatchObject({
@@ -241,10 +488,11 @@ describe('IdentityService.me', () => {
 
   it('throws USER_NOT_FOUND when profile is missing', async () => {
     const service = new IdentityService(
-      { auth: {} } as never,
+      { auth: { getUser: jest.fn().mockResolvedValue(null) } } as never,
       { getById: jest.fn() } as never,
       { findByUid: jest.fn().mockResolvedValue(null) } as never,
       { getStore: jest.fn().mockReturnValue({ userId: 'u1' }) } as never,
+      {} as never,
       {} as never,
     );
     await expect(service.me()).rejects.toMatchObject({ code: ErrorCode.USER_NOT_FOUND });
@@ -272,9 +520,12 @@ describe('IdentityService user management', () => {
     getStore: jest.fn(),
     getTenantId: jest.fn(),
   };
+  
   const roles = {
-    assertRolesExist: jest.fn(),
+    assertRolesExist: jest.fn().mockResolvedValue([]),
+    resolvePermissions: jest.fn().mockResolvedValue([]),
   };
+  const mail = { sendWelcomeGymOwner: jest.fn().mockResolvedValue(true) };
 
   let service: IdentityService;
 
@@ -288,6 +539,7 @@ describe('IdentityService user management', () => {
       users as never,
       tenantContext as never,
       roles as never,
+      mail as never,
     );
   });
 

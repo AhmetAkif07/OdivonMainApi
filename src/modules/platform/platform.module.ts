@@ -1,4 +1,15 @@
+import { PlatformTicketsService } from './tickets/tickets.service';
+import {
+  PlatformTicketsController,
+  SupportTicketsController,
+} from './tickets/tickets.controller';
 import { Module } from '@nestjs/common';
+import { MailModule } from '../../shared/mail/mail.module';
+import { APP_INTERCEPTOR } from '@nestjs/core';
+import { PlatformReleasesService } from './releases/releases.service';
+import { PlatformReleasesController } from './releases/releases.controller';
+import { ClientVersionTracker } from './releases/client-version-tracker.service';
+import { ClientVersionTrackingInterceptor } from './releases/client-version-tracking.interceptor';
 import { PlatformAdminGuard } from './platform-admin.guard';
 import { PlatformAuditService } from './audit/platform-audit.service';
 import { PlatformAuditController } from './audit/platform-audit.controller';
@@ -15,9 +26,26 @@ import { PlatformDemosService } from './demos/demos.service';
 import { PlatformDemosController } from './demos/demos.controller';
 import { PlatformErrorLogsService } from './logs/error-logs.service';
 import { PlatformErrorLogsController } from './logs/error-logs.controller';
+import { PlatformOrphanTenantsService } from './orphans/orphan-tenants.service';
+import { PlatformOrphanTenantsController } from './orphans/orphan-tenants.controller';
+import { PlatformSaasPricingController } from './pricing/saas-pricing.controller';
+import { HostingerMailClient } from './crm/hostinger-mail.client';
+import { CrmDirectoryService } from './crm/crm-directory.service';
+import { CrmMailService } from './crm/crm-mail.service';
+import { CrmNotificationsService } from './crm/crm-notifications.service';
+import { CrmCampaignsService } from './crm/crm-campaigns.service';
+import {
+  PlatformCrmCampaignsController,
+  PlatformCrmMailController,
+  PlatformCrmNotificationsController,
+} from './crm/crm.controller';
+import { TenantPlatformNotificationsController } from './crm/tenant-notifications.controller';
 
 @Module({
+  imports: [MailModule],
   controllers: [
+    SupportTicketsController,
+    PlatformTicketsController,
     PlatformMeController,
     PlatformDashboardController,
     PlatformTenantsController,
@@ -26,8 +54,16 @@ import { PlatformErrorLogsController } from './logs/error-logs.controller';
     PlatformDemosController,
     PlatformErrorLogsController,
     PlatformAuditController,
+    PlatformOrphanTenantsController,
+    PlatformSaasPricingController,
+    PlatformCrmMailController,
+    PlatformCrmCampaignsController,
+    PlatformCrmNotificationsController,
+    TenantPlatformNotificationsController,
+    PlatformReleasesController,
   ],
   providers: [
+    PlatformTicketsService,
     PlatformAdminGuard,
     PlatformAuditService,
     PlatformDashboardService,
@@ -36,8 +72,18 @@ import { PlatformErrorLogsController } from './logs/error-logs.controller';
     PlatformRevenueService,
     PlatformDemosService,
     PlatformErrorLogsService,
+    PlatformOrphanTenantsService,
+    HostingerMailClient,
+    CrmDirectoryService,
+    CrmMailService,
+    CrmNotificationsService,
+    CrmCampaignsService,
+    PlatformReleasesService,
+    ClientVersionTracker,
+    { provide: APP_INTERCEPTOR, useClass: ClientVersionTrackingInterceptor },
   ],
   exports: [
+    PlatformTicketsService,
     PlatformAdminGuard,
     PlatformAuditService,
     PlatformTenantsService,
@@ -45,6 +91,8 @@ import { PlatformErrorLogsController } from './logs/error-logs.controller';
     PlatformRevenueService,
     PlatformDemosService,
     PlatformErrorLogsService,
+    CrmCampaignsService,
+    CrmNotificationsService,
   ],
 })
 export class PlatformModule {}

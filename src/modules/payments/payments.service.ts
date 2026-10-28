@@ -12,10 +12,12 @@ import type { GymPackage } from '../gym/packages/package.entity';
 import { fulfillGymPayment, isGymSource } from './gym-fulfillment';
 import { GymPaymentCredentialsService } from './gym-payment-credentials.service';
 import { IyzicoProvider } from './iyzico.provider';
+import { PaytrProvider, paytrSessionId, verifyPaytrCallbackHash } from './paytr.provider';
 import { CreateCheckoutDto, CreateSaasOrderDto, MemberCheckoutDto } from './payments.dto';
-import { CheckoutInput, IyzicoCredentials, PaymentProvider, PaymentProviderId, PaymentSession, PaymentSource } from './payment-provider';
+import { CheckoutInput, IyzicoCredentials, PaymentProvider, PaymentProviderId, PaymentSession, PaymentSource, VerifiedPayment } from './payment-provider';
 import { nextPeriod, receiptNo, SaasCycle } from './saas-billing';
-import { SAAS_PLAN_MODULE, SAAS_SANDBOX_PRICES, saasPlanPrice } from './saas-prices';
+import { SAAS_PLAN_MODULE } from './saas-prices';
+import { pricingProduct, SaasPlanPricing, SaasPricingService, STATIC_SAAS_PRICING } from '../saas-pricing/saas-pricing.service';
 
 /** iyzico checkout form tokens live ~30 minutes; an older pending session is treated as abandoned. */
 export const CHECKOUT_TTL_MS = 30 * 60_000;
@@ -28,6 +30,7 @@ const DEFAULT_RETURN_ORIGINS = [
   'https://odivon-gym-client.dogangns-98.workers.dev',
   'https://odivon-panel.dogangns-98.workers.dev',
   'https://odivonapm.dogangns-98.workers.dev',
+  'https://rent.odivon.com',
   'http://localhost:4200',
 ];
 
@@ -53,6 +56,8 @@ export class PaymentsService {
     iyzico: IyzicoProvider,
     @Optional() private readonly gymCredentials?: GymPaymentCredentialsService,
     @Optional() private readonly accessSync?: AccessSyncService,
+    @Optional() private readonly pricing: SaasPricingService = STATIC_SAAS_PRICING,
+    @Optional() private readonly paytr: PaytrProvider = new PaytrProvider(),
   ) {
     this.providers = new Map([[iyzico.id, iyzico]]);
   }
@@ -93,10 +98,26 @@ export class PaymentsService {
   }
 
   /** Plans this tenant can buy: an APM-only tenant sees the APM packages, everyone else the shared set. */
-  saasPlans() {
+  async saasPlans() {
+    const plans = await this.saasPlanCatalog();
     return Object.fromEntries(
-      Object.entries(SAAS_SANDBOX_PRICES).filter(([planId]) => this.planAvailable(planId)),
+      plans.map((plan) => [
+        plan.id,
+        { ...(plan.monthly !== null ? { monthly: plan.monthly } : {}), ...(plan.yearly !== null ? { yearly: plan.yearly } : {}) },
+      ]),
     );
+  }
+
+  /** Same plans with names, at this tenant's product prices, for apps that render a pricing table. */
+  async saasPlanCatalog(): Promise<SaasPlanPricing[]> {
+    const modules = this.tenant.getStore().modules ?? [];
+    const result: SaasPlanPricing[] = [];
+    for (const plan of await this.pricing.activePlans()) {
+      if (!this.planAvailable(plan.id)) continue;
+      const priced = (await this.pricing.activePlans(pricingProduct(modules, plan.id))).find((item) => item.id === plan.id);
+      if (priced) result.push(priced);
+    }
+    return result;
   }
 
   private planAvailable(planId: string): boolean {
@@ -115,12 +136,13 @@ export class PaymentsService {
     if (this.tenant.getStore().role !== 'owner') {
       throw new AppException(ErrorCode.FORBIDDEN_ROLE, 'Only the tenant owner can create a SaaS order');
     }
-    const amount = saasPlanPrice(dto.planId, dto.billingCycle);
-    if (!amount) throw new AppException(ErrorCode.FINANCE_INVALID, 'Invalid SaaS plan or billing cycle');
     // A module's own packages (APM) are only sold to tenants of that module, and vice versa.
-    if (!this.planAvailable(dto.planId)) {
+    if ((await this.pricing.price(dto.planId, dto.billingCycle)) && !this.planAvailable(dto.planId)) {
       throw new AppException(ErrorCode.FINANCE_INVALID, 'This plan is not available for this product');
     }
+    // The tenant's product price: a product can have its own price or not sell the plan at all.
+    const amount = await this.pricing.price(dto.planId, dto.billingCycle, pricingProduct(this.tenant.getStore().modules, dto.planId));
+    if (!amount) throw new AppException(ErrorCode.FINANCE_INVALID, 'Invalid SaaS plan or billing cycle');
     const tenantId = this.tenant.getTenantId();
     const id = randomUUID();
     const now = new Date().toISOString();
@@ -224,6 +246,12 @@ export class PaymentsService {
       url.searchParams.set('status', outcome);
       return url.toString();
     }
+    if (session.source === 'rentacar_reservation') {
+      const url = new URL(`${session.returnOrigin ?? DEFAULT_RETURN_ORIGINS[0]}/app/rezervasyonlar`);
+      url.searchParams.set('paymentSession', id);
+      url.searchParams.set('status', outcome);
+      return url.toString();
+    }
     if (!isGymSource(session.source)) return null;
     const url = new URL(`${session.returnOrigin ?? DEFAULT_RETURN_ORIGINS[0]}/payment-result`);
     url.searchParams.set('paymentSession', id);
@@ -270,6 +298,39 @@ export class PaymentsService {
       if (!credentials) throw new AppException(ErrorCode.INVALID_STATUS, 'The gym payment keys are no longer available');
     }
     const verified = await provider.verifyCheckout(token, { id, amountKurus: session.amountKurus }, credentials);
+    return this.applyVerified(id, session, verified);
+  }
+
+  /**
+   * PayTR notification for SaaS subscriptions (set once in the PayTR panel). PayTR gives no retrieve
+   * call here, so the signed hash is the proof of the result; the amount is checked against the session.
+   */
+  async handlePaytrNotification(body: Record<string, string | undefined>) {
+    const merchantOid = String(body['merchant_oid'] ?? '');
+    const status = String(body['status'] ?? '');
+    const totalAmount = String(body['total_amount'] ?? '');
+    const credentials = this.paytr.platformCredentials();
+    if (!verifyPaytrCallbackHash(credentials, { merchantOid, status, totalAmount, hash: String(body['hash'] ?? '') })) {
+      throw new AppException(ErrorCode.FINANCE_INVALID, 'PayTR notification could not be verified');
+    }
+    const id = paytrSessionId(merchantOid);
+    const session = id ? (await this.sessions().doc(id).get()).data() as PaymentSession | undefined : undefined;
+    if (!id || !session || session.provider !== 'paytr' || session.source !== 'saas_subscription') {
+      throw new AppException(ErrorCode.INVALID_STATUS, 'Unknown checkout');
+    }
+    if (session.status === 'succeeded' || session.status === 'failed') return { status: session.status };
+    if (Number(totalAmount) !== session.amountKurus) {
+      throw new AppException(ErrorCode.FINANCE_INVALID, 'PayTR amount does not match the order');
+    }
+    return this.applyVerified(id, session, {
+      status: status === 'success' ? 'succeeded' : 'failed',
+      providerPaymentId: merchantOid,
+    });
+  }
+
+  /** Applies a verified provider result to its session once; repeated results are no-ops. */
+  private async applyVerified(id: string, session: PaymentSession, verified: VerifiedPayment) {
+    const ref = this.sessions().doc(id);
     let renewedMember: GymMember | null = null;
     await this.firebase.db.runTransaction(async (tx) => {
       const lock = this.firebase.db.doc(`tenants/${session.tenantId}/paymentReservations/${session.source}_${session.sourceId}`);
@@ -284,7 +345,7 @@ export class PaymentsService {
       const [latest, reservation] = await Promise.all([tx.get(ref), tx.get(lock)]);
       const current = latest.data() as PaymentSession;
       // An abandoned (superseded or expired) session can still be paid on an old tab: honour it.
-      if (current.token !== token || !['pending', 'abandoned'].includes(current.status)) return;
+      if (current.token !== session.token || !['pending', 'abandoned'].includes(current.status)) return;
       // Gym effects read their documents here, before the first write of the transaction.
       const fulfil = verified.status === 'succeeded' && isGymSource(current.source) && !current.fulfilledAt;
       if (fulfil) {
@@ -337,11 +398,26 @@ export class PaymentsService {
         }
       }
       const at = new Date().toISOString();
+      if (verified.status === 'succeeded' && current.source === 'rentacar_reservation' && !current.fulfilledAt) {
+        const reservationRef = this.firebase.db.doc(`${tenantCollectionPath(current.tenantId, TENANT_COLLECTION.rentReservations)}/${current.sourceId}`);
+        const reservationSnapshot = await tx.get(reservationRef);
+        const rentReservation = reservationSnapshot.data();
+        if (!rentReservation || rentReservation.deletedAt || Math.round(Number(rentReservation.price?.totalAmount ?? 0) * 100) !== current.amountKurus) {
+          throw new AppException(ErrorCode.FINANCE_INVALID, 'Rezervasyon ödeme tutarı doğrulanamadı.');
+        }
+        tx.update(reservationRef, { status: 'confirmed', updatedAt: at, updatedBy: 'system:payments', version: Number(rentReservation.version ?? 0) + 1 });
+        tx.set(this.firebase.db.doc(`${tenantCollectionPath(current.tenantId, TENANT_COLLECTION.rentTransactions)}/${current.id}`), {
+          id: current.id, tenantId: current.tenantId, branchId: rentReservation.branchId, customerId: rentReservation.customerId,
+          reservationId: current.sourceId, rentalId: null, kind: 'payment', method: 'online', amount: current.amountKurus / 100,
+          currency: 'TRY', status: 'completed', reference: verified.providerPaymentId, reversalOf: null,
+          createdAt: at, createdBy: 'system:payments', updatedAt: at, updatedBy: 'system:payments', deletedAt: null, version: 1,
+        });
+      }
       tx.update(ref, {
         status: verified.status === 'pending' ? current.status : verified.status,
         providerPaymentId: verified.providerPaymentId,
         ...(verified.status === 'pending' ? { reviewPending: true } : {}),
-        ...(fulfil ? { fulfilledAt: at } : {}),
+        ...(fulfil || (verified.status === 'succeeded' && current.source === 'rentacar_reservation') ? { fulfilledAt: at } : {}),
         updatedAt: at,
       });
       if (reservation.data()?.sessionId === id) tx.update(lock, { status: verified.status });
@@ -351,6 +427,15 @@ export class PaymentsService {
   }
 
   // ─── Internals ───────────────────────────────────────────────────────────────────────────
+
+  /** Provider for Odivon's own SaaS subscription payments: iyzico unless SAAS_PAYMENT_PROVIDER=paytr. */
+  private saasProviderId(): PaymentProviderId {
+    return process.env.SAAS_PAYMENT_PROVIDER === 'paytr' ? 'paytr' : 'iyzico';
+  }
+
+  private providerMode(id: PaymentProviderId): 'sandbox' | 'live' {
+    return id === 'paytr' ? this.paytr.mode() : this.providers.get('iyzico')!.mode();
+  }
 
   private async startCheckout(input: {
     source: PaymentSource;
@@ -365,16 +450,16 @@ export class PaymentsService {
     const tenantId = this.tenant.getTenantId();
     // SaaS subscription payments go to the platform account; everything else to the gym's own.
     const platform = input.source === 'saas_subscription';
+    const selected: PaymentProviderId = platform ? this.saasProviderId() : 'iyzico';
     let credentials: IyzicoCredentials | undefined;
     if (platform) {
       // Odivon's own account: no per-gym provider choice, only the platform keys are needed.
-      if (!this.providers.get('iyzico')!.configured()) throw new AppException(ErrorCode.INVALID_STATUS, 'Online subscription payment is not available yet');
+      const configured = selected === 'paytr' ? this.paytr.configured() : this.providers.get('iyzico')!.configured();
+      if (!configured) throw new AppException(ErrorCode.INVALID_STATUS, 'Online subscription payment is not available yet');
     } else {
       credentials = (await this.gymCredentials?.resolve(tenantId)) ?? undefined;
       if (!credentials) throw new AppException(ErrorCode.INVALID_STATUS, 'Card payments are not set up for this gym');
     }
-    const selected = 'iyzico' as const;
-    const provider = this.providers.get(selected)!;
     const now = new Date();
     const id = randomUUID();
     const session: PaymentSession = {
@@ -383,7 +468,7 @@ export class PaymentsService {
       providerPaymentId: null, createdBy: this.tenant.getUserId(), createdAt: now.toISOString(), updatedAt: now.toISOString(),
       userId: input.userId, returnOrigin: this.returnOrigin(input.origin), fulfilledAt: null,
       credentialScope: platform ? 'platform' : 'tenant',
-      mode: platform ? provider.mode() : credentials!.mode,
+      mode: platform ? this.providerMode(selected) : credentials!.mode,
     };
     const ref = this.sessions().doc(id);
     const lock = this.firebase.db.doc(`tenants/${tenantId}/paymentReservations/${input.source}_${input.sourceId}`);
@@ -416,7 +501,10 @@ export class PaymentsService {
       buyer: { id: input.buyerId, ...input.buyer, ip: input.ip },
     };
     try {
-      const checkout = await provider.createCheckout(checkoutInput, credentials);
+      // PayTR sends the buyer back to the panel result page; its result arrives by notification.
+      const checkout = selected === 'paytr'
+        ? await this.paytr.createCheckout({ ...checkoutInput, callbackUrl: (await this.returnUrl(id, 'pending')) ?? checkoutInput.callbackUrl })
+        : await this.providers.get('iyzico')!.createCheckout(checkoutInput, credentials);
       await this.firebase.db.runTransaction(async (tx) => {
         tx.update(ref, { token: checkout.token, paymentPageUrl: checkout.paymentPageUrl,
           status: 'pending', updatedAt: new Date().toISOString() });
@@ -468,6 +556,16 @@ export class PaymentsService {
       const order = snapshot.data();
       if (!order || order.status !== 'open') throw new AppException(ErrorCode.FINANCE_INVALID, 'SaaS order is not open');
       return { amountKurus: Number(order.amountKurus), buyerId: tenantId };
+    }
+    if (source === 'rentacar_reservation') {
+      const snapshot = await this.firebase.db.doc(`${tenantCollectionPath(tenantId, TENANT_COLLECTION.rentReservations)}/${id}`).get();
+      const reservation = snapshot.data();
+      if (!reservation || reservation.deletedAt || !['pending_payment', 'confirmed'].includes(String(reservation.status))) {
+        throw new AppException(ErrorCode.FINANCE_INVALID, 'Rezervasyon ödeme için uygun değil.');
+      }
+      const amountKurus = Math.round(Number(reservation.price?.totalAmount ?? 0) * 100);
+      if (!Number.isFinite(amountKurus) || amountKurus <= 0) throw new AppException(ErrorCode.FINANCE_INVALID, 'Ödenecek tutar bulunamadı.');
+      return { amountKurus, buyerId: String(reservation.customerId) };
     }
     if (source !== 'vet_sale' && source !== 'gym_receivable') {
       throw new AppException(ErrorCode.VALIDATION_ERROR, 'Use the member checkout for this payment');

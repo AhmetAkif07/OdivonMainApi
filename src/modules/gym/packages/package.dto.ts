@@ -12,6 +12,31 @@ import {
 } from 'class-validator';
 import { PagingQueryDto } from '../../../shared/http/paging.dto';
 
+export class TrainerPricingDto {
+  @ApiProperty()
+  @IsString()
+  trainerId!: string;
+
+  @ApiProperty()
+  @IsString()
+  trainerName!: string;
+
+  @ApiProperty()
+  @IsNumber()
+  @Min(0)
+  price!: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsInt()
+  sessionCount?: number | null;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  commissionRate?: number | null;
+}
+
 export class CreatePackageDto {
   @ApiProperty()
   @IsString()
@@ -114,6 +139,31 @@ export class CreatePackageDto {
   @IsOptional()
   @IsIn(['active', 'inactive', 'archived'])
   status?: 'active' | 'inactive' | 'archived';
+
+  @ApiPropertyOptional({ enum: ['gym', 'trainer'], description: 'Paket Kapsamı: gym = Salon Geneli, trainer = Personele Özel' })
+  @IsOptional()
+  @IsIn(['gym', 'trainer'])
+  packageScope?: 'gym' | 'trainer';
+
+  @ApiPropertyOptional({ description: 'Atanmış antrenör / personel ID' })
+  @IsOptional()
+  @IsString()
+  trainerId?: string | null;
+
+  @ApiPropertyOptional({ description: 'Atanmış antrenör / personel adı' })
+  @IsOptional()
+  @IsString()
+  trainerName?: string | null;
+
+  @ApiPropertyOptional({ description: 'Personele ödenecek prim / komisyon yüzdesi (%)' })
+  @IsOptional()
+  @IsNumber()
+  trainerCommissionRate?: number | null;
+
+  @ApiPropertyOptional({ type: [TrainerPricingDto], description: 'Eğitmene göre özel fiyatlandırma listesi' })
+  @IsOptional()
+  @IsArray()
+  trainerPricing?: TrainerPricingDto[];
 }
 
 export class UpdatePackageDto extends PartialType(CreatePackageDto) {}
@@ -129,4 +179,14 @@ export class ListPackagesQueryDto extends PagingQueryDto {
   @Transform(({ value }) => value === true || value === 'true')
   @IsBoolean()
   activeOnly?: boolean;
+
+  @ApiPropertyOptional({ enum: ['gym', 'trainer'] })
+  @IsOptional()
+  @IsIn(['gym', 'trainer'])
+  packageScope?: 'gym' | 'trainer';
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  trainerId?: string;
 }

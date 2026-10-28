@@ -13,22 +13,33 @@ export const CLIENT_VERSION_HEADER = 'x-client-version';
 export class ClientVersionGuard implements CanActivate {
   // Read on first request: building the app without credentials (OpenAPI generation) must work.
   private minVersion: string | null | undefined;
+  private productMinimums: Record<string, string> | undefined;
 
   canActivate(context: ExecutionContext): boolean {
-    this.minVersion ??= loadConfiguration().minClientVersion ?? null;
-    if (!this.minVersion || context.getType() !== 'http') return true;
-    const request = context.switchToHttp().getRequest<{ headers?: Record<string, string | string[] | undefined> }>();
+    const config = loadConfiguration();
+    this.minVersion ??= config.minClientVersion ?? null;
+    this.productMinimums ??= config.minClientVersions;
+    if (context.getType() !== 'http') return true;
+    const request = context.switchToHttp().getRequest<{ headers?: Record<string, string | string[] | undefined>; originalUrl?: string; url?: string }>();
+    const product = productFromUrl(request.originalUrl ?? request.url ?? '');
+    const minimum = (product && this.productMinimums[product]) || this.minVersion;
+    if (!minimum) return true;
     const raw = request.headers?.[CLIENT_VERSION_HEADER];
     const header = Array.isArray(raw) ? raw[0] : raw;
     if (!header) return true;
-    if (compareVersions(header, this.minVersion) < 0) {
+    if (compareVersions(header, minimum) < 0) {
       throw new AppException(
         ErrorCode.CLIENT_UPGRADE_REQUIRED,
-        `Client ${header} is older than the minimum supported version ${this.minVersion}`,
+        `Client ${header} is older than the minimum supported version ${minimum}`,
+        { minimumVersion: minimum, ...(product ? { product } : {}) },
       );
     }
     return true;
   }
+}
+
+export function productFromUrl(url: string): string | null {
+  return url.match(/\/api\/v1\/([^/?#]+)/)?.[1]?.toLocaleLowerCase('en-US') ?? null;
 }
 
 /** Compares the `x.y.z` part of two versions (anything after `+` or `-` is ignored). */

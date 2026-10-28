@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { MailModule } from '../../shared/mail/mail.module';
 import { IdentityModule } from '../identity/identity.module';
 import { TenantModule } from '../tenant/tenant.module';
 import { FarmCoreController } from './core/farm-core.controller';
@@ -11,7 +12,7 @@ import { FarmStore } from './shared/farm-store';
 
 /** Livestock farm product module — replaces the OdivonFARM client's direct Firestore access. */
 @Module({
-  imports: [IdentityModule, TenantModule],
+  imports: [IdentityModule, TenantModule, MailModule],
   controllers: [
     FarmCoreController,
     FarmOnboardingController,

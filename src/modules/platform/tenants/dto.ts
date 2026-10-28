@@ -15,6 +15,9 @@ export class ListTenantsQueryDto {
   isDemo?: string; // 'true' | 'false'
 
   @IsOptional()
+  emailVerified?: string; // owner e-mail verified: 'true' | 'false'
+
+  @IsOptional()
   @IsString()
   q?: string;
 

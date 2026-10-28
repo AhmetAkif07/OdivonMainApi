@@ -13,8 +13,17 @@ export interface UserProfile {
   accountType?: AccountType;
   modules: ProductModule[];
   email: string;
+  emailVerified?: boolean;
+  emailVerificationToken?: string | null;
+  emailVerificationExpiresAt?: string | null;
+  /** When the address was verified (missing on older profiles). */
+  emailVerifiedAt?: string | null;
+  /** How it was verified: the user clicked the link, or a platform admin marked it. */
+  emailVerifiedBy?: 'link' | 'platform' | null;
   displayName?: string | null;
   roleIds?: string[];
+  branchIds?: string[];
+  allBranches?: boolean;
   status: UserStatus;
   suspendedByPlatform?: boolean;
   phone?: string | null;

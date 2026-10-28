@@ -7,9 +7,10 @@ export class RegisterDto {
   @IsEmail()
   email!: string;
 
-  @ApiProperty({ minLength: 8 })
+  // No complexity rules on sign-up; 6 is Firebase Auth's own minimum.
+  @ApiProperty({ minLength: 6 })
   @IsString()
-  @MinLength(8)
+  @MinLength(6)
   password!: string;
 
   @ApiProperty({ example: 'Odivon Vet Clinic' })

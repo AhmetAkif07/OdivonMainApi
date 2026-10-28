@@ -51,4 +51,14 @@ export const DEFAULT_CONSENT_TEXTS: ConsentTextDefinition[] = [
       <p>Tesis güvenliğinin, üye ve personelin can ve mal emniyetinin sağlanması amacıyla tesisin ortak alanlarında (soyunma odaları ve tuvaletler hariç) 7/24 kapalı devre kamera (CCTV) ile kayıt yapılmaktadır. Görüntüler yasal saklama süreleri sonunda otomatik olarak silinmektedir.</p>
     `.trim(),
   },
+  {
+    type: 'cookie_policy',
+    title: 'Çerez Politikası ve Aydınlatma Metni',
+    version: '1.0',
+    isRequired: false,
+    isActive: true,
+    contentHtml: `
+      <p>Odivon platformunun düzgün çalışması, oturum güvenliğinin sağlanması ve kullanıcı deneyiminin iyileştirilmesi amacıyla zorunlu ve analitik çerezler kullanılmaktadır.</p>
+    `.trim(),
+  },
 ];

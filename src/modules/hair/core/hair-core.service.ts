@@ -5,13 +5,17 @@ import { createBaseFields, touchBaseFields } from '../../../shared/firestore/bas
 import { TenantContext } from '../../../shared/tenancy/tenant.context';
 import { IdentityRepository } from '../../identity/identity.repository';
 import { TenantService } from '../../tenant/tenant.service';
-import { hairInvalid, hairPrecondition } from '../shared/hair-errors';
+import { AppException } from '../../../shared/errors/app.exception';
+import { ErrorCode } from '../../../shared/errors/error-codes';
+import { assertNoRelated, hairInvalid, hairPrecondition } from '../shared/hair-errors';
 import {
   HAIR_ROLE_PERMISSIONS,
   HAIR_STAFF_ROLE_LABELS,
   HAIR_STAFF_ROLES,
   hairRoleId,
 } from '../shared/hair-roles';
+import { mergeSmsTemplates } from '../notifications/sms/sms-templates';
+import { mergeDefinitions, normalizeDefinitions } from '../shared/hair-definitions';
 import { slugCandidate, slugify } from '../shared/hair-slug';
 import { DEFAULT_HAIR_SETTINGS, HairDoc, HairSettingsDoc, HairStore } from '../shared/hair-store';
 import { parseClock } from '../shared/hair-time';
@@ -72,7 +76,13 @@ export class HairCoreService {
     const current = await this.store.settings();
     const tenant = await this.tenants.getById(this.store.tenantId());
     const { name: rawName, ...rest } = dto;
-    const next = { ...pickSettings(current), ...stripUndefined(rest) };
+    const next = {
+      ...pickSettings(current),
+      ...stripUndefined(rest),
+      maxDiscountPercent: { ...current.maxDiscountPercent, ...stripUndefined(rest.maxDiscountPercent ?? {}) },
+      smsTemplates: mergeSmsTemplates(current.smsTemplates, rest.smsTemplates),
+      definitions: mergeDefinitions(current.definitions, normalizeDefinitions(rest.definitions)),
+    };
     if ((parseClock(next.workDayStart) ?? 0) >= (parseClock(next.workDayEnd) ?? 0)) {
       throw hairInvalid('Mesai başlangıcı bitişten önce olmalıdır.');
     }
@@ -137,6 +147,7 @@ export class HairCoreService {
         workDayEnd: dto.workDayEnd ?? settings.workDayEnd,
         workDays: dto.workDays ?? [1, 2, 3, 4, 5, 6],
         slotDurationMinutes: dto.slotDurationMinutes ?? 15,
+        logoUrl: dto.logoUrl || undefined,
         active: dto.active ?? true,
       });
       tx.set(ref, doc);
@@ -190,6 +201,23 @@ export class HairCoreService {
       'Şube bulunamadı',
     );
     await this.assertNotLastActiveBranch(id);
+    const byBranch = { field: 'branchId', op: '==' as const, value: id };
+    const [appointments, sessions, payments, expenses, products, staff] = await Promise.all([
+      this.store.rows(TENANT_COLLECTION.hairAppointments, byBranch),
+      this.store.rows(TENANT_COLLECTION.hairSessions, byBranch),
+      this.store.rows(TENANT_COLLECTION.hairPayments, byBranch),
+      this.store.rows(TENANT_COLLECTION.hairExpenses, byBranch),
+      this.store.rows(TENANT_COLLECTION.hairProducts, byBranch),
+      this.store.rows(TENANT_COLLECTION.hairStaff),
+    ]);
+    assertNoRelated('Şubeye ait kayıtlar var; silmek yerine şubeyi pasifleştirin.', {
+      appointments: appointments.length,
+      sessions: sessions.length,
+      payments: payments.length,
+      expenses: expenses.length,
+      products: products.length,
+      staff: staff.filter((s) => Array.isArray(s['branchIds']) && (s['branchIds'] as string[]).includes(id)).length,
+    });
     const result = await this.store.softDelete(
       TENANT_COLLECTION.hairBranches,
       'hairBranches',
@@ -343,7 +371,7 @@ export class HairCoreService {
     });
     const others = page.items.filter((branch) => branch.id !== id && branch['active'] !== false);
     if (others.length === 0) {
-      throw hairPrecondition('En az bir aktif şube kalmalıdır.');
+      throw new AppException(ErrorCode.LAST_ACTIVE_BRANCH, 'En az bir aktif şube kalmalıdır.');
     }
   }
 
@@ -358,7 +386,10 @@ const SETTINGS_KEYS = Object.keys(DEFAULT_HAIR_SETTINGS) as (keyof typeof DEFAUL
 
 function pickSettings(settings: SettingsView): typeof DEFAULT_HAIR_SETTINGS {
   return Object.fromEntries(
-    SETTINGS_KEYS.map((key) => [key, settings[key] ?? DEFAULT_HAIR_SETTINGS[key]]),
+    SETTINGS_KEYS.map((key) => [
+      key,
+      key === 'definitions' ? mergeDefinitions(settings.definitions) : (settings[key] ?? DEFAULT_HAIR_SETTINGS[key]),
+    ]),
   ) as typeof DEFAULT_HAIR_SETTINGS;
 }
 

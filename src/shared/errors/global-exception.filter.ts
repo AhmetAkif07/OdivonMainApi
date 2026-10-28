@@ -30,6 +30,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         error: {
           code: exception.code,
           message: exception.message,
+          ...(exception.details ? { details: exception.details } : {}),
         },
         meta: { requestId },
       });

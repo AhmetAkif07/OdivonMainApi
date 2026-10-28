@@ -4,37 +4,42 @@ import helmet from 'helmet';
 import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module';
 import { loadConfiguration } from './config/configuration';
+import { allowedCorsOrigins, isCorsOriginAllowed } from './config/cors';
 import { GymClassBookingService } from './modules/gym/ops/class-booking.service';
 import { GymRemindersService } from './modules/gym/reminders/reminders.service';
+import { HairJobsService } from './modules/hair/jobs/hair-jobs.service';
 import { SaasBillingService } from './modules/payments/saas-billing.service';
 import { PlatformDemosService } from './modules/platform/demos/demos.service';
+import { CrmCampaignsService } from './modules/platform/crm/crm-campaigns.service';
 import { ErrorLogService } from './shared/errors/error-log.service';
+import { setBackgroundRunner } from './shared/http/background';
+import { installFastRouteRegistration } from './shared/http/fast-route-registration';
 
 let application: INestApplication | null = null;
 
 
-export async function bootstrap(options: { swaggerUi?: boolean } = {}): Promise<void> {
+export async function bootstrap(
+  options: { swaggerUi?: boolean; startupLogs?: boolean; waitUntil?: (promise: Promise<unknown>) => void } = {},
+): Promise<void> {
   const config = loadConfiguration();
-  const app = await NestFactory.create(AppModule, { bufferLogs: true, abortOnError: false });
+  setBackgroundRunner(options.waitUntil ?? null);
+  installFastRouteRegistration();
+  // The Worker boots inside the isolate startup CPU budget: there, Nest's ~1000 "dependencies
+  // initialized" / "Mapped route" lines are dropped instead of being serialized one by one.
+  const startupLogs = options.startupLogs !== false;
+  const app = await NestFactory.create(
+    AppModule,
+    startupLogs
+      ? { bufferLogs: true, abortOnError: false }
+      : { logger: ['fatal', 'error', 'warn'], abortOnError: false },
+  );
   application = app;
-  app.useLogger(app.get(Logger));
+  if (startupLogs) app.useLogger(app.get(Logger));
   app.use(helmet());
-  const configuredOrigin = config.corsOrigin;
+  const allowedOrigins = allowedCorsOrigins(config.corsOrigin);
   app.enableCors({
-    origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
-      if (!origin) return callback(null, true);
-      if (origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:')) {
-        return callback(null, true);
-      }
-      if (!configuredOrigin || configuredOrigin === '*' || origin === configuredOrigin) {
-        return callback(null, true);
-      }
-      const allowedList = configuredOrigin.split(',').map((o) => o.trim());
-      if (allowedList.includes(origin)) {
-        return callback(null, true);
-      }
-      return callback(null, false);
-    },
+    origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) =>
+      callback(null, isCorsOriginAllowed(origin, allowedOrigins)),
     credentials: true,
     maxAge: 7200,
   });
@@ -53,7 +58,7 @@ export async function bootstrap(options: { swaggerUi?: boolean } = {}): Promise<
     const { DocumentBuilder, SwaggerModule } = await import('@nestjs/swagger');
     const swagger = new DocumentBuilder()
       .setTitle('Odivon Main API')
-      .setDescription('Modular monolith API for Odivon (vet / farm / gym)')
+      .setDescription('Modular monolith API for Odivon (vet / farm / gym / spa / hair / beauty / parking)')
       .setVersion('0.1.0')
       .addBearerAuth()
       .build();
@@ -61,6 +66,7 @@ export async function bootstrap(options: { swaggerUi?: boolean } = {}): Promise<
   }
 
   await app.listen(config.port);
+  if (!startupLogs) app.useLogger(app.get(Logger));
 }
 
 /**
@@ -88,4 +94,21 @@ export async function runScheduledJobs(): Promise<void> {
   // Platform: Purge error logs older than 30 days
   const errorLogs = application.get(ErrorLogService);
   await errorLogs.purgeOlderThan(30);
+}
+
+/**
+ * Hourly hair jobs (wrangler.jsonc hourly cron): SMS reminders `reminderHoursBefore` ahead and
+ * expiry of customer packages. Idempotent; also reachable as POST /api/v1/hair/jobs/run.
+ */
+export async function runHairJobs(): Promise<void> {
+  if (!application) {
+    throw new Error('Application is not bootstrapped');
+  }
+  await application.get(HairJobsService).runAll();
+  // CRM: start due scheduled campaigns and continue ones the panel left unfinished.
+  try {
+    await application.get(CrmCampaignsService).runJobs();
+  } catch (error) {
+    console.error('CRM campaign job failed', error);
+  }
 }

@@ -5,6 +5,7 @@ import { Request } from 'express';
 import { ClientThrottlerGuard, clientAddress } from '../../../shared/http/client-throttler.guard';
 import {
   PublicBookAppointmentDto,
+  PublicOtpRequestDto,
   PublicSlotsQueryDto,
   PublicStaffQueryDto,
   PublicTokenQueryDto,
@@ -52,6 +53,13 @@ export class HairBookingController {
   @ApiOperation({ summary: 'Book online; returns the appointment with its access token' })
   book(@Param('slug') slug: string, @Body() dto: PublicBookAppointmentDto, @Req() request: Request) {
     return this.booking.book(slug, dto, clientAddress(request as unknown as Record<string, unknown>));
+  }
+
+  @Post('otp')
+  @Throttle({ default: { limit: 5, ttl: 600_000 } })
+  @ApiOperation({ summary: 'Send a 6-digit booking code by SMS (only when info.requireBookingOtp is true)' })
+  otp(@Param('slug') slug: string, @Body() dto: PublicOtpRequestDto, @Req() request: Request) {
+    return this.booking.requestOtp(slug, dto, clientAddress(request as unknown as Record<string, unknown>));
   }
 
   @Get('appointments/:id')

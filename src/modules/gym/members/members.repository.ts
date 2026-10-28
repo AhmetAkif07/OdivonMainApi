@@ -47,6 +47,7 @@ export class MembersRepository {
         email: dto.email,
         password: dto.password,
         displayName: dto.displayName,
+        emailVerified: true,
       });
       uid = userRecord.uid;
       const now = new Date().toISOString();
@@ -60,6 +61,7 @@ export class MembersRepository {
         displayName: dto.displayName.trim(),
         status: 'active',
         membershipStatus: dto.membershipStatus ?? 'trial',
+        emailVerified: true,
         createdAt: now,
         updatedAt: now,
       };

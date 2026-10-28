@@ -32,10 +32,11 @@
     "google-gax": "4.6.1",
     "helmet": "^8.1.0",
     "nestjs-pino": "^4.4.0",
+    "nodemailer": "^10.2.1",
     "pino-http": "^10.5.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2",
-    "zod": "^3.25.76"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@eslint/js": "^9.35.0",
@@ -44,6 +45,7 @@
     "@types/express": "^5.0.3",
     "@types/jest": "^29.5.14",
     "@types/node": "^22.18.1",
+    "@types/nodemailer": "^8.0.2",
     "eslint": "^9.35.0",
     "jest": "^29.7.0",
     "miniflare": "5.20260921.0-alpha",
@@ -53,5 +55,11 @@
     "typescript": "^5.9.2",
     "typescript-eslint": "^8.43.0",
     "wrangler": "^4.136.1"
+  },
+  "overrides": {
+    "body-parser": "2.4.0",
+    "js-yaml": "5.5.0",
+    "multer": "2.5.0",
+    "uuid": "11.1.1"
   }
 }

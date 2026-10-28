@@ -141,6 +141,25 @@ describe('GymAuditInterceptor', () => {
     });
   });
 
+  it('records how a package sale moved the member record', async () => {
+    audit.snapshot
+      .mockResolvedValueOnce({ membershipEndsAt: '2026-10-01', walletBalance: 0, updatedAt: 'a' })
+      .mockResolvedValueOnce({ membershipEndsAt: '2026-11-01', walletBalance: 0, updatedAt: 'b' });
+    const ctx = context(GymWalletController, 'purchase', {
+      method: 'POST',
+      body: { userId: 'm9', packageId: 'p1' },
+      currentUser: user,
+    });
+    await lastValueFrom(interceptor.intercept(ctx, { handle: () => of({ ok: true }) }));
+    expect(audit.snapshot).toHaveBeenCalledWith('t1', 'gymMembers', 'm9');
+    expect(audit.write.mock.calls[0][0]).toMatchObject({
+      targetUserId: 'm9',
+      memberIds: ['m9'],
+      changes: null,
+      memberChanges: { m9: { membershipEndsAt: { from: '2026-10-01', to: '2026-11-01' } } },
+    });
+  });
+
   it('marks member-app actions as done by the member', async () => {
     const ctx = context(GymMobileController, 'renew', {
       method: 'POST',
@@ -148,7 +167,12 @@ describe('GymAuditInterceptor', () => {
       currentUser: { ...user, userId: 'm1', accountType: 'gym_member' },
     });
     await lastValueFrom(interceptor.intercept(ctx, { handle: () => of({ ok: true }) }));
-    expect(audit.write.mock.calls[0][0]).toMatchObject({ actorType: 'member', route: 'POST /gym/mobile/membership/renew' });
+    expect(audit.write.mock.calls[0][0]).toMatchObject({
+      actorType: 'member',
+      route: 'POST /gym/mobile/membership/renew',
+      targetUserId: 'm1',
+      memberIds: ['m1'],
+    });
   });
 
   it('ignores reads, anonymous and agent traffic, and unaudited member-app calls', async () => {
@@ -215,5 +239,52 @@ describe('GymAuditService.list', () => {
     const third = await service.list({ entity: 'wallet', limit: 100, cursor: second.nextCursor! });
     expect(third.items).toHaveLength(25);
     expect(third.nextCursor).toBeNull();
+  });
+});
+
+describe('GymAuditService.memberHistory', () => {
+  const row = (id: string, createdAt: string, overrides: Partial<GymAuditLog> = {}) =>
+    ({ id, createdAt, result: 'success', ip: '1.1.1.1', userAgent: 'x', errorMessage: null, tenantId: 't1', ...overrides }) as GymAuditLog;
+
+  function serviceOver(byTarget: GymAuditLog[], byMember: GymAuditLog[], indexed: boolean) {
+    const query = (rows: GymAuditLog[]) => ({
+      orderBy: () => {
+        if (!indexed) throw Object.assign(new Error('The query requires an index'), { code: 9 });
+        return query([...rows].sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
+      },
+      where: (_field: string, _op: string, value: string) => (_op === '<' ? query(rows.filter((r) => r.createdAt < value)) : query(rows)),
+      limit: (n: number) => ({ get: async () => ({ docs: rows.slice(0, n).map((r) => ({ data: () => r })) }) }),
+    });
+    const collection = {
+      where: (field: string) => query(field === 'targetUserId' ? byTarget : byMember),
+    };
+    const firebase = { db: { collection: () => collection } };
+    const tenant = new TenantContext();
+    jest.spyOn(tenant, 'getTenantId').mockReturnValue('t1');
+    return new GymAuditService(firebase as never, tenant);
+  }
+
+  it('merges both queries newest first, hides failures and private fields', async () => {
+    const shared = row('a', '2026-10-03T00:00:00.000Z');
+    const service = serviceOver(
+      [row('b', '2026-10-01T00:00:00.000Z'), shared, row('e', '2026-10-04T00:00:00.000Z', { result: 'error' })],
+      [shared, row('c', '2026-10-02T00:00:00.000Z')],
+      false,
+    );
+    const history = await service.memberHistory('m1');
+    expect(history.items.map((item) => item.id)).toEqual(['a', 'c', 'b']);
+    expect(history.items[0]).not.toHaveProperty('ip');
+    expect(history.items[0]).not.toHaveProperty('userAgent');
+    expect(history.nextBefore).toBeNull();
+  });
+
+  it('pages with `before` when the index exists', async () => {
+    const rows = ['01', '02', '03', '04'].map((d) => row(d, `2026-10-${d}T00:00:00.000Z`));
+    const service = serviceOver(rows, [], true);
+    const first = await service.memberHistory('m1', 2);
+    expect(first.items.map((item) => item.id)).toEqual(['04', '03']);
+    const second = await service.memberHistory('m1', 2, first.nextBefore!);
+    expect(second.items.map((item) => item.id)).toEqual(['02', '01']);
+    expect(second.nextBefore).toBeNull();
   });
 });

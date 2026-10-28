@@ -34,6 +34,22 @@ export class IdentityRepository {
     return snapshot.docs.map((doc) => doc.data() as UserProfile);
   }
 
+  async findByVerificationToken(token: string): Promise<UserProfile | null> {
+    const snapshot = await this.collection().where('emailVerificationToken', '==', token).limit(1).get();
+    if (snapshot.empty) {
+      return null;
+    }
+    return snapshot.docs[0].data() as UserProfile;
+  }
+
+  async findByEmail(email: string): Promise<UserProfile | null> {
+    const snapshot = await this.collection().where('email', '==', email.trim().toLowerCase()).limit(1).get();
+    if (snapshot.empty) {
+      return null;
+    }
+    return snapshot.docs[0].data() as UserProfile;
+  }
+
   async updateProfile(uid: string, patch: Partial<UserProfile>): Promise<void> {
     await this.collection().doc(uid).update(patch);
   }

@@ -1,10 +1,11 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   IsArray,
   IsBoolean,
   IsInt,
+  IsNotEmpty,
   IsOptional,
   IsString,
   Length,
@@ -12,12 +13,152 @@ import {
   Max,
   MaxLength,
   Min,
+  ValidateNested,
 } from 'class-validator';
 
 const CLOCK = /^[0-2][0-9]:[0-5][0-9]$/;
 const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+/** Branch logo: empty (removes it), an https URL, or an inline png/jpeg/webp image. */
+const BRANCH_LOGO = /^$|^https:\/\/\S+$|^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/;
+/** Keeps an inline logo well under the 100 KB JSON body limit (the client sends ~20 KB). */
+const BRANCH_LOGO_MAX_LENGTH = 90_000;
+
+/** Checkout discount ceilings (%) per role; admins are always allowed 100. */
+export class MaxDiscountPercentDto {
+  @ApiPropertyOptional({ example: 30 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(100)
+  manager?: number;
+
+  @ApiPropertyOptional({ example: 10 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(100)
+  receptionist?: number;
+
+  @ApiPropertyOptional({ example: 10 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(100)
+  cashier?: number;
+
+  @ApiPropertyOptional({ example: 0 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(100)
+  stylist?: number;
+}
+
+export class SmsTemplateDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  enabled?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Placeholders: {customerName} {salonName} {branchName} {date} {time} {staffName} {services}',
+  })
+  @IsOptional()
+  @IsString()
+  @Length(1, 480)
+  text?: string;
+}
+
+export class SmsTemplatesDto {
+  @ApiPropertyOptional({ type: SmsTemplateDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => SmsTemplateDto)
+  confirmation?: SmsTemplateDto;
+
+  @ApiPropertyOptional({ type: SmsTemplateDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => SmsTemplateDto)
+  reminder?: SmsTemplateDto;
+
+  @ApiPropertyOptional({ type: SmsTemplateDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => SmsTemplateDto)
+  cancellation?: SmsTemplateDto;
+}
+
+const trimList = ({ value }: { value: unknown }) =>
+  Array.isArray(value) ? value.map((item) => (typeof item === 'string' ? item.trim() : item)) : value;
+
+/** Each list sent replaces the stored one; lists left out stay as they are. */
+export class HairDefinitionsDto {
+  @ApiPropertyOptional({ type: [String], example: ['Kira', 'Elektrik'] })
+  @IsOptional()
+  @Transform(trimList)
+  @IsArray()
+  @ArrayMaxSize(100)
+  @IsString({ each: true })
+  @IsNotEmpty({ each: true })
+  @MaxLength(80, { each: true })
+  expenseCategories?: string[];
+
+  @ApiPropertyOptional({ type: [String], example: ['Şampuan', 'Boya'] })
+  @IsOptional()
+  @Transform(trimList)
+  @IsArray()
+  @ArrayMaxSize(100)
+  @IsString({ each: true })
+  @IsNotEmpty({ each: true })
+  @MaxLength(80, { each: true })
+  productCategories?: string[];
+
+  @ApiPropertyOptional({ type: [String], example: ['adet', 'ml'] })
+  @IsOptional()
+  @Transform(trimList)
+  @IsArray()
+  @ArrayMaxSize(100)
+  @IsString({ each: true })
+  @IsNotEmpty({ each: true })
+  @MaxLength(80, { each: true })
+  productUnits?: string[];
+
+  @ApiPropertyOptional({ type: [String], example: ['Müşteri memnuniyetsizliği'] })
+  @IsOptional()
+  @Transform(trimList)
+  @IsArray()
+  @ArrayMaxSize(100)
+  @IsString({ each: true })
+  @IsNotEmpty({ each: true })
+  @MaxLength(120, { each: true })
+  refundReasons?: string[];
+}
 
 export class UpdateHairSettingsDto {
+  @ApiPropertyOptional({ type: HairDefinitionsDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => HairDefinitionsDto)
+  definitions?: HairDefinitionsDto;
+
+  @ApiPropertyOptional({ type: SmsTemplatesDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => SmsTemplatesDto)
+  smsTemplates?: SmsTemplatesDto;
+
+  @ApiPropertyOptional({ type: MaxDiscountPercentDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => MaxDiscountPercentDto)
+  maxDiscountPercent?: MaxDiscountPercentDto;
+
+  @ApiPropertyOptional({ description: 'Online booking asks for an SMS code (needs a configured SMS provider)' })
+  @IsOptional()
+  @IsBoolean()
+  requireBookingOtp?: boolean;
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
@@ -55,6 +196,11 @@ export class UpdateHairSettingsDto {
   @IsOptional()
   @IsBoolean()
   autoConfirmOnlineBooking?: boolean;
+
+  @ApiPropertyOptional({ description: 'Show service prices on the online booking page' })
+  @IsOptional()
+  @IsBoolean()
+  onlineBookingShowPrices?: boolean;
 
   @ApiPropertyOptional({ example: 24 })
   @IsOptional()
@@ -155,6 +301,16 @@ export class SaveHairBranchDto {
   @Min(5)
   @Max(120)
   slotDurationMinutes?: number;
+
+  @ApiPropertyOptional({
+    description:
+      'Business logo shown on the public booking page: an https URL or a small data:image URL. Empty string removes it.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(BRANCH_LOGO_MAX_LENGTH)
+  @Matches(BRANCH_LOGO, { message: 'Logo bir resim olmalıdır.' })
+  logoUrl?: string;
 
   @ApiPropertyOptional()
   @IsOptional()

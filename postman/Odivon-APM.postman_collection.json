@@ -1,0 +1,608 @@
+{
+  "info": {
+    "_postman_id": "5fb305fd-a03f-44f2-9aec-727c630c5548",
+    "name": "Odivon APM API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000/api/v1",
+      "type": "string"
+    },
+    {
+      "key": "firebaseIdToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "firebaseAppCheckToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "slug",
+      "value": "merkez",
+      "type": "string"
+    },
+    {
+      "key": "branchId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "serviceId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "appointmentId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "bookingToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "deviceToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "guestEmail",
+      "value": "guest@example.com",
+      "type": "string"
+    },
+    {
+      "key": "date",
+      "value": "2026-10-20",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Admin",
+      "item": [
+        {
+          "name": "Branches",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{firebaseIdToken}}",
+                "type": "text"
+              }
+            ],
+            "url": "{{baseUrl}}/apm/branches"
+          }
+        },
+        {
+          "name": "Create branch",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{firebaseIdToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/apm/branches"
+          }
+        },
+        {
+          "name": "Services",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{firebaseIdToken}}",
+                "type": "text"
+              }
+            ],
+            "url": "{{baseUrl}}/apm/services"
+          }
+        },
+        {
+          "name": "Create service",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{firebaseIdToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/apm/services"
+          }
+        },
+        {
+          "name": "Staff",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{firebaseIdToken}}",
+                "type": "text"
+              }
+            ],
+            "url": "{{baseUrl}}/apm/staff"
+          }
+        },
+        {
+          "name": "Create staff",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{firebaseIdToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/apm/staff"
+          }
+        },
+        {
+          "name": "Working hours",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{firebaseIdToken}}",
+                "type": "text"
+              }
+            ],
+            "url": "{{baseUrl}}/apm/working-hours"
+          }
+        },
+        {
+          "name": "Create working hours",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{firebaseIdToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/apm/working-hours"
+          }
+        },
+        {
+          "name": "Time off",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{firebaseIdToken}}",
+                "type": "text"
+              }
+            ],
+            "url": "{{baseUrl}}/apm/time-off"
+          }
+        },
+        {
+          "name": "Create time off",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{firebaseIdToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/apm/time-off"
+          }
+        },
+        {
+          "name": "Availability",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{firebaseIdToken}}",
+                "type": "text"
+              }
+            ],
+            "url": "{{baseUrl}}/apm/availability?branchId={{branchId}}&serviceId={{serviceId}}&date={{date}}"
+          }
+        },
+        {
+          "name": "Appointments",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{firebaseIdToken}}",
+                "type": "text"
+              }
+            ],
+            "url": "{{baseUrl}}/apm/appointments"
+          }
+        },
+        {
+          "name": "Create appointment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{firebaseIdToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/apm/appointments"
+          }
+        },
+        {
+          "name": "Appointment status",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{firebaseIdToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"Confirmed\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/apm/appointments/{{appointmentId}}/status"
+          }
+        },
+        {
+          "name": "Register admin device",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{firebaseIdToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"deviceToken\": \"{{deviceToken}}\",\n  \"platform\": \"android\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/apm/devices"
+          }
+        },
+        {
+          "name": "Remove admin device",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{firebaseIdToken}}",
+                "type": "text"
+              }
+            ],
+            "url": "{{baseUrl}}/apm/devices?token={{deviceToken}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Public booking",
+      "item": [
+        {
+          "name": "Booking info",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Firebase-AppCheck",
+                "value": "{{firebaseAppCheckToken}}",
+                "type": "text"
+              }
+            ],
+            "url": "{{baseUrl}}/apm/public/booking/{{slug}}/info"
+          }
+        },
+        {
+          "name": "Booking services",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Firebase-AppCheck",
+                "value": "{{firebaseAppCheckToken}}",
+                "type": "text"
+              }
+            ],
+            "url": "{{baseUrl}}/apm/public/booking/{{slug}}/services"
+          }
+        },
+        {
+          "name": "Booking staff",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Firebase-AppCheck",
+                "value": "{{firebaseAppCheckToken}}",
+                "type": "text"
+              }
+            ],
+            "url": "{{baseUrl}}/apm/public/booking/{{slug}}/staff?serviceId={{serviceId}}"
+          }
+        },
+        {
+          "name": "Booking slots",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Firebase-AppCheck",
+                "value": "{{firebaseAppCheckToken}}",
+                "type": "text"
+              }
+            ],
+            "url": "{{baseUrl}}/apm/public/booking/{{slug}}/slots?serviceId={{serviceId}}&date={{date}}"
+          }
+        },
+        {
+          "name": "Send OTP",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Firebase-AppCheck",
+                "value": "{{firebaseAppCheckToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{guestEmail}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/apm/public/booking/{{slug}}/otp"
+          }
+        },
+        {
+          "name": "Create guest appointment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Firebase-AppCheck",
+                "value": "{{firebaseAppCheckToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/apm/public/booking/{{slug}}/appointments"
+          }
+        },
+        {
+          "name": "Guest appointment status",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Firebase-AppCheck",
+                "value": "{{firebaseAppCheckToken}}",
+                "type": "text"
+              }
+            ],
+            "url": "{{baseUrl}}/apm/public/booking/{{slug}}/appointments/{{appointmentId}}?token={{bookingToken}}"
+          }
+        },
+        {
+          "name": "Cancel guest appointment",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "X-Firebase-AppCheck",
+                "value": "{{firebaseAppCheckToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/apm/public/booking/{{slug}}/appointments/{{appointmentId}}/cancel?token={{bookingToken}}"
+          }
+        },
+        {
+          "name": "Register guest device",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Firebase-AppCheck",
+                "value": "{{firebaseAppCheckToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"deviceToken\": \"{{deviceToken}}\",\n  \"platform\": \"android\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/apm/public/booking/{{slug}}/appointments/{{appointmentId}}/device?token={{bookingToken}}"
+          }
+        },
+        {
+          "name": "Remove guest device",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "X-Firebase-AppCheck",
+                "value": "{{firebaseAppCheckToken}}",
+                "type": "text"
+              }
+            ],
+            "url": "{{baseUrl}}/apm/public/booking/{{slug}}/appointments/{{appointmentId}}/device?token={{bookingToken}}&deviceToken={{deviceToken}}"
+          }
+        }
+      ]
+    }
+  ]
+}

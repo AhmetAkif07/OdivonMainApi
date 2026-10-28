@@ -99,6 +99,11 @@ const LABELS: Record<string, string> = {
   'POST access/sync/resync': 'Turnike yeniden senkronize edildi',
   'POST campaigns/broadcast': 'Kampanya duyurusu gönderildi',
   'POST mobile/membership/renew': 'Üye uygulamadan üyeliğini yeniledi',
+  'PATCH mobile/me': 'Üye uygulamadan bilgilerini güncelledi',
+  'POST leads/:id/convert': 'Aday üyeye dönüştürüldü',
+  'POST referrals': 'Tavsiye kaydedildi',
+  'POST classes/:id/bookings': 'Derse kayıt yapıldı',
+  'POST member-documents': 'Üye evrakı eklendi',
 };
 
 const VERB_LABEL: Record<GymAuditVerb, string> = {
@@ -112,6 +117,22 @@ const VERB_LABEL: Record<GymAuditVerb, string> = {
 const MOBILE_AUDITED = new Set(['POST mobile/membership/renew', 'PATCH mobile/me']);
 /** High-volume machine traffic that would drown the log. */
 const SKIPPED = new Set(['POST access/logs']);
+
+/** Routes whose response is kept in the log (e.g. the referral reward a conversion granted). */
+const OUTCOME_ROUTES = new Set(['POST leads/:id/convert', 'POST referrals']);
+
+export function keepsOutcome(route: GymAuditRoute): boolean {
+  return OUTCOME_ROUTES.has(`${route.method} ${route.path}`);
+}
+
+const MEMBER_ID_KEYS = ['userId', 'memberId', 'referrerMemberId'] as const;
+
+/** Member ids named by a request body or a response (`userId`, `memberId`, `referrerMemberId`). */
+export function memberIdsIn(value: unknown): string[] {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return [];
+  const record = value as Record<string, unknown>;
+  return MEMBER_ID_KEYS.map((key) => record[key]).filter((id): id is string => typeof id === 'string' && id.length > 0);
+}
 
 export interface GymAuditRoute {
   /** `gym/`-relative route pattern, e.g. `wallet/purchase` or `members/:id`. */

@@ -1,4 +1,3 @@
-import { AppException } from '../../../shared/errors/app.exception';
 import { MembersRepository } from './members.repository';
 import { GymMember } from './member.entity';
 

@@ -34,7 +34,8 @@ export const PROTOCOL_TABLE: Record<
   },
 };
 
-export const ONLINE_WINDOW_MS = 30_000;
+/** Agents send a heartbeat every 60 s (older agents every 15 s); allow two missed beats. */
+export const ONLINE_WINDOW_MS = 150_000;
 export const LEASE_MS = 60_000;
 export const PAIRING_CODE_TTL_MS = 10 * 60_000;
 export const PAIRING_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';

@@ -170,12 +170,14 @@ export class GymCommerceService {
   }
 
   updateCategory(id: string, dto: GymRecordDto) {
+    const payload = { ...dto };
+    if (!payload.key && payload.name) payload.key = String(payload.name).toLowerCase().replace(/[^a-z0-9]+/g, '_');
     return this.store.update(
       TENANT_COLLECTION.gymShopCategories,
       id,
       ErrorCode.GYM_CATEGORY_NOT_FOUND,
       'Category not found',
-      dto,
+      payload,
     );
   }
 

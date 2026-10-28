@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { MailModule } from '../../shared/mail/mail.module';
 import { IdentityModule } from '../identity/identity.module';
 import { TenantModule } from '../tenant/tenant.module';
 import { HairAppointmentsController } from './appointments/hair-appointments.controller';
@@ -30,6 +31,10 @@ import { HairInventoryController } from './inventory/hair-inventory.controller';
 import { HairInventoryService } from './inventory/hair-inventory.service';
 import { HairNotificationsController } from './notifications/hair-notifications.controller';
 import { HairNotificationsService } from './notifications/hair-notifications.service';
+import { HairSmsService } from './notifications/sms/hair-sms.service';
+import { HairAppointmentSmsService } from './notifications/sms/hair-appointment-sms.service';
+import { HairJobsController, HairJobSecretGuard } from './jobs/hair-jobs.controller';
+import { HairJobsService } from './jobs/hair-jobs.service';
 import {
   HairCustomerPackagesController,
   HairPackagesController,
@@ -51,7 +56,7 @@ import { HairWaitlistService } from './waitlist/hair-waitlist.service';
 
 /** Hair salon product module (plan docs/odivonprohair-master-plan.md). */
 @Module({
-  imports: [IdentityModule, TenantModule],
+  imports: [IdentityModule, TenantModule, MailModule],
   controllers: [
     HairCoreController,
     HairOnboardingController,
@@ -79,6 +84,7 @@ import { HairWaitlistService } from './waitlist/hair-waitlist.service';
     HairNotificationsController,
     HairWaitlistController,
     HairBookingController,
+    HairJobsController,
   ],
   providers: [
     HairStore,
@@ -95,6 +101,10 @@ import { HairWaitlistService } from './waitlist/hair-waitlist.service';
     HairPackagesService,
     HairReportsService,
     HairNotificationsService,
+    HairSmsService,
+    HairAppointmentSmsService,
+    HairJobsService,
+    HairJobSecretGuard,
     HairWaitlistService,
     HairBookingService,
     HairBookingThrottlerGuard,

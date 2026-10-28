@@ -1,9 +1,9 @@
 ﻿import { PRODUCT_MODULES, ProductModule } from './constants';
 
-export const PERMISSION_ACTIONS = ['view', 'create', 'update', 'delete'] as const;
+export const PERMISSION_ACTIONS = ['view', 'create', 'update', 'delete', 'export', 'approve', 'refund'] as const;
 export type PermissionAction = (typeof PERMISSION_ACTIONS)[number];
 
-export type PermissionGroup = 'clinic' | 'finance' | 'stock' | 'definitions' | 'admin' | 'gym' | 'spa' | 'hair' | 'apm';
+export type PermissionGroup = 'clinic' | 'finance' | 'stock' | 'definitions' | 'admin' | 'gym' | 'spa' | 'hair' | 'beauty' | 'apm' | 'rentacar' | 'drivingschool' | 'parking' | 'fgas' | 'machine-ce' | 'food-label' | 'product-safe' | 'fire-safe' | 'pay-fair' | 'cargo-docs' | 'kids' | 'cyber-ready' | 'diet';
 
 export interface PermissionResourceDefinition {
   key: string;
@@ -70,7 +70,7 @@ export const PERMISSION_RESOURCES = [
   { key: 'saas', label: 'SaaS abonelik', group: 'gym', modules: ['gym'] },
   { key: 'gymAudit', label: 'İşlem kaydı', group: 'gym', modules: ['gym'] },
   { key: 'reminders', label: 'Hatırlatmalar', group: 'gym', modules: ['gym'] },
-  { key: 'reports', label: 'Raporlar (doluluk, churn)', group: 'gym', modules: ['gym'] },
+  { key: 'reports', label: 'Raporlar & Analitik', group: 'admin', modules: ['gym', 'vet'] },
   { key: 'spaCustomers', label: 'Müşteriler', group: 'spa', modules: ['spa'] },
   { key: 'spaAppointments', label: 'Randevular', group: 'spa', modules: ['spa'] },
   { key: 'spaCatalog', label: 'Hizmet / Oda / Ürün', group: 'spa', modules: ['spa'] },
@@ -104,8 +104,63 @@ export const PERMISSION_RESOURCES = [
   { key: 'hairBranches', label: 'Şubeler', group: 'hair', modules: ['hair'] },
   { key: 'hairDashboard', label: 'Gösterge paneli', group: 'hair', modules: ['hair'] },
   { key: 'hairAudit', label: 'İşlem geçmişi', group: 'hair', modules: ['hair'] },
+  { key: 'beautyDashboard', label: 'Beauty gösterge paneli', group: 'beauty', modules: ['beauty'] },
+  { key: 'beautyBranches', label: 'Şubeler', group: 'beauty', modules: ['beauty'] },
+  { key: 'beautyCustomers', label: 'Müşteriler', group: 'beauty', modules: ['beauty'] },
+  { key: 'beautyHealth', label: 'Sağlık / cilt verisi', group: 'beauty', modules: ['beauty'] },
+  { key: 'beautyAppointments', label: 'Randevular', group: 'beauty', modules: ['beauty'] },
+  { key: 'beautySessions', label: 'Paket ve seanslar', group: 'beauty', modules: ['beauty'] },
+  { key: 'beautyCatalog', label: 'Hizmet ve fiyatlar', group: 'beauty', modules: ['beauty'] },
+  { key: 'beautyResources', label: 'Cihaz ve odalar', group: 'beauty', modules: ['beauty'] },
+  { key: 'beautyStaff', label: 'Personel ve vardiya', group: 'beauty', modules: ['beauty'] },
+  { key: 'beautyFinance', label: 'Kasa ve ödemeler', group: 'beauty', modules: ['beauty'] },
+  { key: 'beautyInventory', label: 'Stok ve ürün', group: 'beauty', modules: ['beauty'] },
+  { key: 'beautyCommissions', label: 'Komisyonlar', group: 'beauty', modules: ['beauty'] },
+  { key: 'beautyCampaigns', label: 'Kampanya ve bildirimler', group: 'beauty', modules: ['beauty'] },
+  { key: 'beautyReports', label: 'Raporlar', group: 'beauty', modules: ['beauty'] },
+  { key: 'beautySettings', label: 'Beauty ayarları', group: 'beauty', modules: ['beauty'] },
+  { key: 'beautyAudit', label: 'Beauty işlem geçmişi', group: 'beauty', modules: ['beauty'] },
   { key: 'apmDashboard', label: 'APM gösterge paneli', group: 'apm', modules: ['apm'] },
   { key: 'apmAppointments', label: 'APM randevuları', group: 'apm', modules: ['apm'] },
+  { key: 'apmBranches', label: 'APM şubeleri', group: 'apm', modules: ['apm'] },
+  { key: 'apmServices', label: 'APM hizmetleri', group: 'apm', modules: ['apm'] },
+  { key: 'apmStaff', label: 'APM personeli', group: 'apm', modules: ['apm'] },
+  { key: 'apmSettings', label: 'APM çalışma ayarları', group: 'apm', modules: ['apm'] },
+  { key: 'rentDashboard', label: 'Rent A Car gösterge paneli', group: 'rentacar', modules: ['rentacar'] },
+  { key: 'rentBranches', label: 'Şubeler', group: 'rentacar', modules: ['rentacar'] },
+  { key: 'rentVehicles', label: 'Araçlar ve filo', group: 'rentacar', modules: ['rentacar'] },
+  { key: 'rentMaintenance', label: 'Bakım ve hasar', group: 'rentacar', modules: ['rentacar'] },
+  { key: 'rentCustomers', label: 'Müşteriler', group: 'rentacar', modules: ['rentacar'] },
+  { key: 'rentReservations', label: 'Rezervasyonlar', group: 'rentacar', modules: ['rentacar'] },
+  { key: 'rentRentals', label: 'Kiralamalar ve transferler', group: 'rentacar', modules: ['rentacar'] },
+  { key: 'rentRates', label: 'Tarife ve fiyatlar', group: 'rentacar', modules: ['rentacar'] },
+  { key: 'rentFinance', label: 'Finans ve ödemeler', group: 'rentacar', modules: ['rentacar'] },
+  { key: 'rentCrm', label: 'CRM ve kampanyalar', group: 'rentacar', modules: ['rentacar'] },
+  { key: 'rentReports', label: 'Raporlar', group: 'rentacar', modules: ['rentacar'] },
+  { key: 'rentSettings', label: 'Rent A Car ayarları', group: 'rentacar', modules: ['rentacar'] },
+  { key: 'drivingSchoolDashboard', label: 'Sürücü kursu gösterge paneli', group: 'drivingschool', modules: ['drivingschool'] },
+  { key: 'drivingSchoolStudents', label: 'Kursiyerler', group: 'drivingschool', modules: ['drivingschool'] },
+  { key: 'drivingSchoolInstructors', label: 'Eğitmenler', group: 'drivingschool', modules: ['drivingschool'] },
+  { key: 'drivingSchoolVehicles', label: 'Eğitim araçları', group: 'drivingschool', modules: ['drivingschool'] },
+  { key: 'drivingSchoolLessons', label: 'Ders ve randevu planı', group: 'drivingschool', modules: ['drivingschool'] },
+  { key: 'parkingDashboard', label: 'Otopark gösterge paneli', group: 'parking', modules: ['parking'] },
+  { key: 'parkingFacilities', label: 'Tesis, bölge ve park yerleri', group: 'parking', modules: ['parking'] },
+  { key: 'parkingSessions', label: 'Giriş ve çıkış işlemleri', group: 'parking', modules: ['parking'] },
+  { key: 'parkingTariffs', label: 'Tarifeler', group: 'parking', modules: ['parking'] },
+  { key: 'parkingPayments', label: 'Tahsilat ve iadeler', group: 'parking', modules: ['parking'] },
+  { key: 'parkingCash', label: 'Kasa vardiyaları', group: 'parking', modules: ['parking'] },
+  { key: 'parkingDevices', label: 'Bariyer ve edge agent', group: 'parking', modules: ['parking'] },
+  { key: 'parkingAudit', label: 'Otopark işlem geçmişi', group: 'parking', modules: ['parking'] },
+  { key: 'fgasRecords', label: 'F-Gas kayıtları', group: 'fgas', modules: ['fgas'] },
+  { key: 'machineCeRecords', label: 'Makine CE kayıtları', group: 'machine-ce', modules: ['machine-ce'] },
+  { key: 'foodLabelRecords', label: 'Gıda etiketi kayıtları', group: 'food-label', modules: ['food-label'] },
+  { key: 'productSafeRecords', label: 'Ürün güvenliği kayıtları', group: 'product-safe', modules: ['product-safe'] },
+  { key: 'fireSafeRecords', label: 'Yangın güvenliği kayıtları', group: 'fire-safe', modules: ['fire-safe'] },
+  { key: 'payFairRecords', label: 'Ücret eşitliği kayıtları', group: 'pay-fair', modules: ['pay-fair'] },
+  { key: 'cargoDocsRecords', label: 'Kargo belge kayıtları', group: 'cargo-docs', modules: ['cargo-docs'] },
+  { key: 'kidsRecords', label: 'Çocuk ürünü kayıtları', group: 'kids', modules: ['kids'] },
+  { key: 'cyberReadyRecords', label: 'Siber hazırlık kayıtları', group: 'cyber-ready', modules: ['cyber-ready'] },
+  { key: 'dietRecords', label: 'Beslenme kayıtları', group: 'diet', modules: ['diet'] },
 ] as const satisfies readonly PermissionResourceDefinition[];
 
 export type PermissionResource = (typeof PERMISSION_RESOURCES)[number]['key'];
@@ -121,7 +176,21 @@ export const PERMISSION_GROUP_LABELS: Record<PermissionGroup, string> = {
   gym: 'Salon',
   spa: 'Spa',
   hair: 'Kuaför',
+  beauty: 'Güzellik Merkezi',
   apm: 'Randevu Yönetimi',
+  rentacar: 'Rent A Car',
+  drivingschool: 'Sürücü Kursu',
+  parking: 'Otopark',
+  fgas: 'F-Gas',
+  'machine-ce': 'Makine CE',
+  'food-label': 'Gıda Etiketi',
+  'product-safe': 'Ürün Güvenliği',
+  'fire-safe': 'Yangın Güvenliği',
+  'pay-fair': 'Ücret Şeffaflığı',
+  'cargo-docs': 'Kargo Belgeleri',
+  kids: 'Çocuk Ürünleri',
+  'cyber-ready': 'Siber Hazırlık',
+  diet: 'Beslenme',
 };
 
 export function resourcesForModules(

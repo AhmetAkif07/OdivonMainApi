@@ -63,6 +63,24 @@ authenticated CRUD, or production CPU usage. Test those after adding real secret
 The Free plan's CPU limit still applies; fitting the bundle size does not guarantee
 that every authenticated request will fit that limit. The throttle is per isolate.
 
+### Verification and welcome emails
+
+Workers cannot open a TCP socket to `smtp.hostinger.com` because that hostname
+resolves to a Cloudflare address. For production mail, create a Hostinger Agentic
+Mail API token with **Selected mailboxes: info@odivon.com**. Obtain that mailbox's
+`resourceId` from Hostinger Mail API `GET /api/v1/me`, then configure both Worker
+secrets:
+
+```bash
+npx wrangler secret put HOSTINGER_MAIL_API_TOKEN
+npx wrangler secret put HOSTINGER_MAILBOX_RESOURCE_ID
+```
+
+When both are set, all welcome and verification mail uses Hostinger's HTTPS API.
+The existing SMTP transport remains available for a local Node server. The
+`resend-verification` endpoint waits for provider acceptance and returns HTTP 503
+if sending fails; a response from the provider does not guarantee inbox delivery.
+
 ## Sandbox payments
 
 Payments use a provider interface and a tenant-specific provider setting. The only
@@ -81,7 +99,7 @@ npx wrangler secret put IYZICO_SANDBOX_SECRET_KEY
 For local development, set the same names in `.dev.vars`. If the callback should
 reach a different API host, set `PAYMENT_PUBLIC_BASE_URL` to its HTTPS origin.
 Set `PAYMENT_GYM_RETURN_URL` to the public GYM license page URL when it differs
-from `https://odivongym.web.app/admin/subscription`. The callback returns the
+from `https://gym.odivon.com/admin/subscription`. The callback returns the
 browser to that page with a `paymentSession` query parameter.
 Only the sandbox endpoint `https://sandbox-api.iyzipay.com` is used.
 

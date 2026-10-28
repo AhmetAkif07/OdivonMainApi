@@ -1,11 +1,12 @@
-import { Injectable, Logger } from '@nestjs/common';
+import * as crypto from 'crypto';
+import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { AppException } from '../../shared/errors/app.exception';
 import { ErrorCode } from '../../shared/errors/error-codes';
 import { FirebaseService } from '../../shared/firebase/firebase.service';
 import { TenantService } from '../tenant/tenant.service';
 import { IdentityRepository } from './identity.repository';
 import { RegisterDto } from './dto/register.dto';
-import { CreateUserDto, UpdateUserDto } from './dto/user.dto';
+import { ChangePasswordDto, CreateUserDto, UpdateUserDto } from './dto/user.dto';
 import { UserProfile } from './entities/user-profile.entity';
 import { TenantContext } from '../../shared/tenancy/tenant.context';
 import {
@@ -17,6 +18,12 @@ import {
 import { ProductModule } from '../../shared/authorization/constants';
 import { effectiveSubscription, TenantBillingState } from '../payments/saas-billing';
 import { RolesService } from './roles/roles.service';
+import { MailService } from '../../shared/mail/mail.service';
+import { WelcomeModule } from '../../shared/mail/welcome-templates';
+import { verificationUrl } from '../../shared/mail/verification-url';
+import { fgasEntitlements } from '../../shared/product-platform/fgas-entitlements';
+import { FIRE_SAFE_PLAN_LIMITS } from '../fire-safe/fire-safe.constants';
+import { FOOD_LABEL_PLAN_LIMITS } from '../food-label/food-label.constants';
 
 const SAAS_TRIAL_DAYS = 14;
 
@@ -30,6 +37,7 @@ export class IdentityService {
     private readonly users: IdentityRepository,
     private readonly tenantContext: TenantContext,
     private readonly roles: RolesService,
+    private readonly mail: MailService,
   ) {}
 
   async register(dto: RegisterDto) {
@@ -48,18 +56,29 @@ export class IdentityService {
       const modules: ProductModule[] = [productModule];
       const now = new Date();
       const nowIso = now.toISOString();
-      const isGym = productModule === 'gym';
-      const trialEndsAt = new Date(now.getTime() + SAAS_TRIAL_DAYS * 24 * 60 * 60 * 1000).toISOString();
+      const trialEndsAt = new Date(
+        now.getTime() + SAAS_TRIAL_DAYS * 24 * 60 * 60 * 1000,
+      ).toISOString();
 
+      const requiresOnboarding = modules.some(
+        (module) =>
+          module === 'gym' ||
+          module === 'fgas' ||
+          module === 'fire-safe' ||
+          module === 'food-label',
+      );
       const createdTenant = await this.tenants.create({
         name: dto.tenantName,
         ownerUid: uid,
         modules,
-        onboardingCompleted: true,
+        onboardingCompleted: !requiresOnboarding,
         membershipStatus: 'trial',
         trialEndsAt,
       });
       tenantId = createdTenant.id;
+
+      const verificationToken = crypto.randomBytes(32).toString('hex');
+      const verificationExpiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString();
 
       const profile: UserProfile = {
         uid,
@@ -67,6 +86,9 @@ export class IdentityService {
         role: 'owner',
         modules,
         email: dto.email,
+        emailVerified: false,
+        emailVerificationToken: verificationToken,
+        emailVerificationExpiresAt: verificationExpiresAt,
         displayName: dto.displayName?.trim() || null,
         phone: dto.phone?.trim() || null,
         status: 'active',
@@ -89,6 +111,20 @@ export class IdentityService {
         modules,
       });
 
+      const verificationLink = verificationUrl(productModule, verificationToken);
+
+      this.mail
+        .sendVerificationEmail({
+          to: dto.email,
+          displayName: dto.displayName,
+          tenantName: dto.tenantName,
+          verificationLink,
+          module: productModule,
+        })
+        ?.catch((err) => {
+          this.logger.error(`Doğrulama maili gönderilemedi (${dto.email}): ${err?.message || err}`);
+        });
+
       return {
         uid,
         email: dto.email,
@@ -105,11 +141,142 @@ export class IdentityService {
     }
   }
 
+  async verifyEmail(token: string) {
+    const profile = await this.users.findByVerificationToken(token);
+    if (!profile) {
+      throw new AppException(
+        ErrorCode.VERIFICATION_TOKEN_INVALID,
+        'Geçersiz veya bulunamayan e-posta doğrulama bağlantısı.',
+      );
+    }
+
+    if (
+      profile.emailVerificationExpiresAt &&
+      new Date(profile.emailVerificationExpiresAt).getTime() < Date.now()
+    ) {
+      throw new AppException(
+        ErrorCode.VERIFICATION_TOKEN_EXPIRED,
+        'Doğrulama bağlantısının süresi dolmuş. Lütfen yeni bir bağlantı isteyin.',
+      );
+    }
+
+    try {
+      await this.firebase.auth.updateUser(profile.uid, { emailVerified: true });
+    } catch (err) {
+      this.logger.error(`Firebase Auth emailVerified güncellenemedi (${profile.uid})`, err);
+      throw new ServiceUnavailableException(
+        'E-posta doğrulaması şu anda tamamlanamıyor. Lütfen tekrar deneyin.',
+      );
+    }
+
+    const nowIso = new Date().toISOString();
+    await this.users.updateProfile(profile.uid, {
+      emailVerified: true,
+      emailVerificationToken: null,
+      emailVerificationExpiresAt: null,
+      emailVerifiedAt: nowIso,
+      emailVerifiedBy: 'link',
+      updatedAt: nowIso,
+    });
+
+    const tenant = await this.tenants.getById(profile.tenantId).catch(() => null);
+    const tenantName =
+      tenant?.name || (profile.modules.includes('gym') ? 'Spor Salonu' : 'İşletme');
+
+    if (profile.modules.includes('gym')) {
+      this.mail
+        .sendWelcomeGymOwner({
+          to: profile.email,
+          displayName: profile.displayName,
+          tenantName,
+        })
+        ?.catch((err) => {
+          this.logger.error(
+            `Hoş geldin maili gönderilemedi (${profile.email}): ${err?.message || err}`,
+          );
+        });
+    } else {
+      const primaryModule = (profile.modules[0] || 'vet') as WelcomeModule;
+      this.mail
+        .sendModuleWelcome({
+          module: primaryModule,
+          to: profile.email,
+          displayName: profile.displayName,
+          tenantName,
+          trialDays: SAAS_TRIAL_DAYS,
+        })
+        ?.catch((err) => {
+          this.logger.error(
+            `Hoş geldin maili gönderilemedi (${profile.email}): ${err?.message || err}`,
+          );
+        });
+    }
+
+    return { success: true, email: profile.email };
+  }
+
+  async resendVerification(email: string) {
+    const normalizedEmail = email.trim().toLowerCase();
+    const profile = await this.users.findByEmail(normalizedEmail);
+    if (!profile || profile.emailVerified) {
+      return { success: true };
+    }
+
+    const verificationToken = crypto.randomBytes(32).toString('hex');
+    const verificationExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+
+    await this.users.updateProfile(profile.uid, {
+      emailVerificationToken: verificationToken,
+      emailVerificationExpiresAt: verificationExpiresAt,
+      updatedAt: new Date().toISOString(),
+    });
+
+    const tenant = await this.tenants.getById(profile.tenantId).catch(() => null);
+    const productModule = profile.modules[0] ?? 'vet';
+    const verificationLink = verificationUrl(productModule, verificationToken);
+
+    let sent = false;
+    try {
+      sent = await this.mail.sendVerificationEmail({
+        to: profile.email,
+        displayName: profile.displayName,
+        tenantName: tenant?.name || (productModule === 'gym' ? 'Spor Salonu' : 'İşletme'),
+        verificationLink,
+        module: productModule,
+      });
+    } catch (error) {
+      this.logger.error(
+        `Doğrulama maili tekrar gönderilemedi (${profile.email}): ${error instanceof Error ? error.message : error}`,
+      );
+    }
+    if (!sent) {
+      throw new ServiceUnavailableException(
+        'Doğrulama e-postası şu anda gönderilemiyor. Lütfen daha sonra tekrar deneyin.',
+      );
+    }
+
+    return { success: true };
+  }
+
   async me() {
     const store = this.tenantContext.getStore();
     const profile = await this.users.findByUid(store.userId);
     if (!profile) {
       throw new AppException(ErrorCode.USER_NOT_FOUND, 'User profile was not found');
+    }
+    if (profile.emailVerified !== true && typeof this.firebase.auth?.getUser === 'function') {
+      const fbUser = await this.firebase.auth.getUser(store.userId).catch(() => null);
+      if (fbUser?.emailVerified) {
+        profile.emailVerified = true;
+        await this.users
+          .updateProfile(store.userId, {
+            emailVerified: true,
+            emailVerificationToken: null,
+            emailVerificationExpiresAt: null,
+            updatedAt: new Date().toISOString(),
+          })
+          .catch(() => undefined);
+      }
     }
     const tenant = await this.tenants.getById(profile.tenantId);
     // A paid gym stays active through the grace period after its end date (see saas-billing).
@@ -124,15 +291,23 @@ export class IdentityService {
       accountType: profile.accountType ?? null,
       modules: profile.modules,
       roleIds: profile.roleIds ?? [],
-      membershipStatus: tenant.membershipStatus ? billing.membershipStatus : (profile.membershipStatus ?? 'active'),
+      emailVerified: profile.emailVerified ?? null,
+      branchIds: profile.branchIds ?? [],
+      allBranches: profile.role === 'owner' || profile.allBranches === true,
+      membershipStatus: tenant.membershipStatus
+        ? billing.membershipStatus
+        : (profile.membershipStatus ?? 'active'),
       trialEndsAt: tenant.trialEndsAt ?? profile.trialEndsAt ?? null,
-      onboardingCompleted: tenant.onboardingCompleted ?? true,
-      permissions: profile.role === 'owner' ? fullPermissionMap(profile.modules ?? []) : (store.permissions ?? {}),
+      onboardingCompleted: tenant.onboardingCompleted ?? false,
+      permissions:
+        profile.role === 'owner'
+          ? fullPermissionMap(profile.modules ?? [])
+          : (store.permissions ?? {}),
       tenant: {
         id: tenant.id,
         name: tenant.name,
         status: tenant.status,
-        onboardingCompleted: tenant.onboardingCompleted ?? true,
+        onboardingCompleted: tenant.onboardingCompleted ?? false,
         membershipStatus: tenant.membershipStatus ? billing.membershipStatus : 'active',
         trialEndsAt: tenant.trialEndsAt ?? null,
         subscriptionEndsAt: billing.subscriptionEndsAt,
@@ -160,10 +335,33 @@ export class IdentityService {
     return { ...current, ...patch };
   }
 
+  async changePassword(dto: ChangePasswordDto): Promise<{ success: boolean; message: string }> {
+    const store = this.tenantContext.getStore();
+    if (!store.userId) {
+      throw new AppException(ErrorCode.AUTH_REQUIRED, 'User is not authenticated');
+    }
+    const user = await this.users.findByUid(store.userId);
+    if (!user) {
+      throw new AppException(ErrorCode.USER_NOT_FOUND, 'User profile was not found');
+    }
+    try {
+      await this.firebase.auth.updateUser(store.userId, { password: dto.newPassword });
+      return { success: true, message: 'Password updated successfully' };
+    } catch (error) {
+      throw mapFirebaseUserError(error, this.logger);
+    }
+  }
+
   async listUsers(): Promise<UserProfile[]> {
     const users = await this.users.listByCurrentTenant();
     return users
-      .map((user) => ({ ...user, displayName: user.displayName ?? null, roleIds: user.roleIds ?? [] }))
+      .map((user) => ({
+        ...user,
+        displayName: user.displayName ?? null,
+        roleIds: user.roleIds ?? [],
+        branchIds: user.branchIds ?? [],
+        allBranches: user.role === 'owner' || user.allBranches === true,
+      }))
       .sort((left, right) => left.createdAt.localeCompare(right.createdAt));
   }
 
@@ -171,7 +369,11 @@ export class IdentityService {
     const users = await this.users.listByCurrentTenant();
     return users
       .filter((user) => user.status === 'active')
-      .map((user) => ({ uid: user.uid, displayName: user.displayName || user.email, email: user.email }))
+      .map((user) => ({
+        uid: user.uid,
+        displayName: user.displayName || user.email,
+        email: user.email,
+      }))
       .sort((left, right) => left.displayName.localeCompare(right.displayName, 'tr'));
   }
 
@@ -190,6 +392,58 @@ export class IdentityService {
 
   async createUser(dto: CreateUserDto): Promise<UserProfile> {
     const store = this.tenantContext.getStore();
+    if (store.modules?.includes('fgas')) {
+      const tenant = await this.tenants.getById(store.tenantId);
+      const limits = fgasEntitlements(tenant);
+      if (limits.maxUsers !== null) {
+        const activeUsers = (await this.users.listByCurrentTenant()).filter(
+          (user) => user.status === 'active',
+        ).length;
+        if (activeUsers >= limits.maxUsers)
+          throw new AppException(
+            ErrorCode.SUBSCRIPTION_LIMIT,
+            `${limits.planId} planının kullanıcı limiti doldu. Planınızı yükseltin.`,
+          );
+      }
+    }
+    if (store.modules?.includes('fire-safe')) {
+      const tenant = await this.tenants.getById(store.tenantId);
+      const candidate = tenant.membershipStatus === 'trial' ? 'pro' : tenant.planId;
+      const planId =
+        candidate === 'starter' || candidate === 'pro' || candidate === 'enterprise'
+          ? candidate
+          : 'enterprise';
+      const maxUsers = FIRE_SAFE_PLAN_LIMITS[planId].users;
+      if (maxUsers !== null) {
+        const activeUsers = (await this.users.listByCurrentTenant()).filter(
+          (user) => user.status === 'active',
+        ).length;
+        if (activeUsers >= maxUsers)
+          throw new AppException(
+            ErrorCode.SUBSCRIPTION_LIMIT,
+            `${planId} planının kullanıcı limiti doldu. Planınızı yükseltin.`,
+          );
+      }
+    }
+    if (store.modules?.includes('food-label')) {
+      const tenant = await this.tenants.getById(store.tenantId);
+      const candidate = tenant.membershipStatus === 'trial' ? 'pro' : tenant.planId;
+      const planId =
+        candidate === 'starter' || candidate === 'pro' || candidate === 'enterprise'
+          ? candidate
+          : 'enterprise';
+      const maxUsers = FOOD_LABEL_PLAN_LIMITS[planId].users;
+      if (maxUsers !== null) {
+        const activeUsers = (await this.users.listByCurrentTenant()).filter(
+          (user) => user.status === 'active',
+        ).length;
+        if (activeUsers >= maxUsers)
+          throw new AppException(
+            ErrorCode.SUBSCRIPTION_LIMIT,
+            `${planId} planının kullanıcı limiti doldu. Planınızı yükseltin.`,
+          );
+      }
+    }
     const roleIds = await this.roles.assertRolesExist(dto.roleIds);
     let uid: string | undefined;
     let profileCreated = false;
@@ -199,6 +453,7 @@ export class IdentityService {
         email: dto.email,
         password: dto.password,
         displayName: dto.displayName,
+        emailVerified: true,
       });
       uid = userRecord.uid;
 
@@ -211,7 +466,10 @@ export class IdentityService {
         email: dto.email,
         displayName: dto.displayName.trim(),
         roleIds,
+        branchIds: dto.branchIds ?? [],
+        allBranches: false,
         status: 'active',
+        emailVerified: true,
         createdAt: now,
         updatedAt: now,
       };
@@ -240,10 +498,12 @@ export class IdentityService {
       throw new AppException(ErrorCode.VALIDATION_ERROR, 'You cannot deactivate your own account');
     }
 
-    const roleIds = dto.roleIds !== undefined ? await this.roles.assertRolesExist(dto.roleIds) : undefined;
+    const roleIds =
+      dto.roleIds !== undefined ? await this.roles.assertRolesExist(dto.roleIds) : undefined;
     const patch: Partial<UserProfile> = {
       ...(dto.displayName !== undefined ? { displayName: dto.displayName.trim() } : {}),
       ...(roleIds !== undefined ? { roleIds } : {}),
+      ...(dto.branchIds !== undefined ? { branchIds: [...new Set(dto.branchIds)] } : {}),
       ...(dto.status !== undefined ? { status: dto.status } : {}),
       updatedAt: new Date().toISOString(),
     };
@@ -270,6 +530,7 @@ export class IdentityService {
       ...patch,
       displayName: patch.displayName ?? current.displayName ?? null,
       roleIds: patch.roleIds ?? current.roleIds ?? [],
+      branchIds: patch.branchIds ?? current.branchIds ?? [],
     };
   }
 
@@ -285,7 +546,10 @@ export class IdentityService {
     } catch (error) {
       throw mapFirebaseUserError(error, this.logger);
     }
-    await this.users.updateProfile(uid, { status: 'inactive', updatedAt: new Date().toISOString() });
+    await this.users.updateProfile(uid, {
+      status: 'inactive',
+      updatedAt: new Date().toISOString(),
+    });
   }
 
   private async getManageableUser(uid: string): Promise<UserProfile> {
@@ -328,7 +592,11 @@ export class IdentityService {
   }
 }
 
-function mapFirebaseUserError(error: unknown, logger: Logger, fallback = 'User operation failed'): AppException {
+function mapFirebaseUserError(
+  error: unknown,
+  logger: Logger,
+  fallback = 'User operation failed',
+): AppException {
   const firebase = describeFirebaseError(error);
   logger.error(`${fallback} code=${firebase.code} message=${firebase.message}`);
   if (firebase.code === 'auth/email-already-exists') {

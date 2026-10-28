@@ -134,7 +134,13 @@ export const HAIR_ROLE_SCOPES: Record<HairStaffRole, Partial<Record<PermissionRe
     hairReports: 'own',
     hairDashboard: 'own',
   },
-  cashier: { hairLeaves: 'own', hairReports: 'limited' },
+  // Cashiers, like stylists, only ever see their own figures in reports, dashboard and commissions.
+  cashier: {
+    hairLeaves: 'own',
+    hairCommissions: 'own',
+    hairReports: 'own',
+    hairDashboard: 'own',
+  },
 };
 
 export function scopeFor(role: HairStaffRole, resource: PermissionResource): HairScope {

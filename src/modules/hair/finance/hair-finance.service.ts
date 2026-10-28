@@ -4,6 +4,7 @@ import { createBaseFields } from '../../../shared/firestore/base-document';
 import { assertCashAllowed, registerId, summarizeCash } from '../shared/cash-register';
 import { hairInvalid, hairNotFound, hairPrecondition } from '../shared/hair-errors';
 import { HairListQueryDto, inclusiveTo, searchTerm } from '../shared/hair-list.dto';
+import { idempotency } from '../shared/hair-idempotency';
 import { assertPayments, PaymentLine, round2 } from '../shared/hair-money';
 import { HairActor, HairDoc, HairStore } from '../shared/hair-store';
 import { dateIdInTz } from '../shared/hair-time';
@@ -64,7 +65,9 @@ export class HairFinanceService {
     const date = dto.date ?? dateIdInTz(await this.store.timeZone());
     const ref = this.store.newRef(TENANT_COLLECTION.hairPayments);
     const userId = this.store.userId();
-    const payment = await this.store.runTransaction(async (tx) => {
+    const outcome = await this.store.runTransaction(async (tx) => {
+      const idem = await idempotency<HairDoc>(tx, this.store, 'payment', dto.idempotencyKey, dto);
+      if (idem.replay) return { doc: idem.replay, replay: true };
       const customer = live(await tx.get(this.store.ref(TENANT_COLLECTION.hairCustomers, dto.customerId)));
       if (!customer) throw hairNotFound('Müşteri bulunamadı.');
       const staff = dto.staffId ? live(await tx.get(this.store.ref(TENANT_COLLECTION.hairStaff, dto.staffId))) : null;
@@ -85,10 +88,13 @@ export class HairFinanceService {
         isRefund: false,
       };
       tx.set(ref, doc);
-      return doc;
+      idem.save(doc);
+      return { doc: doc as HairDoc, replay: false };
     });
-    await this.store.audit('hairPayments', 'create', ref.id, null, { totalAmount: payment.totalAmount, date });
-    return payment;
+    if (!outcome.replay) {
+      await this.store.audit('hairPayments', 'create', ref.id, null, { totalAmount: outcome.doc['totalAmount'], date });
+    }
+    return outcome.doc;
   }
 
   // ── Expenses ──
@@ -116,14 +122,18 @@ export class HairFinanceService {
     const date = dto.date ?? dateIdInTz(await this.store.timeZone());
     const ref = this.store.newRef(TENANT_COLLECTION.hairExpenses);
     const userId = this.store.userId();
-    const expense = await this.store.runTransaction(async (tx) => {
+    const { idempotencyKey, ...fields } = dto;
+    const outcome = await this.store.runTransaction(async (tx) => {
+      const idem = await idempotency<HairDoc>(tx, this.store, 'expense', idempotencyKey, dto);
+      if (idem.replay) return { doc: idem.replay, replay: true };
       await assertCashAllowed(tx, this.store, dto.branchId, date, [{ method: dto.paymentMethod }]);
-      const doc = { ...createBaseFields(ref.id, userId), ...stripUndefined({ ...dto, category: dto.category.trim() }), date };
+      const doc = { ...createBaseFields(ref.id, userId), ...stripUndefined({ ...fields, category: dto.category.trim() }), date };
       tx.set(ref, doc);
-      return doc;
+      idem.save(doc);
+      return { doc: doc as HairDoc, replay: false };
     });
-    await this.store.audit('hairExpenses', 'create', ref.id, null, expense);
-    return expense;
+    if (!outcome.replay) await this.store.audit('hairExpenses', 'create', ref.id, null, outcome.doc);
+    return outcome.doc;
   }
 
   async updateExpense(id: string, dto: UpdateHairExpenseDto) {
@@ -163,7 +173,9 @@ export class HairFinanceService {
     const date = dateIdInTz(await this.store.timeZone());
     const ref = this.store.ref(TENANT_COLLECTION.hairCashRegisterDays, registerId(dto.branchId, date));
     const userId = this.store.userId();
-    const register = await this.store.runTransaction(async (tx) => {
+    const outcome = await this.store.runTransaction(async (tx) => {
+      const idem = await idempotency<HairDoc>(tx, this.store, 'registerOpen', dto.idempotencyKey, dto);
+      if (idem.replay) return { doc: idem.replay, replay: true };
       const snapshot = await tx.get(ref);
       if (snapshot.exists) {
         throw hairPrecondition(
@@ -181,10 +193,13 @@ export class HairFinanceService {
         openedAt: now,
       };
       tx.set(ref, doc);
-      return doc;
+      idem.save(doc);
+      return { doc: doc as HairDoc, replay: false };
     });
-    await this.store.audit('hairCashRegister', 'create', ref.id, null, { openingBalance: dto.openingBalance });
-    return register;
+    if (!outcome.replay) {
+      await this.store.audit('hairCashRegister', 'create', ref.id, null, { openingBalance: dto.openingBalance });
+    }
+    return outcome.doc;
   }
 
   /** Closes today's register: snapshots the totals and the expected vs. counted difference (K-002/K-004). */
@@ -194,7 +209,9 @@ export class HairFinanceService {
     const date = dateIdInTz(await this.store.timeZone());
     const ref = this.store.ref(TENANT_COLLECTION.hairCashRegisterDays, registerId(dto.branchId, date));
     const userId = this.store.userId();
-    const register = await this.store.runTransaction(async (tx) => {
+    const outcome = await this.store.runTransaction(async (tx) => {
+      const idem = await idempotency<HairDoc>(tx, this.store, 'registerClose', dto.idempotencyKey, dto);
+      if (idem.replay) return { doc: idem.replay, replay: true };
       const current = live(await tx.get(ref));
       if (!current) throw hairPrecondition('Bugün için açılmış bir kasa yok.');
       if (current['status'] !== 'open') throw hairPrecondition('Kasa zaten kapatılmış.');
@@ -227,14 +244,17 @@ export class HairFinanceService {
         updatedBy: userId,
       };
       tx.set(ref, stripUndefined(doc));
-      return doc;
+      idem.save(doc);
+      return { doc: doc as HairDoc, replay: false };
     });
-    await this.store.audit('hairCashRegister', 'update', ref.id, { status: 'open' }, {
-      status: 'closed',
-      closingBalance: register.closingBalance,
-      countedBalance: register['countedBalance'],
-    });
-    return register;
+    if (!outcome.replay) {
+      await this.store.audit('hairCashRegister', 'update', ref.id, { status: 'open' }, {
+        status: 'closed',
+        closingBalance: outcome.doc['closingBalance'],
+        countedBalance: outcome.doc['countedBalance'],
+      });
+    }
+    return outcome.doc;
   }
 
   /** Physical cash count (K-004) on today's register, open or closed. */

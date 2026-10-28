@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { AppException } from '../../shared/errors/app.exception';
 import { ErrorCode } from '../../shared/errors/error-codes';
 import { FirebaseService } from '../../shared/firebase/firebase.service';
@@ -7,6 +7,9 @@ import { TenantContext } from '../../shared/tenancy/tenant.context';
 import { effectiveSubscription, TenantBillingState } from '../payments/saas-billing';
 import { APM_PLANS, ApmPlanId, ApmPlanLimitException, ApmSubscriptionRequiredException, isApmPlan, istanbulMonthStart } from './apm-plans';
 import { ApmAppointmentStatus, SaveApmAppointmentDto } from './apm.dto';
+import { ApmNotificationsService } from './apm-notifications.service';
+import { SaasPricingService, STATIC_SAAS_PRICING } from '../saas-pricing/saas-pricing.service';
+import { appointmentSlotIds } from './apm-time';
 
 export interface ApmAppointment {
   id: string;
@@ -17,6 +20,20 @@ export interface ApmAppointment {
   endAt: string;
   status: ApmAppointmentStatus;
   notes?: string;
+  branchId?: string;
+  branchName?: string;
+  bookingSlug?: string;
+  serviceId?: string;
+  serviceName?: string;
+  staffId?: string;
+  durationMinutes?: number;
+  customerEmail?: string;
+  customerPhone?: string;
+  source?: 'admin' | 'guest';
+  bookingTokenHash?: string;
+  confirmedAt?: string;
+  cancelledAt?: string;
+  cancelledBy?: string;
   createdAt?: string;
   updatedAt?: string;
   createdBy?: string;
@@ -42,11 +59,31 @@ export interface ApmSubscription {
   plans: { id: ApmPlanId; name: string; monthlyPrice: number; monthlyAppointments: number | null }[];
 }
 
+export interface CreateGuestApmAppointment {
+  branchId: string;
+  branchName: string;
+  bookingSlug?: string;
+  serviceId: string;
+  serviceName: string;
+  staffId: string;
+  staffName: string;
+  durationMinutes: number;
+  startAt: string;
+  endAt: string;
+  customerName: string;
+  customerEmail: string;
+  customerPhone: string;
+  notes?: string;
+  bookingTokenHash: string;
+}
+
 @Injectable()
 export class ApmService {
   constructor(
     private readonly firebase: FirebaseService,
     private readonly tenantContext: TenantContext,
+    private readonly notifications: ApmNotificationsService,
+    @Optional() private readonly pricing: SaasPricingService = STATIC_SAAS_PRICING,
   ) {}
 
   async appointments(from?: string, to?: string): Promise<ApmAppointment[]> {
@@ -80,11 +117,14 @@ export class ApmService {
   /** Package, trial/subscription state and this month's usage; drives the APM subscription page. */
   async subscription(): Promise<ApmSubscription> {
     const tenantId = this.tenantContext.getTenantId();
-    const [tenantSnapshot, subscriptionSnapshot, used] = await Promise.all([
+    const [tenantSnapshot, subscriptionSnapshot, used, catalog] = await Promise.all([
       this.firebase.db.doc(`tenants/${tenantId}`).get(),
       this.firebase.db.doc(`${tenantCollectionPath(tenantId, TENANT_COLLECTION.gymSaasSubscription)}/${tenantId}`).get(),
       this.collection().where('createdAt', '>=', istanbulMonthStart()).count().get(),
+      this.pricing.catalog('apm'),
     ]);
+    // Names and prices come from the platform panel; the quota stays with the package id.
+    const priced = new Map(catalog.plans.map((plan) => [plan.id, plan]));
     const tenant = (tenantSnapshot.data() ?? {}) as TenantBillingState;
     const state = effectiveSubscription(tenant);
     const storedPlan = (subscriptionSnapshot.data() as { planId?: string } | undefined)?.planId;
@@ -96,14 +136,21 @@ export class ApmService {
     return {
       membershipStatus: state.membershipStatus,
       planId,
-      planName: planId ? APM_PLANS[planId].name : null,
+      planName: planId ? (priced.get(planId)?.name ?? APM_PLANS[planId].name) : null,
       trialEndsAt: tenant.trialEndsAt ?? null,
       subscriptionEndsAt: state.subscriptionEndsAt,
       inGrace: state.inGrace,
       usedThisMonth,
       monthlyLimit,
       canCreate: isOpen && (monthlyLimit === null || usedThisMonth < monthlyLimit),
-      plans: (Object.keys(APM_PLANS) as ApmPlanId[]).map((id) => ({ id, ...APM_PLANS[id] })),
+      plans: (Object.keys(APM_PLANS) as ApmPlanId[])
+        .filter((id) => priced.get(id)?.active !== false && priced.get(id)?.monthly !== null)
+        .map((id) => ({
+          id,
+          ...APM_PLANS[id],
+          name: priced.get(id)?.name ?? APM_PLANS[id].name,
+          monthlyPrice: priced.get(id)?.monthly ?? APM_PLANS[id].monthlyPrice,
+        })),
     };
   }
 
@@ -111,8 +158,11 @@ export class ApmService {
   async save(dto: SaveApmAppointmentDto, id?: string): Promise<ApmAppointment> {
     const current = id ? await this.get(id) : undefined;
     if (!current) await this.assertCanCreate();
-    const fields = this.normalize(dto, current?.status);
-    if (fields.status !== 'Cancelled') {
+    const structured = dto.branchId || dto.serviceId || dto.staffId || current?.branchId
+      ? await this.structuredFields(dto, current)
+      : undefined;
+    const fields = this.normalize(structured ? { ...dto, ...structured } : dto, current?.status);
+    if (fields.status !== 'Cancelled' && !fields.staffId) {
       await this.assertNoConflict(fields, id);
     }
 
@@ -123,11 +173,45 @@ export class ApmService {
       ...(current ?? { createdAt: now, createdBy: userId }),
       ...fields,
       id: ref.id,
+      source: current?.source ?? 'admin',
       updatedAt: now,
       updatedBy: userId,
     };
     if (!fields.notes) delete appointment.notes;
-    await ref.set(appointment);
+    await this.writeWithSlotLocks(appointment, current);
+    return appointment;
+  }
+
+  async createGuestAppointment(input: CreateGuestApmAppointment): Promise<ApmAppointment> {
+    await this.assertCanCreate();
+    const now = new Date().toISOString();
+    const ref = this.collection().doc();
+    const appointment: ApmAppointment = {
+      id: ref.id,
+      title: input.serviceName,
+      customerName: input.customerName,
+      staffName: input.staffName,
+      startAt: new Date(input.startAt).toISOString(),
+      endAt: new Date(input.endAt).toISOString(),
+      status: 'Pending',
+      notes: input.notes,
+      branchId: input.branchId,
+      branchName: input.branchName,
+      bookingSlug: input.bookingSlug,
+      serviceId: input.serviceId,
+      serviceName: input.serviceName,
+      staffId: input.staffId,
+      durationMinutes: input.durationMinutes,
+      customerEmail: input.customerEmail,
+      customerPhone: input.customerPhone,
+      source: 'guest',
+      bookingTokenHash: input.bookingTokenHash,
+      createdAt: now,
+      createdBy: this.tenantContext.getUserId(),
+      updatedAt: now,
+      updatedBy: this.tenantContext.getUserId(),
+    };
+    await this.writeWithSlotLocks(appointment);
     return appointment;
   }
 
@@ -139,18 +223,26 @@ export class ApmService {
     const appointment: ApmAppointment = {
       ...current,
       status,
+      ...(status === 'Confirmed' ? { confirmedAt: new Date().toISOString() } : {}),
+      ...(status === 'Cancelled' ? { cancelledAt: new Date().toISOString(), cancelledBy: this.tenantContext.getUserId() } : {}),
       updatedAt: new Date().toISOString(),
       updatedBy: this.tenantContext.getUserId(),
     };
-    await this.collection().doc(id).set(appointment);
+    await this.writeWithSlotLocks(appointment, current);
+    await this.notifyGuestOfStatus(appointment);
     return appointment;
   }
 
   /** Soft delete: the record stays in Firestore with `deletedAt` and disappears from every list. */
   async remove(id: string): Promise<{ id: string }> {
-    await this.get(id);
     const now = new Date().toISOString();
-    await this.collection().doc(id).update({ deletedAt: now, updatedAt: now, updatedBy: this.tenantContext.getUserId() });
+    const current = await this.get(id);
+    await this.writeWithSlotLocks({
+      ...current,
+      deletedAt: now,
+      updatedAt: now,
+      updatedBy: this.tenantContext.getUserId(),
+    }, current, true);
     return { id };
   }
 
@@ -190,7 +282,106 @@ export class ApmService {
       endAt: end.toISOString(),
       status: dto.status ?? currentStatus ?? 'Pending',
       notes: dto.notes?.trim() || undefined,
+      branchId: dto.branchId,
+      serviceId: dto.serviceId,
+      staffId: dto.staffId,
+      serviceName: dto.title.trim(),
+      durationMinutes: dto.durationMinutes,
+      customerEmail: dto.customerEmail?.trim().toLowerCase() || undefined,
+      customerPhone: dto.customerPhone?.trim() || undefined,
     };
+  }
+
+  private async structuredFields(dto: SaveApmAppointmentDto, current?: ApmAppointment) {
+    const branchId = dto.branchId ?? current?.branchId;
+    const serviceId = dto.serviceId ?? current?.serviceId;
+    const staffId = dto.staffId ?? current?.staffId;
+    if (!branchId || !serviceId || !staffId) {
+      throw new AppException(ErrorCode.APPOINTMENT_INVALID, 'Şube, hizmet ve personel birlikte seçilmeli.');
+    }
+    const [branchSnapshot, serviceSnapshot, staffSnapshot] = await Promise.all([
+      this.tenantCollection(TENANT_COLLECTION.apmBranches).doc(branchId).get(),
+      this.tenantCollection(TENANT_COLLECTION.apmServices).doc(serviceId).get(),
+      this.tenantCollection(TENANT_COLLECTION.apmStaff).doc(staffId).get(),
+    ]);
+    const branch = branchSnapshot.data();
+    const service = serviceSnapshot.data();
+    const staff = staffSnapshot.data();
+    if (!branchSnapshot.exists || !serviceSnapshot.exists || !staffSnapshot.exists || branch?.['deletedAt'] || service?.['deletedAt'] || staff?.['deletedAt']) {
+      throw new AppException(ErrorCode.APPOINTMENT_NOT_FOUND, 'Şube, hizmet veya personel bulunamadı.');
+    }
+    const serviceBranches = stringList(service?.['branchIds']);
+    const staffBranches = stringList(staff?.['branchIds']);
+    const staffServices = stringList(staff?.['serviceIds']);
+    if (!serviceBranches.includes(branchId) || !staffBranches.includes(branchId) || !staffServices.includes(serviceId)) {
+      throw new AppException(ErrorCode.APPOINTMENT_INVALID, 'Personel veya hizmet seçilen şubede uygun değil.');
+    }
+    const serviceName = String(service?.['name'] ?? '').trim();
+    const staffName = String(staff?.['displayName'] ?? '').trim();
+    const durationMinutes = Number(service?.['durationMinutes']);
+    return {
+      branchId,
+      branchName: String(branch?.['name'] ?? '').trim(),
+      serviceId,
+      serviceName,
+      staffId,
+      title: serviceName,
+      staffName,
+      durationMinutes,
+    };
+  }
+
+  private async writeWithSlotLocks(appointment: ApmAppointment, current?: ApmAppointment, releaseOnly = false): Promise<void> {
+    const locks = this.tenantCollection(TENANT_COLLECTION.apmAppointmentSlots);
+    const oldIds = current?.staffId && activeStatus(current.status)
+      ? appointmentSlotIds(current.staffId, current.startAt, current.endAt)
+      : [];
+    const newIds = !releaseOnly && appointment.staffId && activeStatus(appointment.status)
+      ? appointmentSlotIds(appointment.staffId, appointment.startAt, appointment.endAt)
+      : [];
+    const appointmentRef = this.collection().doc(appointment.id);
+    if (oldIds.length === 0 && newIds.length === 0) {
+      await appointmentRef.set(appointment);
+      return;
+    }
+    await this.firebase.db.runTransaction(async (tx) => {
+      const snapshots = await Promise.all(newIds.map((slotId) => tx.get(locks.doc(slotId))));
+      const occupied = snapshots.find((snapshot) => snapshot.exists && snapshot.data()?.['appointmentId'] !== appointment.id);
+      if (occupied) throw new AppException(ErrorCode.APPOINTMENT_CONFLICT, 'Seçilen personel bu saatte başka bir randevuda.');
+      tx.set(appointmentRef, appointment);
+      for (const slotId of oldIds.filter((value) => !newIds.includes(value))) tx.delete(locks.doc(slotId));
+      for (const slotId of newIds) {
+        tx.set(locks.doc(slotId), {
+          id: slotId,
+          appointmentId: appointment.id,
+          branchId: appointment.branchId,
+          staffId: appointment.staffId,
+          startAt: appointment.startAt,
+          endAt: appointment.endAt,
+          updatedAt: new Date().toISOString(),
+        });
+      }
+    });
+  }
+
+  private async notifyGuestOfStatus(appointment: ApmAppointment): Promise<void> {
+    if (appointment.source !== 'guest' || !appointment.branchId) return;
+    try {
+      const [tenantSnapshot, branchSnapshot] = await Promise.all([
+        this.firebase.db.doc(`tenants/${this.tenantContext.getTenantId()}`).get(),
+        this.tenantCollection(TENANT_COLLECTION.apmBranches).doc(appointment.branchId).get(),
+      ]);
+      await this.notifications.notifyGuest({
+        ...appointment,
+        tenantId: this.tenantContext.getTenantId(),
+        branchId: appointment.branchId,
+        branchName: String(branchSnapshot.data()?.['name'] ?? appointment.branchName ?? ''),
+        serviceName: appointment.serviceName || appointment.title,
+        customerName: appointment.customerName,
+      }, String(tenantSnapshot.data()?.['name'] ?? 'Odivon APM'));
+    } catch {
+      // Status mutations must not fail because a downstream notification provider is unavailable.
+    }
   }
 
   private async assertNoConflict(
@@ -217,7 +408,18 @@ export class ApmService {
   }
 
   private collection() {
-    const tenantId = this.tenantContext.getTenantId();
-    return this.firebase.db.collection(tenantCollectionPath(tenantId, TENANT_COLLECTION.apmAppointments));
+    return this.tenantCollection(TENANT_COLLECTION.apmAppointments);
   }
+
+  private tenantCollection(name: string) {
+    return this.firebase.db.collection(tenantCollectionPath(this.tenantContext.getTenantId(), name));
+  }
+}
+
+function stringList(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+}
+
+function activeStatus(status: ApmAppointmentStatus): boolean {
+  return status === 'Pending' || status === 'Confirmed' || status === 'InProgress';
 }

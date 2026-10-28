@@ -4,6 +4,7 @@ import {
   ArrayMaxSize,
   IsArray,
   IsBoolean,
+  IsDivisibleBy,
   IsIn,
   IsInt,
   IsNumber,
@@ -15,6 +16,7 @@ import {
   Min,
   ValidateNested,
 } from 'class-validator';
+import { VAT_RATES } from '../shared/hair-dto';
 
 export class CreateHairServiceCategoryDto {
   @ApiProperty({ example: 'Boyama' })
@@ -71,10 +73,11 @@ export class CreateHairServiceDto {
   @MaxLength(1000)
   description?: string;
 
-  @ApiProperty({ example: 30 })
+  @ApiProperty({ example: 30, description: 'Multiple of 5, 5–600' })
   @IsInt()
+  @IsDivisibleBy(5)
   @Min(5)
-  @Max(720)
+  @Max(600)
   durationMinutes!: number;
 
   @ApiProperty({ example: 350 })
@@ -96,20 +99,18 @@ export class CreateHairServiceDto {
   @IsOptional()
   @IsInt()
   @Min(0)
-  @Max(720)
+  @Max(600)
   processingMinutes?: number;
 
-  @ApiPropertyOptional({ description: 'Optional online booking deposit (R-016)' })
+  @ApiPropertyOptional({ description: 'Optional online booking deposit (R-016); at most the price' })
   @IsOptional()
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
   depositAmount?: number;
 
-  @ApiPropertyOptional({ example: 20 })
+  @ApiPropertyOptional({ example: 20, enum: VAT_RATES })
   @IsOptional()
-  @IsNumber({ maxDecimalPlaces: 2 })
-  @Min(0)
-  @Max(100)
+  @IsIn(VAT_RATES)
   vatRate?: number;
 
   @ApiPropertyOptional({ type: [ProductUsageDto], description: 'Consumables deducted at checkout (S-002)' })
@@ -213,11 +214,9 @@ export class CreateHairProductDto {
   @IsString()
   supplierId?: string;
 
-  @ApiPropertyOptional({ example: 20 })
+  @ApiPropertyOptional({ example: 20, enum: VAT_RATES })
   @IsOptional()
-  @IsNumber({ maxDecimalPlaces: 2 })
-  @Min(0)
-  @Max(100)
+  @IsIn(VAT_RATES)
   vatRate?: number;
 
   @ApiPropertyOptional()

@@ -4,10 +4,11 @@ import { createBaseFields } from '../../../shared/firestore/base-document';
 import { addDays } from '../shared/appointment-plan';
 import { assertCashAllowed } from '../shared/cash-register';
 import { MONEY_EPSILON } from '../shared/checkout-pricing';
-import { hairInvalid, hairNotFound, hairPrecondition } from '../shared/hair-errors';
+import { assertNoRelated, hairInvalid, hairNotFound, hairPrecondition } from '../shared/hair-errors';
 import { HairListQueryDto, searchTerm } from '../shared/hair-list.dto';
 import { assertPayments, round2 } from '../shared/hair-money';
-import { HairStore } from '../shared/hair-store';
+import { idempotency } from '../shared/hair-idempotency';
+import { HairDoc, HairStore } from '../shared/hair-store';
 import { dateIdInTz } from '../shared/hair-time';
 import { fullName, live, matchesSearch, num, str } from '../shared/hair-tx';
 import {
@@ -65,7 +66,11 @@ export class HairPackagesService {
     );
   }
 
-  removePackage(id: string) {
+  /** A plan that was ever sold stays (sold packages point at it); deactivate it instead. */
+  async removePackage(id: string) {
+    await this.getPackage(id);
+    const sold = await this.store.rows(TENANT_COLLECTION.hairCustomerPackages, { field: 'packageId', op: '==', value: id });
+    assertNoRelated('Bu paket satılmış; silmek yerine satışa kapatın (pasifleştirin).', { customerPackages: sold.length });
     return this.store.softDelete(TENANT_COLLECTION.hairPackages, 'hairPackages', id, PACKAGE_NOT_FOUND);
   }
 
@@ -73,10 +78,19 @@ export class HairPackagesService {
 
   /** Sold packages; past `endDate` rows still marked active are reported as `expired`. */
   async listCustomerPackages(query: HairListQueryDto) {
+    const actor = await this.store.actorOrThrow();
+    const branch = this.store.branchFilter(actor, query.branchId);
     const today = dateIdInTz(await this.store.timeZone());
     const page = await this.store.list(TENANT_COLLECTION.hairCustomerPackages, {
       equals: { customerId: query.customerId },
-      match: (item) => !query.status || effectiveStatus(item, today) === query.status,
+      match: (item) => {
+        // Packages sold without a branch are usable everywhere.
+        const itemBranch = str(item['branchId']);
+        const inBranch = branch.equals
+          ? itemBranch === branch.equals || !itemBranch
+          : !branch.anyOf || !itemBranch || branch.anyOf.includes(itemBranch);
+        return inBranch && (!query.status || effectiveStatus(item, today) === query.status);
+      },
       orderBy: { field: 'startDate', dir: 'desc' },
       limit: query.limit,
       cursor: query.cursor,
@@ -95,7 +109,9 @@ export class HairPackagesService {
     const userId = this.store.userId();
     const pkgRef = this.store.newRef(TENANT_COLLECTION.hairCustomerPackages);
 
-    const sold = await this.store.runTransaction(async (tx) => {
+    const outcome = await this.store.runTransaction(async (tx) => {
+      const idem = await idempotency<HairDoc>(tx, this.store, 'packageSale', dto.idempotencyKey, dto);
+      if (idem.replay) return { doc: idem.replay, replay: true };
       const plan = live(await tx.get(this.store.ref(TENANT_COLLECTION.hairPackages, dto.packageId)));
       if (!plan) throw hairNotFound(PACKAGE_NOT_FOUND);
       if (plan['active'] === false) throw hairPrecondition('Bu paket satışta değil.');
@@ -147,14 +163,17 @@ export class HairPackagesService {
         });
         tx.update(customerRef, { totalSpent: round2(num(customer['totalSpent']) + price), updatedAt: now });
       }
-      return doc;
+      idem.save(doc);
+      return { doc: doc as HairDoc, replay: false };
     });
-    await this.store.audit('hairCustomerPackages', 'create', pkgRef.id, null, {
-      customerId: dto.customerId,
-      packageId: dto.packageId,
-      price: sold.price,
-    });
-    return sold;
+    if (!outcome.replay) {
+      await this.store.audit('hairCustomerPackages', 'create', pkgRef.id, null, {
+        customerId: dto.customerId,
+        packageId: dto.packageId,
+        price: outcome.doc['price'],
+      });
+    }
+    return outcome.doc;
   }
 
   updateCustomerPackage(id: string, dto: UpdateCustomerPackageDto) {

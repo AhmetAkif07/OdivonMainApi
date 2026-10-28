@@ -8,6 +8,7 @@ import { HairCoreService } from './core/hair-core.service';
 import { HairCustomersService } from './customers/hair-customers.service';
 import { HairFinanceService } from './finance/hair-finance.service';
 import { HairNotificationsService } from './notifications/hair-notifications.service';
+import { HairSmsService } from './notifications/sms/hair-sms.service';
 import { HairPosService } from './pos/hair-pos.service';
 import { addDays, weekday } from './shared/appointment-plan';
 import { HairDoc, HairStore } from './shared/hair-store';
@@ -63,7 +64,7 @@ describe('hair module flows (FakeFirestore)', () => {
     const notifications = new HairNotificationsService(store);
     pos = new HairPosService(store, notifications);
     finance = new HairFinanceService(store);
-    booking = new HairBookingService(store, context, tenants as never, appointments, customers, notifications);
+    booking = new HairBookingService(store, context, tenants as never, appointments, customers, notifications, new HairSmsService(store));
 
     await asOwner(async () => {
       await core.ensureDefaults();
@@ -116,7 +117,8 @@ describe('hair module flows (FakeFirestore)', () => {
 
   it('keeps customer phones unique per salon and moves the lock on change', async () => {
     await expect(asOwner(() => customers.create({ firstName: 'Başka', lastName: '', phone: '+905321112233' }))).rejects.toMatchObject({
-      code: ErrorCode.HAIR_PRECONDITION,
+      code: ErrorCode.DUPLICATE_PHONE,
+      details: { customerId, customerName: 'Zeynep Kara' },
     });
     await asOwner(() => customers.update(customerId, { phone: '0533 000 00 00' }));
     expect(db.docs.has('tenants/t1/hairCustomerPhones/+905321112233')).toBe(false);

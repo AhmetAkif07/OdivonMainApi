@@ -113,10 +113,13 @@ export class AccessSyncService {
 
   async list(query: SyncListQueryDto) {
     const docs = await this.repo.listSyncDocs(this.tenantContext.getTenantId());
+    // "pending" also covers items an agent picked up but has not confirmed yet (delivered).
+    const statuses = query.status === 'pending' ? ['pending', 'delivered'] : query.status ? [query.status] : null;
     const filtered = docs
-      .filter((doc) => (!query.gateId || doc['gateId'] === query.gateId) && (!query.status || doc['status'] === query.status))
-      .map((doc) => ({ ...doc, createdAt: String(doc['createdAt'] ?? '') }))
-      .sort((left, right) => right.createdAt.localeCompare(left.createdAt) || right.id.localeCompare(left.id));
+      .filter((doc) => (!query.gateId || doc['gateId'] === query.gateId) && (!statuses || statuses.includes(String(doc['status']))))
+      .map((doc) => ({ ...doc, createdAt: String(doc['createdAt'] ?? ''), updatedAt: String(doc['updatedAt'] ?? doc['createdAt'] ?? '') }))
+      // Most recently changed first: a member whose end date was just edited is at the top.
+      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt) || right.id.localeCompare(left.id));
     return paginateInMemory(filtered, query.limit ?? 100, query.cursor);
   }
 

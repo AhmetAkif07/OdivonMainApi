@@ -199,7 +199,7 @@ export class CrmRepository {
     let chippedCount = 0;
     let missingCustomerNationalIdCount = 0;
     let rabiesVaccinatedCount = 0;
-    let rabiesExpiringCount = 0;
+    const rabiesExpiringCount = 0;
     const nonCompliantPatients: any[] = [];
 
     const oneYearAgo = new Date();

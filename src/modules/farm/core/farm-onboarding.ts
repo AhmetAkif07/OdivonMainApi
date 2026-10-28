@@ -4,6 +4,7 @@ import { Request } from 'express';
 import { FirebaseAuthGuard, getDecodedToken } from '../../../shared/auth/firebase-auth.guard';
 import { ProductModule } from '../../../shared/authorization/constants';
 import { FirebaseService } from '../../../shared/firebase/firebase.service';
+import { MailService } from '../../../shared/mail/mail.service';
 import {
   TENANT_COLLECTION,
   tenantCollectionPath,
@@ -11,7 +12,7 @@ import {
 import { IdentityRepository } from '../../identity/identity.repository';
 import { TenantService } from '../../tenant/tenant.service';
 import { farmInvalid, farmPrecondition } from '../shared/farm-errors';
-import { trialSubscription } from '../shared/farm-plans';
+import { TRIAL_DAYS, trialSubscription } from '../shared/farm-plans';
 import { FarmOnboardingDto } from './farm-core.dto';
 import { ownerMemberCard } from './farm-core.service';
 
@@ -27,6 +28,7 @@ export class FarmOnboardingService {
     private readonly firebase: FirebaseService,
     private readonly tenants: TenantService,
     private readonly users: IdentityRepository,
+    private readonly mail: MailService,
   ) {}
 
   async onboard(uid: string, email: string | undefined, dto: FarmOnboardingDto) {
@@ -95,6 +97,15 @@ export class FarmOnboardingService {
       await this.tenants.hardDelete(tenant.id).catch((err) => this.logger.error(err));
       throw error;
     }
+    this.mail
+      .sendModuleWelcome({
+        module: 'farm',
+        to: cleanEmail,
+        displayName: displayName,
+        tenantName: dto.farmName,
+        trialDays: TRIAL_DAYS,
+      })
+      ?.catch((err) => this.logger.error(`Hoş geldin maili gönderilemedi (${cleanEmail}): ${err?.message || err}`));
     return { tenantId: tenant.id };
   }
 }

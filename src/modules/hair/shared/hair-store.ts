@@ -11,6 +11,9 @@ import {
   touchBaseFields,
 } from '../../../shared/firestore/base-document';
 import { TenantContext } from '../../../shared/tenancy/tenant.context';
+import { DEFAULT_MAX_DISCOUNT_PERCENT, MaxDiscountPercent } from './discount-limit';
+import { mergeSmsTemplates, SmsTemplates } from '../notifications/sms/sms-templates';
+import { HairDefinitions, mergeDefinitions } from './hair-definitions';
 import { hairForbidden, hairNotFound } from './hair-errors';
 import { HAIR_DEFAULT_LIST_LIMIT, HairPage } from './hair-list.dto';
 import { HairScope, HairStaffRole, isHairStaffRole, scopeFor } from './hair-roles';
@@ -47,6 +50,7 @@ export interface HairSettingsDoc extends BaseDocument {
   workDayStart: string;
   workDayEnd: string;
   onlineBookingEnabled: boolean;
+  onlineBookingShowPrices: boolean;
   autoConfirmOnlineBooking: boolean;
   reminderHoursBefore: number;
   cancellationHoursBefore: number;
@@ -57,14 +61,27 @@ export interface HairSettingsDoc extends BaseDocument {
   /** Only a status flag: provider secrets never live in Firestore (plan §5.12). */
   smsConfigured: boolean;
   emailConfigured: boolean;
+  /** Checkout discount ceiling per role (admin is always 100). */
+  maxDiscountPercent: MaxDiscountPercent;
+  /** Online booking needs an SMS code (only enforced when an SMS provider is configured). */
+  requireBookingOtp: boolean;
+  /** Appointment SMS texts (confirmation / reminder / cancellation), each with an on/off switch. */
+  smsTemplates: SmsTemplates;
+  /** Tenant pick lists (expense / product categories, product units, refund reasons). */
+  definitions: HairDefinitions;
 }
 
 export const DEFAULT_HAIR_SETTINGS = {
+  maxDiscountPercent: { ...DEFAULT_MAX_DISCOUNT_PERCENT } as MaxDiscountPercent,
+  requireBookingOtp: false,
+  smsTemplates: mergeSmsTemplates(),
+  definitions: mergeDefinitions(),
   timezone: DEFAULT_TIMEZONE,
   currency: 'TRY',
   workDayStart: '09:00',
   workDayEnd: '21:00',
   onlineBookingEnabled: false,
+  onlineBookingShowPrices: true,
   autoConfirmOnlineBooking: false,
   reminderHoursBefore: 24,
   cancellationHoursBefore: 2,
@@ -226,12 +243,13 @@ export class HairStore {
     id?: string,
   ): Promise<T> {
     const ref = id ? this.doc(name, id) : this.collection(name).doc();
+    const cleanFields = stripUndefinedDeep(omitUndefined(fields as Record<string, unknown>));
     const item = {
       ...createBaseFields(ref.id, this.userId()),
-      ...omitUndefined(fields as Record<string, unknown>),
+      ...cleanFields,
     } as unknown as T;
     await ref.set(item);
-    await this.audit(entity, 'create', ref.id, null, fields as Record<string, unknown>);
+    await this.audit(entity, 'create', ref.id, null, cleanFields);
     return item;
   }
 
@@ -243,7 +261,7 @@ export class HairStore {
     notFoundMessage: string,
   ): Promise<T> {
     const current = await this.getOrThrow<T>(name, id, notFoundMessage);
-    const changes = omitUndefined(patch as Record<string, unknown>);
+    const changes = stripUndefinedDeep(omitUndefined(patch as Record<string, unknown>));
     const updated = { ...current, ...changes, ...touchBaseFields(this.userId()) } as T;
     await this.doc(name, id).set(updated);
     await this.audit(entity, 'update', id, pick(current, Object.keys(changes)), changes);
@@ -293,6 +311,9 @@ export class HairStore {
       ...createBaseFields(this.tenantId(), this.userId()),
       ...DEFAULT_HAIR_SETTINGS,
       ...stored,
+      maxDiscountPercent: { ...DEFAULT_MAX_DISCOUNT_PERCENT, ...stored.maxDiscountPercent },
+      smsTemplates: mergeSmsTemplates(stored.smsTemplates),
+      definitions: mergeDefinitions(stored.definitions),
       id: this.tenantId(),
     } as HairSettingsDoc;
   }

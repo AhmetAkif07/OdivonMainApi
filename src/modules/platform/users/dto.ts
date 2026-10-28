@@ -13,11 +13,26 @@ export class ListUsersQueryDto {
   @IsEnum(['active', 'inactive'])
   status?: 'active' | 'inactive';
 
+  /** exists (default): Firebase Auth accounts. missing: Firestore profiles whose Auth account is gone. */
+  @IsOptional()
+  @IsEnum(['exists', 'missing', 'all'])
+  auth?: 'exists' | 'missing' | 'all';
+
+  @IsOptional()
+  @IsEnum(['true', 'false'])
+  emailVerified?: 'true' | 'false';
+
   @IsOptional()
   page?: string;
 
   @IsOptional()
   pageSize?: string;
+}
+
+export class DeletePlatformUserDto {
+  @IsOptional()
+  @IsString()
+  reason?: string;
 }
 
 export class UpdatePlatformUserDto {

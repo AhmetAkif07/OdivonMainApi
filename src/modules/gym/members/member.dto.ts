@@ -24,9 +24,10 @@ export class CreateMemberDto {
   @IsEmail()
   email!: string;
 
-  @ApiProperty({ minLength: 8 })
+  // 6 is Firebase Auth's own minimum; no other rules for member sign-up.
+  @ApiProperty({ minLength: 6 })
   @IsString()
-  @MinLength(8)
+  @MinLength(6)
   password!: string;
 
   @ApiPropertyOptional()

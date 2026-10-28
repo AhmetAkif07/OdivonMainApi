@@ -21,15 +21,15 @@ export class CheckoutBuyerDto {
 }
 
 export class CreateCheckoutDto extends CheckoutBuyerDto {
-  @ApiProperty({ enum: ['vet_sale', 'gym_receivable', 'saas_subscription'] })
-  @IsIn(['vet_sale', 'gym_receivable', 'saas_subscription']) source!: PaymentSource;
+  @ApiProperty({ enum: ['vet_sale', 'gym_receivable', 'saas_subscription', 'rentacar_reservation'] })
+  @IsIn(['vet_sale', 'gym_receivable', 'saas_subscription', 'rentacar_reservation']) source!: PaymentSource;
   @ApiProperty() @Matches(/^[A-Za-z0-9_-]{1,128}$/) sourceId!: string;
 }
 
 export class CreateSaasOrderDto {
-  @ApiProperty({ enum: ['starter', 'pro', 'enterprise', 'apm_limited', 'apm_premium'] })
-  @IsIn(['starter', 'pro', 'enterprise', 'apm_limited', 'apm_premium'])
-  planId!: 'starter' | 'pro' | 'enterprise' | 'apm_limited' | 'apm_premium';
+  @ApiProperty({ enum: ['starter', 'pro', 'enterprise', 'apm_limited', 'apm_premium', 'rent_starter', 'rent_business', 'rent_professional'] })
+  @IsIn(['starter', 'pro', 'enterprise', 'apm_limited', 'apm_premium', 'rent_starter', 'rent_business', 'rent_professional'])
+  planId!: 'starter' | 'pro' | 'enterprise' | 'apm_limited' | 'apm_premium' | 'rent_starter' | 'rent_business' | 'rent_professional';
   @ApiProperty({ enum: ['monthly', 'yearly'] })
   @IsIn(['monthly', 'yearly']) billingCycle!: 'monthly' | 'yearly';
 }

@@ -8,6 +8,7 @@ import type { GymMember } from '../gym/members/member.entity';
 import { allocatePayment, remainingOf, toKurus, toTl } from '../gym/ops/receivables.math';
 import type { GymReceivable } from '../gym/ops/receivables.service';
 import type { GymPackage } from '../gym/packages/package.entity';
+import { diff } from '../gym/audit/gym-audit.rules';
 import { applyPackage } from '../gym/shared/membership';
 import { PaymentSession } from './payment-provider';
 
@@ -96,8 +97,11 @@ export async function fulfillGymPayment(
   // ── Writes ──────────────────────────────────────────────────────────────────────────────
   let wallet = toKurus(Number(member.walletBalance ?? 0));
   let renewed: GymMember | null = null;
+  let memberUpdate: Record<string, unknown> = {};
+  let label = 'Online ödeme';
 
   if (session.source === 'gym_wallet_topup') {
+    label = 'Online bakiye yükleme';
     wallet += session.amountKurus;
     walletTx('deposit', amount, 'Kartla bakiye yükleme', session.id, 'online_payment', 'card');
     income('wallet', 'Kartla bakiye yükleme', session.id, 'online_payment');
@@ -107,13 +111,15 @@ export async function fulfillGymPayment(
   if (session.source === 'gym_member_package') {
     if (!pkg || isDeleted(pkg)) {
       // Paid for a package that disappeared meanwhile: keep the money on the wallet.
+      label = 'Online ödeme (paket bulunamadı, cüzdana eklendi)';
       wallet += session.amountKurus;
       walletTx('deposit', amount, 'Paket bulunamadı, ödeme cüzdana eklendi', session.id, 'online_payment', 'card');
       income('wallet', 'Kartla ödeme (paket bulunamadı)', session.id, 'online_payment');
       notify('Ödemeniz cüzdana eklendi', `Seçtiğiniz paket artık satışta olmadığı için ${amount} TL cüzdanınıza eklendi.`);
     } else {
       renewed = applyPackage(member, pkg, amount, now);
-      tx.update(memberRef, {
+      label = `Online paket satın alımı: ${pkg.name}`;
+      memberUpdate = {
         membershipStatus: renewed.membershipStatus,
         packageLabel: renewed.packageLabel,
         packagePrice: renewed.packagePrice,
@@ -121,9 +127,8 @@ export async function fulfillGymPayment(
         membershipEndsAt: renewed.membershipEndsAt,
         classCreditsTotal: renewed.classCreditsTotal ?? null,
         classCreditsUsed: renewed.classCreditsUsed ?? 0,
-        updatedAt: at,
-        updatedBy: actor,
-      });
+      };
+      tx.update(memberRef, { ...memberUpdate, updatedAt: at, updatedBy: actor });
       income('membership', `${pkg.name} (kartla)`, pkg.id, 'membership');
       notify('Paketiniz tanımlandı', `${pkg.name} kartla ödendi ve üyeliğinize tanımlandı.`);
     }
@@ -135,6 +140,7 @@ export async function fulfillGymPayment(
     }
     // Pays the open installments; anything above the remaining debt (e.g. a plan settled at the
     // desk meanwhile) goes to the member's wallet instead of being lost.
+    label = `Online borç ödemesi: ${plan.packageName}`;
     const open = plan.status === 'open' ? toKurus(remainingOf(plan.installments)) : 0;
     const applied = Math.min(open, session.amountKurus);
     const excess = session.amountKurus - applied;
@@ -168,7 +174,41 @@ export async function fulfillGymPayment(
   }
 
   if (wallet !== toKurus(Number(member.walletBalance ?? 0))) {
+    memberUpdate = { ...memberUpdate, walletBalance: toTl(wallet) };
     tx.update(memberRef, { walletBalance: toTl(wallet), updatedAt: at, updatedBy: actor });
   }
+
+  // Same shape as the staff-side audit entries, so the member's "Geçmiş" tab shows card payments too.
+  const auditRef = col(TENANT_COLLECTION.gymAuditLogs).doc();
+  const memberChanges = diff(member as unknown as Record<string, unknown>, { ...member, ...memberUpdate } as Record<string, unknown>);
+  tx.set(auditRef, {
+    id: auditRef.id,
+    tenantId: session.tenantId,
+    createdAt: at,
+    actorId: actor,
+    actorEmail: '',
+    actorRole: 'system',
+    actorType: 'system',
+    method: 'POST',
+    route: `PAYMENT ${session.source}`,
+    entity: 'payments',
+    moduleLabel: 'Online ödeme',
+    verb: 'action',
+    label,
+    entityId: session.sourceId ?? null,
+    targetUserId: userId,
+    memberIds: [userId],
+    request: { amount, provider: session.provider, providerPaymentId, paymentSessionId: session.id },
+    changes: null,
+    memberChanges: memberChanges ? { [userId]: memberChanges } : null,
+    outcome: null,
+    result: 'success',
+    statusCode: 200,
+    errorCode: null,
+    errorMessage: null,
+    ip: '',
+    userAgent: null,
+    durationMs: 0,
+  });
   return { renewedMember: renewed };
 }

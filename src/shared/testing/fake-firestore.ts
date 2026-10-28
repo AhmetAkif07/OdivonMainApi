@@ -51,6 +51,10 @@ export class FakeFirestore {
         ops.push(() => this.docs.set(ref.path, { ...data }));
         return batch;
       },
+      delete: (ref: FakeDocRef) => {
+        ops.push(() => this.docs.delete(ref.path));
+        return batch;
+      },
       commit: async () => {
         ops.forEach((op) => op());
       },

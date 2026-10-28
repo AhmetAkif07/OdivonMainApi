@@ -26,10 +26,12 @@ import {
   EnrollAgentDto,
 } from './access.dto';
 import { AccessDoc, AccessRepository, withId } from './access.repository';
+import { forgetAgent } from './agent-auth.guard';
 import { AgentPrincipal } from './agent-principal';
 
 export const DEFAULT_WORK_LIMIT = 50;
-export const POLL_AFTER_MS = 5000;
+/** Idle agents ask for work this often; they ask again at once while a full page keeps coming. */
+export const POLL_AFTER_MS = 30_000;
 const EVENT_WRITE_CHUNK = 50;
 const MAX_RAW_BYTES = 4096;
 
@@ -107,6 +109,7 @@ export class AccessAgentsService {
       }
       gates.docs.forEach((gate) => tx.update(gate.ref, { agentId: null, updatedAt: nowIso }));
     });
+    forgetAgent(agentId);
     return { id: agentId, revokedAt: nowIso };
   }
 
@@ -328,8 +331,11 @@ export class AccessAgentsService {
       accepted.push({ docId, event, timestamp: time.toISOString() });
     }
 
-    const needsMembers = accepted.some(({ event }) => event.userId || event.card);
-    const members = needsMembers ? await this.memberLookup(agent.tenantId) : null;
+    const members = await this.memberLookup(
+      agent.tenantId,
+      accepted.map(({ event }) => event.userId?.trim() ?? ''),
+      accepted.map(({ event }) => event.card?.trim() ?? ''),
+    );
     const nowIso = now.toISOString();
     let written = 0;
     for (let start = 0; start < accepted.length; start += EVENT_WRITE_CHUNK) {
@@ -392,16 +398,28 @@ export class AccessAgentsService {
       .filter((gate) => !gate['deletedAt'] && gate['agentId'] === agent.agentId);
   }
 
-  private async memberLookup(tenantId: string) {
-    const members = (await this.repo.listAllMembers(tenantId)).filter((member) => !member.deletedAt);
+  /**
+   * Loads only the members named in a batch (by member number or RFID card), instead of the
+   * whole member list: a batch then costs a few reads, however large the gym is.
+   */
+  private async memberLookup(tenantId: string, numbers: string[], cards: string[]) {
     const byNumber = new Map<string, GymMember>();
     const byCard = new Map<string, GymMember>();
-    for (const member of members) {
-      if (member.memberNumber) byNumber.set(String(member.memberNumber).trim(), member);
-      if (member.rfidCardNumber) byCard.set(member.rfidCardNumber.trim(), member);
+    const wantedNumbers = [...new Set(numbers.filter(Boolean))];
+    const wantedCards = [...new Set(cards.filter(Boolean))];
+    const [numberMatches, cardMatches] = await Promise.all([
+      this.repo.findMembersByField(tenantId, 'memberNumber', withNumericVariants(wantedNumbers)),
+      this.repo.findMembersByField(tenantId, 'rfidCardNumber', wantedCards),
+    ]);
+    for (const member of numberMatches) {
+      if (!member.deletedAt && member.memberNumber != null) byNumber.set(String(member.memberNumber).trim(), member);
+    }
+    for (const member of cardMatches) {
+      if (!member.deletedAt && member.rfidCardNumber) byCard.set(member.rfidCardNumber.trim(), member);
     }
     return { byNumber, byCard };
   }
+
 }
 
 export function decorateGate<T extends AccessDoc>(
@@ -480,6 +498,16 @@ function verifyMethod(mode: string | null): string {
   if (value.includes('qr')) return 'qr';
   if (value.includes('pass') || value.includes('pin')) return 'pin';
   return value || 'unknown';
+}
+
+/** Member numbers may be stored as numbers on older documents: query both forms. */
+function withNumericVariants(values: string[]): (string | number)[] {
+  const out: (string | number)[] = [];
+  for (const value of values) {
+    out.push(value);
+    if (/^[1-9]\d{0,14}$/.test(value)) out.push(Number(value));
+  }
+  return out;
 }
 
 function isAlreadyExists(error: unknown): boolean {

@@ -1,4 +1,6 @@
 import { Injectable } from '@nestjs/common';
+import { AppException } from '../../../shared/errors/app.exception';
+import { ErrorCode } from '../../../shared/errors/error-codes';
 import { DocumentReference } from 'firebase-admin/firestore';
 import { TENANT_COLLECTION } from '../../../shared/firebase/firestore-path';
 import { createBaseFields } from '../../../shared/firestore/base-document';
@@ -15,9 +17,12 @@ import {
   StaffRecord,
 } from '../shared/checkout-pricing';
 import { CommissionRuleRecord } from '../shared/commission-engine';
-import { hairInvalid, hairNotFound, hairPrecondition } from '../shared/hair-errors';
+import { assertDiscountLimit, discountLimitFor } from '../shared/discount-limit';
+import { hairForbidden, hairInvalid, hairNotFound, hairPrecondition } from '../shared/hair-errors';
 import { HairListQueryDto } from '../shared/hair-list.dto';
-import { assertPayments, PaymentLine, round2 } from '../shared/hair-money';
+import { assertPayments, PaymentLine, PaymentMethod, round2 } from '../shared/hair-money';
+import { HairStaffRole } from '../shared/hair-roles';
+import { idempotency } from '../shared/hair-idempotency';
 import { HairDoc, HairStore } from '../shared/hair-store';
 import { dateIdInTz, dateStampInTz } from '../shared/hair-time';
 import { fullName, live, num, str, toMap, unique } from '../shared/hair-tx';
@@ -25,6 +30,8 @@ import { CheckoutDto, RefundSessionDto } from './pos.dto';
 
 const SESSION_NOT_FOUND = 'İşlem bulunamadı.';
 const IDEMPOTENCY_TTL_MS = 24 * 60 * 60 * 1000;
+/** Roles that may give money back (V-003). */
+const REFUND_ROLES: readonly HairStaffRole[] = ['admin', 'manager'];
 
 interface LowStock {
   productId: string;
@@ -72,6 +79,8 @@ export class HairPosService {
     const actor = await this.store.actorOrThrow();
     this.store.assertBranchAccess(actor, dto.branchId);
     const payments = assertPayments(dto.payments ?? [], { allowEmpty: true });
+    const settings = await this.store.settings();
+    const discountLimit = discountLimitFor(actor.role, settings.maxDiscountPercent);
     const timeZone = await this.store.timeZone();
     const today = dateIdInTz(timeZone);
     const userId = this.store.userId();
@@ -173,6 +182,7 @@ export class HairPosService {
           .filter((rule) => !rule.deletedAt) as unknown as CommissionRuleRecord[],
         today,
       });
+      assertDiscountLimit(priced.resolvedItems, priced.subtotal, dto.globalDiscount ?? 0, discountLimit);
 
       // ---- Writes ----
       const now = new Date().toISOString();
@@ -351,28 +361,51 @@ export class HairPosService {
    */
   async refund(sessionId: string, dto: RefundSessionDto) {
     const actor = await this.store.actorOrThrow();
+    if (!REFUND_ROLES.includes(actor.role)) {
+      throw hairForbidden('İade yalnızca yönetici veya müdür tarafından yapılabilir.');
+    }
     const sessionRef = this.store.ref(TENANT_COLLECTION.hairSessions, sessionId);
     const timeZone = await this.store.timeZone();
     const today = dateIdInTz(timeZone);
     const userId = this.store.userId();
+    const requestedLines = dto.lines?.length ? dto.lines : dto.payments;
 
     const result = await this.store.runTransaction(async (tx) => {
+      const idem = await idempotency<HairDoc>(tx, this.store, `refund_${sessionId}`, dto.idempotencyKey, dto);
+      if (idem.replay) return { session: idem.replay, amount: 0, becomesFull: false, replay: true };
       const session = live(await tx.get(sessionRef));
       if (!session) throw hairNotFound(SESSION_NOT_FOUND);
       this.store.assertBranchAccess(actor, str(session['branchId']));
       if (session['status'] === 'refunded') throw hairPrecondition('Bu işlem zaten tamamen iade edilmiş.');
       const total = num(session['totalAmount']);
       const refundedBefore = num(session['refundedAmount']);
-      const remaining = round2(total - refundedBefore);
-      const amount = round2(dto.amount ?? remaining);
-      if (amount <= 0 && remaining > 0) throw hairInvalid('İade tutarı sıfırdan büyük olmalıdır.');
-      if (amount > remaining + MONEY_EPSILON) throw hairInvalid(`En fazla ${remaining} iade edilebilir.`);
-      const becomesFull = Math.abs(remaining - amount) <= MONEY_EPSILON;
       const originalLines = Array.isArray(session['payments']) ? (session['payments'] as PaymentLine[]) : [];
-      const lines = dto.payments?.length ? assertPayments(dto.payments) : defaultRefundLines(originalLines, amount);
-      const linesTotal = round2(lines.reduce((sum, line) => sum + line.amount, 0));
-      if (Math.abs(linesTotal - amount) > MONEY_EPSILON) {
+      const previous = Array.isArray(session['refunds']) ? (session['refunds'] as { lines?: PaymentLine[] }[]) : [];
+      // What can still go back, in total and per original payment method.
+      const available = refundableByMethod(originalLines, previous);
+      const paid = round2(originalLines.reduce((sum, line) => sum + line.amount, 0));
+      const refundable = round2(Math.max(0, Math.min(total, paid) - refundedBefore));
+      const explicit = requestedLines?.length ? assertPayments(requestedLines) : null;
+      const amount = round2(dto.amount ?? (explicit ? sumLines(explicit) : refundable));
+      if (amount <= 0 && refundable > 0) throw hairInvalid('İade tutarı sıfırdan büyük olmalıdır.');
+      if (amount > refundable + MONEY_EPSILON) {
+        throw new AppException(ErrorCode.REFUND_LIMIT, `En fazla ${refundable} iade edilebilir (ödenen − iade edilen).`, {
+          refundable,
+        });
+      }
+      const becomesFull = Math.abs(refundable - amount) <= MONEY_EPSILON;
+      const lines = explicit ?? defaultRefundLines(available, amount);
+      if (Math.abs(sumLines(lines) - amount) > MONEY_EPSILON) {
         throw hairInvalid('İade ödeme satırlarının toplamı iade tutarına eşit olmalı.');
+      }
+      for (const [method, requested] of sumByMethod(lines)) {
+        const left = available.get(method) ?? 0;
+        if (requested > left + MONEY_EPSILON) {
+          throw new AppException(ErrorCode.REFUND_LIMIT, `"${method}" yöntemiyle en fazla ${left} iade edilebilir.`, {
+            method,
+            refundable: left,
+          });
+        }
       }
       const branchId = str(session['branchId']);
       await assertCashAllowed(tx, this.store, branchId, today, lines);
@@ -422,11 +455,19 @@ export class HairPosService {
           notes: dto.reason,
         }));
       }
+      // Commissions shrink in proportion to the refund; the final refund reverses whatever is left.
       const ratio = total > 0 ? amount / total : 1;
+      const reversedSoFar = new Map<string, number>();
+      for (const doc of commissionsSnap.docs) {
+        const row = doc.data() as HairDoc;
+        const of = str(row['reversalOf']);
+        if (of && !row.deletedAt) reversedSoFar.set(of, (reversedSoFar.get(of) ?? 0) + num(row['amount']));
+      }
       for (const doc of commissionsSnap.docs) {
         const commission = doc.data() as HairDoc;
         if (commission.deletedAt || commission['reversalOf'] || num(commission['amount']) <= 0) continue;
-        const reversal = round2(-num(commission['amount']) * ratio);
+        const outstanding = num(commission['amount']) + (reversedSoFar.get(doc.id) ?? 0);
+        const reversal = round2(becomesFull ? -outstanding : Math.max(-outstanding, -num(commission['amount']) * ratio));
         if (reversal === 0) continue;
         const reversalRef = this.store.newRef(TENANT_COLLECTION.hairCommissions);
         tx.set(reversalRef, stamp(reversalRef, {
@@ -490,38 +531,60 @@ export class HairPosService {
       const refunds = Array.isArray(session['refunds']) ? (session['refunds'] as object[]) : [];
       const updated = {
         ...session,
-        refunds: [...refunds, { refundId: refundRef.id, amount, reason: dto.reason, at: now, by: userId }],
+        refunds: [...refunds, { refundId: refundRef.id, amount, lines, reason: dto.reason, at: now, by: userId }],
         refundedAmount: round2(refundedBefore + amount),
         status: becomesFull ? 'refunded' : 'partialRefund',
         updatedAt: now,
         updatedBy: userId,
       };
       tx.set(sessionRef, updated);
-      return { session: updated as HairDoc, amount, becomesFull };
+      idem.save(updated as HairDoc);
+      return { session: updated as HairDoc, amount, becomesFull, replay: false };
     });
 
-    await this.store.audit('hairSessions', 'callable', sessionId, null, {
-      refund: result.amount,
-      status: result.session['status'],
-    });
+    if (!result.replay) {
+      await this.store.audit('hairSessions', 'callable', sessionId, null, {
+        refund: result.amount,
+        status: result.session['status'],
+      });
+    }
     return result.session;
   }
 }
 
 /** Refund back through the original methods, largest payment first. */
-function defaultRefundLines(original: PaymentLine[], amount: number): PaymentLine[] {
+function defaultRefundLines(available: Map<PaymentMethod, number>, amount: number): PaymentLine[] {
   if (amount <= 0) return [];
-  if (original.length === 0) return [{ method: 'cash', amount }];
   const lines: PaymentLine[] = [];
   let left = amount;
-  for (const line of [...original].sort((a, b) => b.amount - a.amount)) {
+  for (const [method, max] of [...available].sort((a, b) => b[1] - a[1])) {
     if (left <= 0) break;
-    const take = round2(Math.min(left, line.amount));
-    lines.push({ method: line.method, amount: take });
+    const take = round2(Math.min(left, max));
+    if (take > 0) lines.push({ method, amount: take });
     left = round2(left - take);
   }
-  if (left > 0) lines.push({ method: original[0].method, amount: left });
   return lines;
+}
+
+function sumLines(lines: PaymentLine[]): number {
+  return round2(lines.reduce((sum, line) => sum + line.amount, 0));
+}
+
+function sumByMethod(lines: PaymentLine[]): Map<PaymentMethod, number> {
+  const totals = new Map<PaymentMethod, number>();
+  for (const line of lines) totals.set(line.method, round2((totals.get(line.method) ?? 0) + line.amount));
+  return totals;
+}
+
+/** Paid minus already refunded, per original payment method (older refunds without lines are ignored). */
+function refundableByMethod(original: PaymentLine[], refunds: { lines?: PaymentLine[] }[]): Map<PaymentMethod, number> {
+  const available = sumByMethod(original);
+  for (const refund of refunds) {
+    for (const line of refund.lines ?? []) {
+      available.set(line.method, round2((available.get(line.method) ?? 0) - Math.abs(line.amount)));
+    }
+  }
+  return available;
 }
 
 function mapValues<T>(source: Map<string, HairDoc>, fn: (doc: HairDoc) => T): Map<string, T> {

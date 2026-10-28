@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { TENANT_COLLECTION } from '../../../shared/firebase/firestore-path';
-import { hairInvalid, hairNotFound, hairPrecondition } from '../shared/hair-errors';
+import { assertNoRelated, hairInvalid, hairNotFound } from '../shared/hair-errors';
 import { HairListQueryDto, searchTerm } from '../shared/hair-list.dto';
 import { HairStore } from '../shared/hair-store';
 import { dateIdInTz } from '../shared/hair-time';
@@ -17,6 +17,7 @@ import {
 const CATEGORY_NOT_FOUND = 'Hizmet kategorisi bulunamadı.';
 const SERVICE_NOT_FOUND = 'Hizmet bulunamadı.';
 const PRODUCT_NOT_FOUND = 'Ürün bulunamadı.';
+const OPENING_STOCK_REASON = 'Açılış stoğu';
 
 @Injectable()
 export class HairCatalogService {
@@ -53,15 +54,16 @@ export class HairCatalogService {
 
   async removeCategory(id: string) {
     const used = await this.store.rows(TENANT_COLLECTION.hairServices, { field: 'categoryId', op: '==', value: id });
-    if (used.length > 0) {
-      throw hairPrecondition(`Bu kategoride ${used.length} hizmet var; önce hizmetleri taşıyın veya silin.`);
-    }
+    assertNoRelated(`Bu kategoride ${used.length} hizmet var; önce hizmetleri taşıyın veya kategoriyi pasifleştirin.`, {
+      services: used.length,
+    });
     return this.store.softDelete(TENANT_COLLECTION.hairServiceCategories, 'hairServiceCategories', id, CATEGORY_NOT_FOUND);
   }
 
   // ── Services ──
 
-  listServices(query: HairListQueryDto) {
+  async listServices(query: HairListQueryDto) {
+    if (query.branchId) this.store.assertBranchAccess(await this.store.actorOrThrow(), query.branchId);
     const term = searchTerm(query);
     return this.store.list(TENANT_COLLECTION.hairServices, {
       equals: { categoryId: query.categoryId },
@@ -85,7 +87,7 @@ export class HairCatalogService {
 
   async createService(dto: CreateHairServiceDto) {
     await this.assertServiceRefs(dto);
-    assertProcessing(dto.durationMinutes, dto.processingMinutes);
+    assertServiceNumbers(dto.durationMinutes, dto.processingMinutes, dto.price, dto.depositAmount);
     return this.store.create(TENANT_COLLECTION.hairServices, 'hairServices', {
       ...dto,
       name: dto.name.trim(),
@@ -102,9 +104,11 @@ export class HairCatalogService {
   async updateService(id: string, dto: UpdateHairServiceDto) {
     const current = await this.getService(id);
     await this.assertServiceRefs(dto);
-    assertProcessing(
+    assertServiceNumbers(
       dto.durationMinutes ?? num(current['durationMinutes']),
       dto.processingMinutes ?? num(current['processingMinutes']),
+      dto.price ?? num(current['price']),
+      dto.depositAmount ?? num(current['depositAmount']),
     );
     return this.store.update(
       TENANT_COLLECTION.hairServices,
@@ -162,7 +166,7 @@ export class HairCatalogService {
         quantity: dto.currentStock,
         delta: dto.currentStock,
         stockAfter: dto.currentStock,
-        reason: 'Açılış stoğu',
+        reason: OPENING_STOCK_REASON,
         branchId: dto.branchId,
         date: dateIdInTz(await this.store.timeZone()),
       });
@@ -180,7 +184,14 @@ export class HairCatalogService {
     );
   }
 
-  removeProduct(id: string) {
+  /** A product with stock movements (beyond its opening stock) or sales stays; deactivate it instead. */
+  async removeProduct(id: string) {
+    await this.getProduct(id);
+    const movements = await this.store.rows(TENANT_COLLECTION.hairInventoryTransactions, { field: 'productId', op: '==', value: id });
+    const real = movements.filter((m) => m['reason'] !== OPENING_STOCK_REASON);
+    assertNoRelated('Ürünün stok hareketleri veya satışları var; silmek yerine pasifleştirin.', {
+      movements: real.length,
+    });
     return this.store.softDelete(TENANT_COLLECTION.hairProducts, 'hairProducts', id, PRODUCT_NOT_FOUND);
   }
 
@@ -195,8 +206,12 @@ export class HairCatalogService {
   }
 }
 
-function assertProcessing(duration: number, processing: number | undefined) {
+/** Duration is a multiple of 5 in 5–600 (DTO); processing stays inside it and the deposit within the price. */
+export function assertServiceNumbers(duration: number, processing: number | undefined, price: number, deposit: number | undefined) {
   if (processing && processing >= duration) {
     throw hairInvalid('Bekleme süresi hizmet süresinden kısa olmalıdır.');
+  }
+  if (deposit && deposit > price) {
+    throw hairInvalid('Kapora tutarı hizmet fiyatını aşamaz.');
   }
 }

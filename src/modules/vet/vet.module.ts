@@ -1,5 +1,6 @@
+import { PurchasingModule } from './purchasing/purchasing.module';
 import { BranchesModule } from './branches/branches.module';
-﻿import { Module } from '@nestjs/common';
+import { Module } from '@nestjs/common';
 import { AppointmentsModule } from './appointments/appointments.module';
 import { CustomersModule } from './customers/customers.module';
 import { DefinitionsModule } from './definitions/definitions.module';
@@ -13,6 +14,8 @@ import { ConsentsModule } from './consents/consents.module';
 import { CrmModule } from './crm/crm.module';
 import { PetHotelModule } from './pet-hotel/pet-hotel.module';
 import { GroomingModule } from './grooming/grooming.module';
+import { VetReportsModule } from './reports/reports.module';
+import { VetAiModule } from './ai/ai.module';
 
 @Module({
   imports: [
@@ -30,6 +33,9 @@ import { GroomingModule } from './grooming/grooming.module';
     PetHotelModule,
     GroomingModule,
     BranchesModule,
+    VetReportsModule,
+    VetAiModule,
+    PurchasingModule,
   ],
 })
 export class VetModule {}

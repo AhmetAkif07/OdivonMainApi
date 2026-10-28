@@ -92,4 +92,24 @@ export class PlatformTenantsController {
   listUsers(@Param('id') id: string) {
     return this.tenantsService.listTenantUsers(id);
   }
+
+  @Post(':id/users/:uid/verify-email')
+  @ApiOperation({ summary: 'Kullanıcının e-postasını elle doğrulanmış işaretle (Auth + profil)' })
+  verifyUserEmail(
+    @Param('id') id: string,
+    @Param('uid') uid: string,
+    @CurrentPlatformAdmin() admin: PlatformAdminUser,
+  ) {
+    return this.tenantsService.markUserEmailVerified(id, uid, admin);
+  }
+
+  @Post(':id/users/:uid/resend-verification')
+  @ApiOperation({ summary: 'Kullanıcıya yeni e-posta doğrulama bağlantısı gönder' })
+  resendUserVerification(
+    @Param('id') id: string,
+    @Param('uid') uid: string,
+    @CurrentPlatformAdmin() admin: PlatformAdminUser,
+  ) {
+    return this.tenantsService.resendUserVerification(id, uid, admin);
+  }
 }

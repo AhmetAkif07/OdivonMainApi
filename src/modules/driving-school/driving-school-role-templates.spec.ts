@@ -1,0 +1,2 @@
+import { DRIVING_SCHOOL_ROLE_TEMPLATES } from './driving-school-role-templates';
+describe('driving school role templates',()=>{it('keeps student access read-only',()=>{const student=DRIVING_SCHOOL_ROLE_TEMPLATES.find(x=>x.key==='student');expect(student?.permissions.drivingSchoolLessons).toEqual(['view']);});it('gives owners complete MVP access',()=>{const owner=DRIVING_SCHOOL_ROLE_TEMPLATES[0];expect(owner.permissions.drivingSchoolStudents).toContain('delete');expect(owner.permissions.drivingSchoolLessons).toContain('approve');});});

@@ -22,6 +22,14 @@ import { HairModule } from './modules/hair/hair.module';
 import { PaymentsModule } from './modules/payments/payments.module';
 import { ApmModule } from './modules/apm/apm.module';
 import { PlatformModule } from './modules/platform/platform.module';
+import { SaasPricingModule } from './modules/saas-pricing/saas-pricing.module';
+import { BeautyModule } from './modules/beauty/beauty.module';
+import { RentacarModule } from './modules/rentacar/rentacar.module';
+import { DrivingSchoolModule } from './modules/driving-school/driving-school.module';
+import { ParkingModule } from './modules/parking/parking.module';
+import { FoodLabelModule } from './modules/food-label/food-label.module';
+import { FireSafeModule } from './modules/fire-safe/fire-safe.module';
+import { FgasModule } from './modules/fgas/fgas.module';
 
 @Module({
   imports: [
@@ -38,6 +46,14 @@ import { PlatformModule } from './modules/platform/platform.module';
     GymModule,
     SpaModule,
     HairModule,
+    BeautyModule,
+    RentacarModule,
+    DrivingSchoolModule,
+    ParkingModule,
+    FoodLabelModule,
+    FireSafeModule,
+    FgasModule,
+    SaasPricingModule,
     PaymentsModule,
     ApmModule,
     PlatformModule,

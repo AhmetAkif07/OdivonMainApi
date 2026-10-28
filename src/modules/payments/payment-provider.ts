@@ -1,5 +1,5 @@
-export type PaymentProviderId = 'iyzico';
-export type PaymentSource = 'vet_sale' | 'gym_receivable' | 'saas_subscription' | 'gym_member_package' | 'gym_wallet_topup';
+export type PaymentProviderId = 'iyzico' | 'paytr';
+export type PaymentSource = 'vet_sale' | 'gym_receivable' | 'saas_subscription' | 'gym_member_package' | 'gym_wallet_topup' | 'rentacar_reservation';
 /** `abandoned`: superseded or expired before a result; still verifiable if paid on an old tab. */
 export type PaymentStatus = 'initializing' | 'pending' | 'succeeded' | 'failed' | 'abandoned';
 

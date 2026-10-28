@@ -4,7 +4,8 @@ import { Observable, catchError, from, mergeMap, throwError } from 'rxjs';
 import { AppException } from '../../../shared/errors/app.exception';
 import { clientAddress } from '../../../shared/http/client-throttler.guard';
 import { RequestWithTenant } from '../../../shared/tenancy/tenant.context';
-import { describeRoute, diff, sanitize, shouldAudit } from './gym-audit.rules';
+import { TENANT_COLLECTION } from '../../../shared/firebase/firestore-path';
+import { describeRoute, diff, keepsOutcome, memberIdsIn, sanitize, shouldAudit } from './gym-audit.rules';
 import { GymAuditService } from './gym-audit.service';
 
 interface AuditedRequest extends RequestWithTenant {
@@ -64,17 +65,29 @@ export class GymAuditInterceptor implements NestInterceptor {
     const snapshot = (id: string | null) =>
       info.collection && id ? this.audit.snapshot(user.tenantId, info.collection, id) : Promise.resolve(null);
 
-    const record = async (value: unknown, error: unknown, before: Record<string, unknown> | null) => {
+    const memberSnapshots = async (ids: string[]) =>
+      Promise.all(ids.map((id) => this.audit.snapshot(user.tenantId, TENANT_COLLECTION.gymMembers, id)));
+
+    const record = async (
+      value: unknown,
+      error: unknown,
+      before: Record<string, unknown> | null,
+      members: { ids: string[]; before: (Record<string, unknown> | null)[] },
+    ) => {
       const entityId = paramId ?? idOf(value);
       const after = error ? null : await snapshot(entityId);
+      const membersAfter = error || members.ids.length === 0 ? [] : await memberSnapshots(members.ids);
       const status = error instanceof HttpException ? error.getStatus() : error ? 500 : 200;
+      const isMember = user.accountType === 'gym_member';
+      const targetUserId = targetOf(request.body, info.entity, entityId, value) ?? (isMember ? user.userId : null);
+      const data = error ? null : ((value as { data?: unknown } | null)?.data ?? value);
       await this.audit.write({
         tenantId: user.tenantId,
         createdAt: new Date().toISOString(),
         actorId: user.userId,
         actorEmail: user.email,
         actorRole: user.role,
-        actorType: user.accountType === 'gym_member' ? 'member' : 'staff',
+        actorType: isMember ? 'member' : 'staff',
         method: route.method,
         route: `${route.method} /gym/${path}`,
         entity: info.entity,
@@ -82,9 +95,12 @@ export class GymAuditInterceptor implements NestInterceptor {
         verb: info.verb,
         label: info.label,
         entityId,
-        targetUserId: targetOf(request.body, info.entity, entityId, value),
+        targetUserId,
+        memberIds: unique([targetUserId, ...members.ids, ...memberIdsIn(data)]),
         request: sanitize(request.body ?? null),
         changes: error ? null : diff(before, after),
+        memberChanges: error ? null : memberDiffs(members.ids, members.before, membersAfter),
+        outcome: data && keepsOutcome(route) ? sanitize(data) : null,
         result: error ? 'error' : 'success',
         statusCode: status,
         errorCode: error instanceof AppException ? error.code : error ? 'ERROR' : null,
@@ -96,17 +112,45 @@ export class GymAuditInterceptor implements NestInterceptor {
     };
 
     return from(snapshot(paramId)).pipe(
-      mergeMap((before) =>
+      mergeMap(async (before) => {
+        // Members touched by a non-member route (package sale, wallet, debt payment, referral…):
+        // their before/after goes to `memberChanges`, so the member's history shows e.g. the end date move.
+        const ids =
+          info.entity === 'members'
+            ? []
+            : unique([...memberIdsIn(request.body), typeof before?.['userId'] === 'string' ? before['userId'] : null]).slice(0, 3);
+        return { before, members: { ids, before: await memberSnapshots(ids) } };
+      }),
+      mergeMap(({ before, members }) =>
         next.handle().pipe(
           mergeMap(async (value) => {
-            await record(value, null, before);
+            await record(value, null, before, members);
             return value;
           }),
-          catchError((error: unknown) => from(record(null, error, before)).pipe(mergeMap(() => throwError(() => error)))),
+          catchError((error: unknown) =>
+            from(record(null, error, before, members)).pipe(mergeMap(() => throwError(() => error))),
+          ),
         ),
       ),
     );
   }
+}
+
+function unique(values: (string | null | undefined)[]): string[] {
+  return [...new Set(values.filter((value): value is string => typeof value === 'string' && value.length > 0))];
+}
+
+function memberDiffs(
+  ids: string[],
+  before: (Record<string, unknown> | null)[],
+  after: (Record<string, unknown> | null)[],
+): Record<string, Record<string, { from: unknown; to: unknown }>> | null {
+  const result: Record<string, Record<string, { from: unknown; to: unknown }>> = {};
+  ids.forEach((id, index) => {
+    const changes = after.length ? diff(before[index] ?? null, after[index] ?? null) : null;
+    if (changes) result[id] = changes;
+  });
+  return Object.keys(result).length > 0 ? result : null;
 }
 
 function headerOf(request: AuditedRequest, name: string): string | null {

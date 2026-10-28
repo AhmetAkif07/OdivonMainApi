@@ -10,7 +10,7 @@ import {
 } from './access-rules';
 import { AccessSyncService } from './access-sync.service';
 import { AccessRepository } from './access.repository';
-import { AgentAuthGuard } from './agent-auth.guard';
+import { AgentAuthGuard, clearAgentAuthCache } from './agent-auth.guard';
 import { AgentPrincipal } from './agent-principal';
 import { Data, FakeFirestore } from '../../../shared/testing/fake-firestore';
 
@@ -19,6 +19,7 @@ import { Data, FakeFirestore } from '../../../shared/testing/fake-firestore';
 const NOW = new Date('2026-09-28T12:00:00.000Z');
 
 function setup() {
+  clearAgentAuthCache();
   const db = new FakeFirestore();
   const firebase = { db } as never;
   const context = new TenantContext();
@@ -212,6 +213,21 @@ describe('AgentAuthGuard', () => {
     ).rejects.toMatchObject({ code: ErrorCode.GYM_AGENT_UNAUTHORIZED });
   });
 
+  it('caches verified agents and forgets them on revoke', async () => {
+    const env = setup();
+    seedGate(env.db, 't1', 'g1');
+    const enrolled = await pairAndEnroll(env, 't1', ['g1']);
+    const header = `Agent ${enrolled.agentId}.${enrolled.token}`;
+    await env.context.run({} as never, () => env.guard.canActivate(httpContext(header).context));
+    const get = jest.spyOn(env.repo, 'agentIndexRef');
+    await env.context.run({} as never, () => env.guard.canActivate(httpContext(header).context));
+    expect(get).not.toHaveBeenCalled();
+    await env.context.run(admin('t1'), () => env.agents.revokeAgent(enrolled.agentId, NOW));
+    await expect(
+      env.context.run({} as never, () => env.guard.canActivate(httpContext(header).context)),
+    ).rejects.toMatchObject({ code: ErrorCode.GYM_AGENT_UNAUTHORIZED });
+  });
+
   it('parses only the Agent scheme', () => {
     expect(parseAgentAuthorization('Agent abc123.' + 'a'.repeat(43))).toEqual({ agentId: 'abc123', token: 'a'.repeat(43) });
     expect(parseAgentAuthorization('Agent abc123')).toBeNull();
@@ -325,6 +341,23 @@ describe('desired-state recomputation', () => {
     expect(await env.sync.syncMember('t1', stranger, NOW)).toBe(0);
   });
 
+  it('lists the most recently changed items first and counts delivered ones as pending', async () => {
+    const env = setup();
+    seedGate(env.db, 't1', 'g1');
+    const first = seedMember(env.db, 't1', 'm1');
+    const second = seedMember(env.db, 't1', 'm2');
+    await env.sync.syncMember('t1', first, NOW);
+    await env.sync.syncMember('t1', second, new Date(NOW.getTime() + 1000));
+    env.db.docs.set('tenants/t1/gymDeviceCommands/g1_m2', {
+      ...env.db.docs.get('tenants/t1/gymDeviceCommands/g1_m2')!,
+      status: 'delivered',
+    });
+    // m1's end date is edited later: it moves to the top although it was created first.
+    await env.sync.syncMember('t1', { ...(first as object), membershipEndsAt: '2026-12-31T09:00:00.000Z' } as never, new Date(NOW.getTime() + 2000));
+    const page = await env.context.run(admin('t1'), () => env.sync.list({ gateId: 'g1', status: 'pending' } as never));
+    expect(page.items.map((item) => (item as Record<string, unknown>)['memberId'])).toEqual(['m1', 'm2']);
+  });
+
   it('asks the agent to remove the old device user when the member number changes', async () => {
     const env = setup();
     seedGate(env.db, 't1', 'g1');
@@ -389,6 +422,35 @@ describe('events and heartbeat', () => {
     expect([...env.db.docs.keys()].some((key) => key.startsWith('tenants/t2/gymAccessLogs'))).toBe(false);
   });
 
+  it('looks up only the members named in the batch, by number (string or numeric) or card', async () => {
+    const env = setup();
+    seedGate(env.db, 't1', 'g1');
+    seedMember(env.db, 't1', 'm1', { memberNumber: 1042 });
+    seedMember(env.db, 't1', 'm2', { rfidCardNumber: '0012345678' });
+    seedMember(env.db, 't1', 'm3', { memberNumber: '77', deletedAt: '2026-01-01T00:00:00Z' });
+    const listAll = jest.spyOn(env.repo, 'listAllMembers');
+    const a = principal(await pairAndEnroll(env, 't1', ['g1']));
+    const base = { gateId: 'g1', time: '2026-09-28T21:14:05+03:00', direction: 'in', result: null, verifyMode: 'card' };
+    await env.agents.events(
+      a,
+      {
+        events: [
+          { ...base, eventId: 'e1', userId: '1042', card: null },
+          { ...base, eventId: 'e2', userId: null, card: '0012345678' },
+          { ...base, eventId: 'e3', userId: '77', card: null },
+          { ...base, eventId: 'e4', userId: null, card: '999' },
+        ],
+      },
+      NOW,
+    );
+    expect(listAll).not.toHaveBeenCalled();
+    const log = (id: string) => env.db.docs.get(`tenants/t1/gymAccessLogs/g1_${id}`);
+    expect(log('e1')).toMatchObject({ userId: 'm1' });
+    expect(log('e2')).toMatchObject({ userId: 'm2', card: '0012345678' });
+    expect(log('e3')).toMatchObject({ userId: null, userName: '#77' });
+    expect(log('e4')).toMatchObject({ userId: null, userName: 'Kart 999' });
+  });
+
   it('marks gates online only while both the device and the agent report', async () => {
     const env = setup();
     seedGate(env.db, 't1', 'g1');
@@ -403,7 +465,7 @@ describe('events and heartbeat', () => {
     const at = (offset: number) =>
       env.context.run(admin('t1'), () => env.agents.decorateGates(gates, NOW.getTime() + offset));
     expect((await at(10_000)).find((gate) => gate.id === 'g1')).toMatchObject({ online: true, adapterStatus: 'hardware_pending' });
-    expect((await at(31_000)).find((gate) => gate.id === 'g1')?.online).toBe(false);
+    expect((await at(151_000)).find((gate) => gate.id === 'g1')?.online).toBe(false);
     expect((await at(0)).find((gate) => gate.id === 'g9')?.online).toBe(false);
   });
 });

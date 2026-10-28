@@ -5,8 +5,9 @@ import { TenantContext } from '../../../shared/tenancy/tenant.context';
 import { UserProfile } from '../../identity/entities/user-profile.entity';
 import { IdentityRepository } from '../../identity/identity.repository';
 import { DEFAULT_STAFF_COLOR } from '../core/hair-core.service';
-import { addDays, weekday } from '../shared/appointment-plan';
-import { hairForbidden, hairInvalid, hairNotFound, hairPrecondition } from '../shared/hair-errors';
+import { involvesStaff } from '../appointments/hair-appointments.service';
+import { addDays, isOpenStatus, weekday } from '../shared/appointment-plan';
+import { assertNoRelated, hairForbidden, hairInvalid, hairNotFound, hairPrecondition } from '../shared/hair-errors';
 import { HairListQueryDto, searchTerm } from '../shared/hair-list.dto';
 import { normalizePhone } from '../shared/hair-phone';
 import { HAIR_STAFF_ROLES, hairRoleId, HairStaffRole } from '../shared/hair-roles';
@@ -86,7 +87,7 @@ export class HairStaffService {
       specialties: dto.specialties ?? [],
       serviceIds: dto.serviceIds ?? [],
       defaultCommissionPercent: dto.defaultCommissionPercent ?? 0,
-      workSchedule: dto.workSchedule ?? [],
+      workSchedule: dto.workSchedule ? dto.workSchedule.map((e) => ({ ...e })) : [],
       hireDate: dto.hireDate ?? dateIdInTz(await this.store.timeZone()),
       active: dto.active ?? true,
       onlineBookable: dto.onlineBookable ?? true,
@@ -112,6 +113,8 @@ export class HairStaffService {
     if (dto.active === false && userId === this.store.userId()) {
       throw hairPrecondition('Kendi kaydınızı pasifleştiremezsiniz.');
     }
+    const losesAdmin = (roleChanges && dto.role !== 'admin') || (dto.active === false && current['active'] !== false);
+    if (current['role'] === 'admin' && losesAdmin) await this.assertNotLastAdmin(id);
 
     const updated = await this.store.update(
       TENANT_COLLECTION.hairStaff,
@@ -122,7 +125,8 @@ export class HairStaffService {
         firstName: dto.firstName?.trim(),
         lastName: dto.lastName?.trim(),
         email: dto.email?.trim().toLowerCase(),
-        phone: dto.phone ? (normalizePhone(dto.phone) ?? dto.phone.trim()) : undefined,
+        phone: dto.phone !== undefined ? (dto.phone.trim() ? (normalizePhone(dto.phone) ?? dto.phone.trim()) : '') : undefined,
+        workSchedule: dto.workSchedule ? dto.workSchedule.map((e) => ({ ...e })) : undefined,
       },
       STAFF_NOT_FOUND,
     );
@@ -140,6 +144,12 @@ export class HairStaffService {
     if (userId && (userId === this.store.userId() || (await this.isOwnerUser(userId)))) {
       throw hairForbidden('Bu personel kaydı silinemez.');
     }
+    if (current['role'] === 'admin') await this.assertNotLastAdmin(id);
+    const today = dateIdInTz(await this.store.timeZone());
+    const upcoming = await this.store.rows(TENANT_COLLECTION.hairAppointments, undefined, { field: 'date', from: today });
+    assertNoRelated('Personelin ileri tarihli randevuları var; önce randevuları devredin veya personeli pasifleştirin.', {
+      futureAppointments: upcoming.filter((a) => isOpenStatus(a['status']) && involvesStaff(a, id)).length,
+    });
     const result = await this.store.softDelete(TENANT_COLLECTION.hairStaff, 'hairStaff', id, STAFF_NOT_FOUND);
     if (userId) await this.syncActive(userId, false);
     return result;
@@ -350,6 +360,14 @@ export class HairStaffService {
   private assertCanAssignRole(actor: HairActor, role: HairStaffRole) {
     if (actor.role !== 'admin' && (role === 'admin' || role === 'manager')) {
       throw hairForbidden('Yönetici veya müdür rolünü yalnızca yöneticiler atayabilir.');
+    }
+  }
+
+  /** The salon must keep at least one active admin (the owner's card counts as one). */
+  private async assertNotLastAdmin(staffId: string) {
+    const admins = await this.store.rows(TENANT_COLLECTION.hairStaff, { field: 'role', op: '==', value: 'admin' });
+    if (!admins.some((admin) => admin.id !== staffId && admin['active'] !== false)) {
+      throw hairPrecondition('Salonda en az bir aktif yönetici kalmalıdır; son yöneticinin rolü değiştirilemez.');
     }
   }
 

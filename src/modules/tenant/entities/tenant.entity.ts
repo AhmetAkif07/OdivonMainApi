@@ -3,6 +3,14 @@ import { BaseDocument } from '../../../shared/firestore/base-document';
 
 export type TenantMembershipStatus = 'trial' | 'active' | 'expired' | 'cancelled';
 
+/** The app version a tenant's users last ran for one product, from their X-Client-Version header. */
+export interface TenantClientVersion {
+  version: string;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  lastSeenBy?: string | null;
+}
+
 export interface TenantDocument extends BaseDocument {
   name: string;
   ownerUid: string;
@@ -20,4 +28,6 @@ export interface TenantDocument extends BaseDocument {
   demoCreatedBy?: string | null;
   suspendedAt?: string | null;
   suspendedReason?: string | null;
+  /** Last reported app version per product module (written by ClientVersionTracker). */
+  clientVersions?: Partial<Record<ProductModule, TenantClientVersion>>;
 }

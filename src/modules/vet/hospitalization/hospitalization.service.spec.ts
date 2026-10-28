@@ -1,5 +1,4 @@
 import { HospitalizationService } from './hospitalization.service';
-import { ErrorCode } from '../../../shared/errors/error-codes';
 
 describe('HospitalizationService', () => {
   const repo = {

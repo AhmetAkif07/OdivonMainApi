@@ -41,18 +41,34 @@ export class PlatformDemosService {
       .get();
 
     const now = new Date();
+    // Older demo docs can miss fields or hold Firestore Timestamps instead of
+    // ISO strings; normalise them so one bad doc can't break the whole list.
     const items = snapshot.docs
-      .map((d) => d.data() as TenantDocument)
+      .map((d) => {
+        const raw = d.data() as Record<string, unknown>;
+        return {
+          ...raw,
+          id: (raw.id as string) || d.id,
+          name: (raw.name as string) || d.id,
+          modules: Array.isArray(raw.modules) ? raw.modules : [],
+          createdAt: toIsoOrNull(raw.createdAt),
+          updatedAt: toIsoOrNull(raw.updatedAt),
+          trialEndsAt: toIsoOrNull(raw.trialEndsAt),
+          subscriptionEndsAt: toIsoOrNull(raw.subscriptionEndsAt),
+          deletedAt: raw.deletedAt ?? null,
+        } as unknown as TenantDocument;
+      })
       .filter((t) => !t.deletedAt);
 
     items.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
 
     return items.map((t) => {
       const state = computeTenantStatus(t, now);
-      // Calculate days until auto suspension if expired
+      // Days left until the 7-day auto suspension, once the trial has ended
       let daysUntilSuspension: number | null = null;
-      if (t.trialEndsAt && state.computedStatus === 'expired') {
-        const suspendDeadline = addDaysToDate(new Date(t.trialEndsAt), DEMO_SUSPEND_AFTER_DAYS);
+      const trialEndMs = Date.parse(t.trialEndsAt ?? '');
+      if (Number.isFinite(trialEndMs) && state.computedStatus === 'expired') {
+        const suspendDeadline = addDaysToDate(new Date(trialEndMs), DEMO_SUSPEND_AFTER_DAYS);
         daysUntilSuspension = Math.max(0, daysDifference(suspendDeadline.toISOString(), now) || 0);
       }
 
@@ -384,4 +400,18 @@ export class PlatformDemosService {
 
     return { expiredCount, suspendedCount };
   }
+}
+
+function toIsoOrNull(value: unknown): string | null {
+  if (!value) return null;
+  if (typeof value === 'string') return value;
+  if (value instanceof Date) return Number.isFinite(value.getTime()) ? value.toISOString() : null;
+  const maybeTs = value as { toDate?: () => Date; _seconds?: number; seconds?: number };
+  if (typeof maybeTs.toDate === 'function') {
+    const d = maybeTs.toDate();
+    return Number.isFinite(d.getTime()) ? d.toISOString() : null;
+  }
+  const secs = maybeTs.seconds ?? maybeTs._seconds;
+  if (typeof secs === 'number') return new Date(secs * 1000).toISOString();
+  return null;
 }

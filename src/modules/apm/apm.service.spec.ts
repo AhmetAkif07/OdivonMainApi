@@ -70,7 +70,7 @@ describe('ApmService appointments', () => {
     const fake = fakeFirestore();
     docs = fake.docs;
     paths = fake.paths;
-    service = new ApmService(fake.firebase as never, tenant);
+    service = new ApmService(fake.firebase as never, tenant, { notifyGuest: jest.fn() } as never);
   });
 
   it('creates a pending appointment with audit fields and lists it', async () => {

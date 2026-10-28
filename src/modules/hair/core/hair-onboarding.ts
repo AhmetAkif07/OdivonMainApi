@@ -5,6 +5,7 @@ import { Request } from 'express';
 import { FirebaseAuthGuard, getDecodedToken } from '../../../shared/auth/firebase-auth.guard';
 import { ProductModule } from '../../../shared/authorization/constants';
 import { FirebaseService } from '../../../shared/firebase/firebase.service';
+import { MailService } from '../../../shared/mail/mail.service';
 import { IdentityRepository } from '../../identity/identity.repository';
 import { TenantService } from '../../tenant/tenant.service';
 import { hairInvalid, hairPrecondition } from '../shared/hair-errors';
@@ -33,6 +34,7 @@ export class HairOnboardingService {
     private readonly firebase: FirebaseService,
     private readonly tenants: TenantService,
     private readonly users: IdentityRepository,
+    private readonly mail: MailService,
   ) {}
 
   async onboard(uid: string, email: string | undefined, dto: HairOnboardingDto) {
@@ -70,6 +72,14 @@ export class HairOnboardingService {
       await this.tenants.hardDelete(tenant.id).catch((err) => this.logger.error(err));
       throw error;
     }
+    this.mail
+      .sendModuleWelcome({
+        module: 'hair',
+        to: email,
+        displayName: dto.ownerName,
+        tenantName: dto.businessName,
+      })
+      ?.catch((err) => this.logger.error(`Hoş geldin maili gönderilemedi (${email}): ${err?.message || err}`));
     return { tenantId: tenant.id };
   }
 }

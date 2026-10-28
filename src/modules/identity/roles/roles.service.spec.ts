@@ -44,7 +44,7 @@ describe('RolesService', () => {
 
   it('rejects unknown actions', async () => {
     await expect(
-      service.create({ name: 'X', permissions: { customers: ['export'] } }),
+      service.create({ name: 'X', permissions: { customers: ['publish'] } }),
     ).rejects.toMatchObject({ code: ErrorCode.VALIDATION_ERROR });
   });
 

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { TENANT_COLLECTION } from '../../../shared/firebase/firestore-path';
 import { createBaseFields, isDeleted } from '../../../shared/firestore/base-document';
 import {
@@ -18,7 +18,8 @@ import {
   staffAvailabilityViolation,
   toClock,
 } from '../shared/appointment-plan';
-import { hairInvalid, hairNotFound, hairPrecondition } from '../shared/hair-errors';
+import { HairAppointmentSmsService } from '../notifications/sms/hair-appointment-sms.service';
+import { assertNoRelated, hairInvalid, hairNotFound, hairPrecondition } from '../shared/hair-errors';
 import { HairListQueryDto } from '../shared/hair-list.dto';
 import { HairActor, HairDoc, HairStore } from '../shared/hair-store';
 import { dateIdInTz, localClockInTz, parseClock } from '../shared/hair-time';
@@ -50,7 +51,11 @@ export interface SaveOptions {
 
 @Injectable()
 export class HairAppointmentsService {
-  constructor(private readonly store: HairStore) {}
+  constructor(
+    private readonly store: HairStore,
+    /** Confirmation / cancellation SMS (absent in unit tests that do not need it). */
+    @Optional() private readonly appointmentSms?: HairAppointmentSmsService,
+  ) {}
 
   /** Appointments with `from <= startAt < to` (UTC ISO); stylists only see their own lines. */
   async list(query: HairListQueryDto) {
@@ -205,6 +210,7 @@ export class HairAppointmentsService {
     });
 
     await this.store.audit('hairAppointments', existing ? 'update' : 'create', saved.id, existing ? pickSchedule(existing) : null, pickSchedule(saved));
+    if (!existing && saved['status'] === 'confirmed') await this.appointmentSms?.notify(saved, 'confirmation');
     return saved;
   }
 
@@ -243,13 +249,26 @@ export class HairAppointmentsService {
     });
     if (result.before !== result.after) {
       await this.store.audit('hairAppointments', 'update', id, { status: result.before['status'] }, { status: dto.status, reason: dto.reason });
+      if (dto.status === 'confirmed') await this.appointmentSms?.notify(result.after, 'confirmation');
+      if (dto.status === 'cancelled') await this.appointmentSms?.notify(result.after, 'cancellation');
     }
     return result.after;
   }
 
-  /** Soft-delete for erroneous records only — cancelling goes through the status endpoint (R-014). */
+  /**
+   * Soft-delete of a cancelled appointment without any payment (R-014); everything else is cancelled
+   * through the status endpoint, and paid ones stay for the books (409 HAS_RELATED_RECORDS).
+   */
   async remove(id: string) {
-    await this.get(id);
+    const appointment = await this.get(id);
+    if (appointment['status'] !== 'cancelled') {
+      throw hairPrecondition('Yalnızca iptal edilmiş randevular silinebilir; önce randevuyu iptal edin.');
+    }
+    const payments = await this.store.rows(TENANT_COLLECTION.hairPayments, { field: 'appointmentId', op: '==', value: id });
+    assertNoRelated('Randevuya bağlı ödeme var; randevu silinemez.', {
+      payments: payments.length,
+      sessions: appointment['sessionId'] ? 1 : 0,
+    });
     return this.store.softDelete(TENANT_COLLECTION.hairAppointments, 'hairAppointments', id, NOT_FOUND);
   }
 

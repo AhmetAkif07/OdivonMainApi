@@ -1,5 +1,3 @@
-import { SMS_PROVIDERS, SmsProviderType } from './sms/sms-provider.types';
-import { getSmsAdapter } from './sms/sms-adapters';
 import { Injectable } from '@nestjs/common';
 import { AppException } from '../../../shared/errors/app.exception';
 import { ErrorCode } from '../../../shared/errors/error-codes';

@@ -35,6 +35,7 @@ export class GymReportsController {
 
   /** Staff home charts; every section follows its own view permission (null when not allowed). */
   @Get('dashboard')
+  @RequirePermission('members', 'view')
   @ApiOperation({ summary: 'Ana sayfa grafikleri: son 7 gün giriş/satış, üye durumu, 6 ay gelir-gider' })
   dashboard(@CurrentUser() user: TenantStore) {
     return this.reports.dashboard(user);
