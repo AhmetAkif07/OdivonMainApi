@@ -439,7 +439,6 @@ export class BeautyBookingService {
 
       // Customer
       let customerId = '';
-      const cleanPhone = dto.phone.replace(/\D/g, '');
       const custQuery = await this.store
         .collection('beautyCustomers')
         .where('branchId', '==', branch.id)
