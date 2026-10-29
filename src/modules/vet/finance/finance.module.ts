@@ -11,13 +11,16 @@ import { CashSessionsService } from './cash-sessions/cash-sessions.service';
 import { CollectionsController } from './collections/collections.controller';
 import { CollectionsRepository } from './collections/collections.repository';
 import { CollectionsService } from './collections/collections.service';
+import { ProformasController } from './proformas/proformas.controller';
+import { ProformasRepository } from './proformas/proformas.repository';
+import { ProformasService } from './proformas/proformas.service';
 import { SalesController } from './sales/sales.controller';
 import { SalesRepository } from './sales/sales.repository';
 import { SalesService } from './sales/sales.service';
 
 @Module({
   imports: [CustomersModule, DefinitionsModule, StockModule],
-  controllers: [SalesController, CollectionsController, CashMovementsController, CashSessionsController],
+  controllers: [SalesController, CollectionsController, CashMovementsController, CashSessionsController, ProformasController],
   providers: [
     SalesRepository,
     SalesService,
@@ -27,6 +30,8 @@ import { SalesService } from './sales/sales.service';
     CashMovementsService,
     CashSessionsRepository,
     CashSessionsService,
+    ProformasRepository,
+    ProformasService,
   ],
   exports: [SalesService, SalesRepository],
 })
