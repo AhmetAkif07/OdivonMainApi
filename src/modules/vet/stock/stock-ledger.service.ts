@@ -173,6 +173,11 @@ export class StockLedgerService {
     return map.get(`${productId}:${storeId}`) ?? 0;
   }
 
+  /** On-hand quantity keyed by `productId:storeId`. */
+  onHandMap(): Promise<Map<string, number>> {
+    return this.onHandExcluding({ type: 'manual', id: '' });
+  }
+
   private async resolveLines(lines: LedgerLineInput[]): Promise<Array<LedgerLineInput & { storeId: string }>> {
     const resolved: Array<LedgerLineInput & { storeId: string }> = [];
     for (const line of lines) {

@@ -17,7 +17,7 @@ export const STOCK_REASONS = [
 ] as const;
 export type StockReason = (typeof STOCK_REASONS)[number];
 
-export const STOCK_SOURCES = ['manual', 'sale', 'purchase', 'vaccine', 'demand'] as const;
+export const STOCK_SOURCES = ['manual', 'sale', 'purchase', 'vaccine', 'demand', 'count'] as const;
 export type StockSourceType = (typeof STOCK_SOURCES)[number];
 
 export interface StockSource {
