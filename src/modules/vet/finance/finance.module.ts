@@ -8,6 +8,9 @@ import { CashMovementsService } from './cash-movements/cash-movements.service';
 import { CashSessionsController } from './cash-sessions/cash-sessions.controller';
 import { CashSessionsRepository } from './cash-sessions/cash-sessions.repository';
 import { CashSessionsService } from './cash-sessions/cash-sessions.service';
+import { ChequesController } from './cheques/cheques.controller';
+import { ChequesRepository } from './cheques/cheques.repository';
+import { ChequesService } from './cheques/cheques.service';
 import { CollectionsController } from './collections/collections.controller';
 import { CollectionsRepository } from './collections/collections.repository';
 import { CollectionsService } from './collections/collections.service';
@@ -20,7 +23,7 @@ import { SalesService } from './sales/sales.service';
 
 @Module({
   imports: [CustomersModule, DefinitionsModule, StockModule],
-  controllers: [SalesController, CollectionsController, CashMovementsController, CashSessionsController, ProformasController],
+  controllers: [SalesController, CollectionsController, CashMovementsController, CashSessionsController, ProformasController, ChequesController],
   providers: [
     SalesRepository,
     SalesService,
@@ -32,6 +35,8 @@ import { SalesService } from './sales/sales.service';
     CashSessionsService,
     ProformasRepository,
     ProformasService,
+    ChequesRepository,
+    ChequesService,
   ],
   exports: [SalesService, SalesRepository],
 })
