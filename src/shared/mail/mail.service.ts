@@ -3,7 +3,13 @@ import * as net from 'net';
 import type { Transporter } from 'nodemailer';
 import * as tls from 'tls';
 import { runInBackground } from '../http/background';
-import { buildModuleWelcomeEmail, ModuleWelcomeInput, WelcomeModule } from './welcome-templates';
+import {
+  buildModuleWelcomeEmail,
+  buildStaffInviteEmail,
+  ModuleWelcomeInput,
+  StaffInviteInput,
+  WelcomeModule,
+} from './welcome-templates';
 import { ProductModule } from '../authorization/constants';
 
 export interface SendMemberWelcomeInput {
@@ -37,6 +43,7 @@ export interface SendWelcomeGymOwnerInput {
 }
 
 export type SendModuleWelcomeInput = Omit<ModuleWelcomeInput, 'loginUrl'>;
+export type SendStaffInviteInput = Omit<StaffInviteInput, 'loginUrl'>;
 
 @Injectable()
 export class MailService {
@@ -324,6 +331,29 @@ export class MailService {
       this.logger.error(
         `Hoş geldin maili gönderim hatası [${input.module}] (${input.to}): ${error?.message || error}`,
       );
+      return false;
+    }
+  }
+
+  /**
+   * Staff invitation with a set-password link. Awaited by the caller so the panel can tell the salon
+   * whether the mail went out; resolves false (never throws) when no provider is configured or sending fails.
+   */
+  async sendStaffInvite(input: SendStaffInviteInput): Promise<boolean> {
+    if (!this.transporter && !this.hostingerApiConfigured()) {
+      await this.initTransporter();
+      if (!this.transporter) {
+        this.logger.warn(`Personel davet maili gönderilemedi (${input.to}): e-posta sağlayıcısı yapılandırılmamış.`);
+        return false;
+      }
+    }
+    try {
+      const { brand, subject, html } = buildStaffInviteEmail({ ...input, loginUrl: moduleLoginUrl(input.module) });
+      const info = await this.sendMessage({ from: { name: brand, address: fromAddress() }, to: input.to, subject, html });
+      this.logger.log(`Personel davet maili gönderildi [${input.module}]: ${input.to} (MessageId: ${info.messageId})`);
+      return true;
+    } catch (error: any) {
+      this.logger.error(`Personel davet maili gönderim hatası [${input.module}] (${input.to}): ${error?.message || error}`);
       return false;
     }
   }

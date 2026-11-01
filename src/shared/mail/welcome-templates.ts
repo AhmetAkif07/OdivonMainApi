@@ -333,3 +333,49 @@ ${ctaHtml}
 
   return { brand, subject, html };
 }
+
+export interface StaffInviteInput {
+  to: string;
+  displayName?: string | null;
+  tenantName: string;
+  module: WelcomeModule;
+  /** Firebase password reset link; following it sets the first password and verifies the e-mail. */
+  setPasswordLink: string;
+  loginUrl: string | null;
+}
+
+/** Invitation for a staff member the salon added: they set their own password through the link. */
+export function buildStaffInviteEmail(input: StaffInviteInput): { brand: string; subject: string; html: string } {
+  const brand = MODULE_WELCOME_CONTENT[input.module].brand;
+  const rawTenantName = input.tenantName.trim() || brand;
+  const tenantName = escapeHtml(rawTenantName);
+  const name = escapeHtml(input.displayName?.trim() || 'Merhaba');
+  const email = escapeHtml(input.to);
+  const link = escapeHtml(input.setPasswordLink);
+  const loginUrl = safeHttpUrl(input.loginUrl);
+  const subject = `${rawTenantName} sizi ${brand} paneline davet etti`;
+  const loginLine = loginUrl
+    ? `<p style="margin: 16px 0 0; color: #94a3b8; font-size: 13px; line-height: 1.6;">Şifrenizi belirledikten sonra <a href="${escapeHtml(loginUrl)}" style="color: #a5b4fc;">${escapeHtml(loginUrl)}</a> adresinden giriş yapabilirsiniz.</p>`
+    : '';
+  const html = `
+<!DOCTYPE html>
+<html lang="tr">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${escapeHtml(subject)}</title></head>
+<body style="margin: 0; padding: 0; background: #0b1120; font-family: Arial, Helvetica, sans-serif; color: #f8fafc;">
+  <div style="padding: 32px 16px;">
+    <div style="max-width: 520px; margin: 0 auto; background: #0f172a; border: 1px solid #334155; border-radius: 24px; padding: 32px;">
+      <div style="font-size: 12px; color: #a5b4fc; font-weight: 800; letter-spacing: .08em;">${escapeHtml(brand.toUpperCase())}</div>
+      <h1 style="font-size: 22px; margin: 16px 0 12px;">${name}, ekibe hoş geldiniz!</h1>
+      <p style="margin: 0; color: #cbd5e1; font-size: 14px; line-height: 1.6;"><strong>${tenantName}</strong> sizin için bir ${escapeHtml(brand)} hesabı açtı. Hesabınızı kullanmaya başlamak için aşağıdaki butona tıklayıp şifrenizi belirleyin.</p>
+      <p style="margin: 12px 0 0; color: #94a3b8; font-size: 13px;">Giriş e-postanız: <strong style="color: #e2e8f0;">${email}</strong></p>
+      <div style="text-align: center; margin: 28px 0 8px;">
+        <a href="${link}" target="_blank" style="display: inline-block; background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%); color: #ffffff; font-size: 14px; font-weight: 800; text-decoration: none; padding: 14px 36px; border-radius: 12px;">Şifremi belirle</a>
+      </div>
+      ${loginLine}
+      <p style="margin: 16px 0 0; color: #64748b; font-size: 12px; line-height: 1.6;">Bağlantı bir süre sonra geçersiz olur. Süresi dolarsa giriş ekranındaki "Şifremi unuttum" ile yeni bağlantı isteyebilirsiniz. Bu daveti beklemiyorsanız e-postayı yok sayabilirsiniz.</p>
+    </div>
+  </div>
+</body>
+</html>`;
+  return { brand, subject, html };
+}

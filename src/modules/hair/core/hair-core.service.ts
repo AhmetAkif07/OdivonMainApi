@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { Transaction } from 'firebase-admin/firestore';
 import { TENANT_COLLECTION, tenantCollectionPath } from '../../../shared/firebase/firestore-path';
 import { createBaseFields, touchBaseFields } from '../../../shared/firestore/base-document';
@@ -36,6 +36,8 @@ export class HairCoreService {
     private readonly users: IdentityRepository,
   ) {}
 
+  private readonly logger = new Logger(HairCoreService.name);
+
   /** Session bootstrap for the client; also seeds the tenant's hair defaults on first use. */
   async me() {
     await this.ensureDefaults();
@@ -49,6 +51,14 @@ export class HairCoreService {
     const staff = actor?.staffId
       ? await this.store.find(TENANT_COLLECTION.hairStaff, actor.staffId)
       : null;
+    if (staff && staff['inviteStatus'] === 'invited' && staff['userId'] === current.userId) {
+      // First session of an invited staff member: the invite is now accepted.
+      staff['inviteStatus'] = 'accepted';
+      await this.store
+        .doc(TENANT_COLLECTION.hairStaff, staff.id)
+        .update({ inviteStatus: 'accepted', acceptedAt: new Date().toISOString() })
+        .catch((err: unknown) => this.logger.error(`Davet durumu güncellenemedi (${staff.id})`, err as Error));
+    }
     return {
       uid: current.userId,
       email: current.email,

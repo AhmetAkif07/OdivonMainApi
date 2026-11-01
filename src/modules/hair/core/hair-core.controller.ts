@@ -2,14 +2,14 @@ import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@n
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { RequireModule } from '../../../shared/authorization/module.decorator';
 import { RequirePermission } from '../../../shared/authorization/require-permission.decorator';
-import { HairGuards } from '../shared/hair-guards';
+import { HairOpenGuards } from '../shared/hair-guards';
 import { SaveHairBranchDto, UpdateHairSettingsDto } from './core.dto';
 import { HairCoreService } from './hair-core.service';
 
 @ApiTags('hair')
 @ApiBearerAuth()
 @RequireModule('hair')
-@UseGuards(...HairGuards)
+@UseGuards(...HairOpenGuards)
 @Controller('hair')
 export class HairCoreController {
   constructor(private readonly core: HairCoreService) {}

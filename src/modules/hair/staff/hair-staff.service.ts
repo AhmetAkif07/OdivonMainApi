@@ -4,6 +4,8 @@ import { TENANT_COLLECTION } from '../../../shared/firebase/firestore-path';
 import { TenantContext } from '../../../shared/tenancy/tenant.context';
 import { UserProfile } from '../../identity/entities/user-profile.entity';
 import { IdentityRepository } from '../../identity/identity.repository';
+import { TenantService } from '../../tenant/tenant.service';
+import { MailService } from '../../../shared/mail/mail.service';
 import { DEFAULT_STAFF_COLOR } from '../core/hair-core.service';
 import { involvesStaff } from '../appointments/hair-appointments.service';
 import { addDays, isOpenStatus, weekday } from '../shared/appointment-plan';
@@ -40,6 +42,8 @@ export class HairStaffService {
     private readonly store: HairStore,
     private readonly tenantContext: TenantContext,
     private readonly users: IdentityRepository,
+    private readonly mail: MailService,
+    private readonly tenants: TenantService,
   ) {}
 
   // ── Staff cards ──
@@ -157,28 +161,38 @@ export class HairStaffService {
 
   /**
    * Creates a panel account for the staff card (Auth user + MainApi profile with the hair role) and
-   * returns a password reset link the salon sends to the invitee.
+   * e-mails the invitee a link to set their own password. Calling it again while the invite is still
+   * pending re-sends a fresh link. `resetLink` is also returned so the salon can pass it on by hand
+   * when the mail could not be sent (`emailSent: false`).
    */
   async invite(id: string, dto: InviteHairStaffDto) {
     const staff = await this.store.getOrThrow(TENANT_COLLECTION.hairStaff, id, STAFF_NOT_FOUND);
-    if (str(staff['userId'])) throw hairPrecondition('Bu personelin zaten bir hesabı var.');
+    const existingUid = str(staff['userId']);
+    if (existingUid) {
+      if (staff['inviteStatus'] !== 'invited') throw hairPrecondition('Bu personelin zaten bir hesabı var.');
+      return this.resendInvite(id, staff, existingUid);
+    }
     const email = (dto.email ?? str(staff['email'])).trim().toLowerCase();
     if (!email) throw hairInvalid('Davet için personelin e-posta adresi gerekli.');
     const role = staff['role'] as HairStaffRole;
     const current = this.tenantContext.getStore();
-    const displayName = `${str(staff['firstName'])} ${str(staff['lastName'])}`.trim() || email;
+    const displayName = staffName(staff) || email;
     let uid: string | undefined;
     let profileCreated = false;
+    let resetLink: string;
+    const now = new Date().toISOString();
 
     try {
-      // Never shown to anyone — the invitee sets their own password through the reset link.
+      // Never shown to anyone — the invitee sets their own password through the reset link. The
+      // salon invites a known address and only its owner can use that link, so the e-mail counts
+      // as verified and the staff member is never sent to the verification screen.
       const record = await this.store.auth.createUser({
         email,
         password: randomBytes(24).toString('base64url'),
         displayName,
+        emailVerified: true,
       });
       uid = record.uid;
-      const now = new Date().toISOString();
       const profile: UserProfile = {
         uid,
         tenantId: current.tenantId,
@@ -189,6 +203,7 @@ export class HairStaffService {
         displayName,
         roleIds: [hairRoleId(role)],
         status: 'active',
+        emailVerified: true,
         createdAt: now,
         updatedAt: now,
       };
@@ -206,8 +221,7 @@ export class HairStaffService {
         { userId: uid, email, inviteStatus: 'invited', invitedAt: now },
         STAFF_NOT_FOUND,
       );
-      const resetLink = await this.store.auth.generatePasswordResetLink(email);
-      return { staffId: id, userId: uid, email, inviteStatus: 'invited', resetLink };
+      resetLink = await this.store.auth.generatePasswordResetLink(email);
     } catch (error) {
       if (uid) {
         if (profileCreated) await this.users.hardDelete(uid).catch((err) => this.logger.error(err));
@@ -218,6 +232,45 @@ export class HairStaffService {
         throw hairPrecondition('Bu e-posta adresiyle kayıtlı bir kullanıcı zaten var.');
       }
       throw error;
+    }
+    const emailSent = await this.sendInviteMail(email, displayName, resetLink);
+    return { staffId: id, userId: uid, email, inviteStatus: 'invited', resetLink, emailSent };
+  }
+
+  private async resendInvite(id: string, staff: HairDoc, uid: string) {
+    const user = await this.store.auth.getUser(uid);
+    const email = (user.email ?? str(staff['email'])).trim().toLowerCase();
+    if (!email) throw hairInvalid('Davet için personelin e-posta adresi gerekli.');
+    if (user.metadata?.lastSignInTime) {
+      await this.store.update(TENANT_COLLECTION.hairStaff, 'hairStaff', id, { inviteStatus: 'accepted' }, STAFF_NOT_FOUND);
+      throw hairPrecondition('Bu personel hesabına zaten giriş yaptı.');
+    }
+    if (!user.emailVerified) await this.store.auth.updateUser(uid, { emailVerified: true });
+    const resetLink = await this.store.auth.generatePasswordResetLink(email);
+    await this.store.update(
+      TENANT_COLLECTION.hairStaff,
+      'hairStaff',
+      id,
+      { invitedAt: new Date().toISOString() },
+      STAFF_NOT_FOUND,
+    );
+    const emailSent = await this.sendInviteMail(email, staffName(staff) || email, resetLink);
+    return { staffId: id, userId: uid, email, inviteStatus: 'invited', resetLink, emailSent };
+  }
+
+  private async sendInviteMail(to: string, displayName: string, setPasswordLink: string): Promise<boolean> {
+    try {
+      const tenant = await this.tenants.getById(this.tenantContext.getStore().tenantId);
+      return await this.mail.sendStaffInvite({
+        module: 'hair',
+        to,
+        displayName,
+        tenantName: str(tenant?.name),
+        setPasswordLink,
+      });
+    } catch (err) {
+      this.logger.error(`Personel davet maili gönderilemedi (${to})`, err as Error);
+      return false;
     }
   }
 
@@ -426,4 +479,8 @@ function byField(...fields: string[]) {
     }
     return 0;
   };
+}
+
+function staffName(staff: HairDoc): string {
+  return `${str(staff['firstName'])} ${str(staff['lastName'])}`.trim();
 }

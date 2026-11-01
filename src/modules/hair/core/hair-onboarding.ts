@@ -10,6 +10,9 @@ import { IdentityRepository } from '../../identity/identity.repository';
 import { TenantService } from '../../tenant/tenant.service';
 import { hairInvalid, hairPrecondition } from '../shared/hair-errors';
 
+/** Free trial length; keep equal to SAAS_TRIAL_DAYS in identity.service (/identity/register). */
+const SAAS_TRIAL_DAYS = 14;
+
 export class HairOnboardingDto {
   @ApiProperty()
   @IsString()
@@ -48,6 +51,9 @@ export class HairOnboardingService {
       name: dto.businessName.trim(),
       ownerUid: uid,
       modules,
+      // Same free trial as /identity/register, so SubscriptionGuard can end it.
+      membershipStatus: 'trial',
+      trialEndsAt: new Date(Date.now() + SAAS_TRIAL_DAYS * 24 * 60 * 60 * 1000).toISOString(),
     });
     try {
       const now = new Date().toISOString();

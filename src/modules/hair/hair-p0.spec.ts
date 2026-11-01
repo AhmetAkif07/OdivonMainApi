@@ -81,7 +81,27 @@ describe('hair P0 rules (FakeFirestore)', () => {
     getById: jest.fn(async () => ({ id: 't1', name: 'Salon Test', modules: ['hair'], status: 'active' })),
     update: jest.fn(async () => undefined),
   };
+  const mail = { sendStaffInvite: jest.fn(async (_input: Record<string, unknown>) => true) };
+  const authUsers = new Map<string, { uid: string; email: string; emailVerified: boolean; metadata: { lastSignInTime?: string } }>();
+  const fakeAuth = {
+    updateUser: async (uid: string, fields: Record<string, unknown>) => {
+      const user = authUsers.get(uid);
+      if (user) Object.assign(user, fields);
+    },
+    revokeRefreshTokens: async () => undefined,
+    createUser: async (input: { email: string; emailVerified?: boolean }) => {
+      const uid = `auth-${authUsers.size + 1}`;
+      authUsers.set(uid, { uid, email: input.email, emailVerified: input.emailVerified ?? false, metadata: {} });
+      return { uid };
+    },
+    getUser: async (uid: string) => authUsers.get(uid)!,
+    deleteUser: async (uid: string) => void authUsers.delete(uid),
+    setCustomUserClaims: async () => undefined,
+    generatePasswordResetLink: async (email: string) => `https://reset.test/?email=${email}&n=${Math.random()}`,
+  };
   const users = {
+    createProfile: jest.fn(async () => undefined),
+    hardDelete: jest.fn(async () => undefined),
     findByUid: jest.fn(async (uid: string) =>
       uid === OWNER.userId ? { role: 'owner', email: OWNER.email, displayName: 'Ayşe Yılmaz' } : { role: 'user', tenantId: 't1' },
     ),
@@ -100,7 +120,9 @@ describe('hair P0 rules (FakeFirestore)', () => {
   beforeEach(async () => {
     db = new FakeFirestore();
     context = new TenantContext();
-    store = new HairStore({ db, auth: { updateUser: async () => undefined, revokeRefreshTokens: async () => undefined } } as never, context);
+    authUsers.clear();
+    mail.sendStaffInvite.mockClear();
+    store = new HairStore({ db, auth: fakeAuth } as never, context);
     core = new HairCoreService(store, context, tenants as never, users as never);
     customers = new HairCustomersService(store);
     catalog = new HairCatalogService(store);
@@ -112,7 +134,7 @@ describe('hair P0 rules (FakeFirestore)', () => {
     sent.length = 0;
     finance = new HairFinanceService(store);
     reports = new HairReportsService(store);
-    staff = new HairStaffService(store, context, users as never);
+    staff = new HairStaffService(store, context, users as never, mail as never, tenants as never);
     appointments = new HairAppointmentsService(store);
     packages = new HairPackagesService(store);
     booking = new HairBookingService(store, context, tenants as never, appointments, customers, notifications, sms);
@@ -668,6 +690,34 @@ describe('hair P0 rules (FakeFirestore)', () => {
       // The number is free for a new customer; the anonymised one can no longer be edited.
       await expect(asOwner(() => customers.create({ firstName: 'Yeni', lastName: '', phone: '05321112233' }))).resolves.toBeDefined();
       await expect(asOwner(() => customers.update(customerId, { firstName: 'X' }))).rejects.toMatchObject({ code: ErrorCode.HAIR_FORBIDDEN });
+    });
+  });
+
+  describe('staff invites', () => {
+    it('e-mails a set-password link, can re-send it, and is accepted on first session', async () => {
+      await asOwner(async () => {
+        put('hairStaff', staffCard('new1', 'stylist', { userId: undefined, email: 'Yeni@Salon.test', inviteStatus: 'none' }));
+      });
+      const first = await asOwner(() => staff.invite('new1', {}));
+      expect(first).toMatchObject({ email: 'yeni@salon.test', inviteStatus: 'invited', emailSent: true });
+      expect(first.resetLink).toContain('yeni@salon.test');
+      expect(authUsers.get(first.userId!)?.emailVerified).toBe(true);
+      expect(mail.sendStaffInvite).toHaveBeenCalledWith(
+        expect.objectContaining({ module: 'hair', to: 'yeni@salon.test', tenantName: 'Salon Test', setPasswordLink: first.resetLink }),
+      );
+
+      // Still pending: a second call re-sends a fresh link instead of failing.
+      mail.sendStaffInvite.mockResolvedValueOnce(false);
+      const again = await asOwner(() => staff.invite('new1', {}));
+      expect(again).toMatchObject({ userId: first.userId, emailSent: false });
+      expect(again.resetLink).not.toBe(first.resetLink);
+      expect(mail.sendStaffInvite).toHaveBeenCalledTimes(2);
+
+      // The staff member's first session marks the invite accepted; then it can no longer be re-sent.
+      await as(asUser(first.userId!), () => core.me());
+      expect((db.docs.get('tenants/t1/hairStaff/new1') as HairDoc)['inviteStatus']).toBe('accepted');
+      await expect(asOwner(() => staff.invite('new1', {}))).rejects.toMatchObject({ code: ErrorCode.HAIR_PRECONDITION });
+      expect((db.docs.get('tenants/t1/hairStaff/new1') as HairDoc)['inviteStatus']).toBe('accepted');
     });
   });
 });

@@ -31,6 +31,8 @@ const DEFAULT_RETURN_ORIGINS = [
   'https://odivon-panel.dogangns-98.workers.dev',
   'https://odivonapm.dogangns-98.workers.dev',
   'https://rent.odivon.com',
+  'https://hair.odivon.com',
+  'https://odivonprohair.dogangns-98.workers.dev',
   'http://localhost:4200',
 ];
 

@@ -53,6 +53,7 @@ import {
 import { HairStaffService } from './staff/hair-staff.service';
 import { HairWaitlistController } from './waitlist/hair-waitlist.controller';
 import { HairWaitlistService } from './waitlist/hair-waitlist.service';
+import { SubscriptionGuard } from '../../shared/authorization/subscription.guard';
 
 /** Hair salon product module (plan docs/odivonprohair-master-plan.md). */
 @Module({
@@ -108,6 +109,7 @@ import { HairWaitlistService } from './waitlist/hair-waitlist.service';
     HairWaitlistService,
     HairBookingService,
     HairBookingThrottlerGuard,
+    SubscriptionGuard,
   ],
 })
 export class HairModule {}
