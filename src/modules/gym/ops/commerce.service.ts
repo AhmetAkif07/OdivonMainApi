@@ -885,6 +885,7 @@ export class GymCommerceService {
       totalAmount: dto.totalAmount != null ? Number(dto.totalAmount) : amount + kdvAmount,
       status: dto.status ?? 'draft',
       issueDate: dto.issueDate || now.toISOString(),
+      issueTime: dto.issueTime || now.toTimeString().split(' ')[0],
     });
   }
 
