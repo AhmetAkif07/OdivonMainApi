@@ -690,6 +690,10 @@ export class GymRecordDto {
 
   @IsOptional()
   @IsString()
+  invoiceId?: string;
+
+  @IsOptional()
+  @IsString()
   invoiceNumber?: string;
 
   @IsOptional()
