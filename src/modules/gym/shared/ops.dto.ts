@@ -857,6 +857,10 @@ export class GymRecordDto {
   gibUuid?: string;
 
   @IsOptional()
+  @IsString()
+  memberPhone?: string;
+
+  @IsOptional()
   @Transform(({ value }) => value)
   @Allow()
   extras?: unknown;
