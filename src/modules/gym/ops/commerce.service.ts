@@ -642,7 +642,22 @@ export class GymCommerceService {
   }
 
   createSupplierCategory(dto: GymRecordDto) {
-    return this.store.create(TENANT_COLLECTION.gymSupplierCategories, dto);
+    const rawKey =
+      dto.key ||
+      (dto.name || 'cat')
+        .toLowerCase()
+        .replace(/ğ/g, 'g')
+        .replace(/ü/g, 'u')
+        .replace(/ş/g, 's')
+        .replace(/ı/g, 'i')
+        .replace(/ö/g, 'o')
+        .replace(/ç/g, 'c')
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '');
+    return this.store.create(TENANT_COLLECTION.gymSupplierCategories, {
+      ...dto,
+      key: rawKey || cat_\,
+    });
   }
 
   updateSupplierCategory(id: string, dto: GymRecordDto) {
