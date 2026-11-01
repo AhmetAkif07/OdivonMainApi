@@ -868,7 +868,7 @@ export class GymCommerceService {
   createInvoice(dto: GymRecordDto) {
     const kdvRate = dto.kdvRate ?? 20;
     const amount = dto.amount ?? 0;
-    const kdvAmount = dto.kdvAmount ?? (amount * kdvRate) / 100;
+    const kdvAmount = dto.kdvAmount != null ? Number(dto.kdvAmount) : (amount * kdvRate) / 100;
     const now = new Date();
     const year = now.getFullYear();
     const defaultPrefix = dto.direction === 'inbound' ? 'GEL' : 'GIB';
@@ -882,7 +882,7 @@ export class GymCommerceService {
       direction: dto.direction ?? 'outbound',
       kdvRate,
       kdvAmount,
-      totalAmount: dto.totalAmount ?? amount + kdvAmount,
+      totalAmount: dto.totalAmount != null ? Number(dto.totalAmount) : amount + kdvAmount,
       status: dto.status ?? 'draft',
       issueDate: dto.issueDate || now.toISOString(),
     });

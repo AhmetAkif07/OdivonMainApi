@@ -89,6 +89,7 @@ const LABELS: Record<string, string> = {
   'PATCH einvoice/config': 'E-fatura ayarları değiştirildi',
   'POST einvoice/items': 'E-fatura kesildi',
   'DELETE einvoice/items/:id': 'E-fatura silindi',
+  'PATCH einvoice/items/:id': 'E-fatura güncellendi',
   'PATCH saas': 'SaaS aboneliği değiştirildi',
   'PATCH info': 'Salon bilgileri güncellendi',
   'POST onboarding/complete': 'Salon kurulumu tamamlandı',

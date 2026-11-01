@@ -353,6 +353,12 @@ export class GymEinvoiceController {
     return this.commerce.createInvoice(dto);
   }
 
+  @Patch('items/:id')
+  @RequirePermission('eInvoice', 'update')
+  update(@Param('id') id: string, @Body() dto: GymRecordDto) {
+    return this.commerce.updateInvoice(id, dto);
+  }
+
   @Delete('items/:id')
   @RequirePermission('eInvoice', 'delete')
   remove(@Param('id') id: string) {

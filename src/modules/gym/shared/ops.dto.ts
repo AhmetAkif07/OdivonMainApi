@@ -861,6 +861,62 @@ export class GymRecordDto {
   memberPhone?: string;
 
   @IsOptional()
+  @IsNumber()
+  discountTotal?: number;
+
+  @IsOptional()
+  @IsString()
+  invoiceProfile?: string;
+
+  @IsOptional()
+  @IsString()
+  invoiceTypeCode?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  isDeliveryNoteReplacement?: boolean;
+
+  @IsOptional()
+  @IsString()
+  issueTime?: string;
+
+  @IsOptional()
+  @IsString()
+  currency?: string;
+
+  @IsOptional()
+  @IsString()
+  recipientDistrict?: string;
+
+  @IsOptional()
+  @IsString()
+  recipientCity?: string;
+
+  @IsOptional()
+  @IsString()
+  recipientPhone?: string;
+
+  @IsOptional()
+  @IsString()
+  recipientEmail?: string;
+
+  @IsOptional()
+  @IsString()
+  mersisNo?: string;
+
+  @IsOptional()
+  @IsString()
+  tradeRegistryNo?: string;
+
+  @IsOptional()
+  @IsString()
+  website?: string;
+
+  @IsOptional()
+  @IsString()
+  pdfUrl?: string;
+
+  @IsOptional()
   @Transform(({ value }) => value)
   @Allow()
   extras?: unknown;
