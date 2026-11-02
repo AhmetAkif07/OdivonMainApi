@@ -4,6 +4,8 @@
  * exercises to `gymExercises`. `muscleGroup` uses the panel's MuscleGroup keys.
  */
 
+import { systemExerciseFrames } from './system-exercise-media';
+
 export const MUSCLE_GROUPS = ['chest', 'back', 'shoulders', 'legs', 'arms', 'core', 'fullbody'] as const;
 export type ExerciseMuscleGroup = (typeof MUSCLE_GROUPS)[number];
 
@@ -56,7 +58,10 @@ export interface CatalogExercise {
   defaultReps: number | string;
   defaultRestSeconds: number;
   instructions: string[];
+  /** Representative still (the peak pose of a pair); kept for clients that show one image. */
   imageUrl: string | null;
+  /** Illustration frames: [start, peak] to loop between, a single pose, or [] when there are none. */
+  imageFrames: string[];
 }
 
 type Row = [
@@ -220,24 +225,28 @@ const ROWS: Row[] = [
 const DEFAULT_REST: Record<'c' | 'i', number> = { c: 90, i: 60 };
 
 export const SYSTEM_EXERCISES: CatalogExercise[] = ROWS.map(
-  ([slug, name, nameEn, muscleGroup, primaryMuscle, equipment, mechanic, secondary = [], tracking = 'weight_reps', reps]) => ({
-    id: `sys-ex-${slug}`,
-    source: 'system',
-    name,
-    nameEn,
-    muscleGroup,
-    primaryMuscle,
-    secondaryMuscles: secondary,
-    equipment,
-    equipmentName: EQUIPMENT_LABELS[equipment],
-    mechanic: mechanic === 'c' ? 'compound' : 'isolation',
-    trackingType: tracking,
-    defaultSets: tracking === 'weight_reps' && mechanic === 'c' ? 4 : 3,
-    defaultReps: reps ?? (mechanic === 'c' ? 10 : 12),
-    defaultRestSeconds: tracking === 'duration' || tracking === 'distance' ? 45 : DEFAULT_REST[mechanic],
-    instructions: [],
-    imageUrl: null,
-  }),
+  ([slug, name, nameEn, muscleGroup, primaryMuscle, equipment, mechanic, secondary = [], tracking = 'weight_reps', reps]) => {
+    const imageFrames = systemExerciseFrames(slug);
+    return {
+      id: `sys-ex-${slug}`,
+      source: 'system',
+      name,
+      nameEn,
+      muscleGroup,
+      primaryMuscle,
+      secondaryMuscles: secondary,
+      equipment,
+      equipmentName: EQUIPMENT_LABELS[equipment],
+      mechanic: mechanic === 'c' ? 'compound' : 'isolation',
+      trackingType: tracking,
+      defaultSets: tracking === 'weight_reps' && mechanic === 'c' ? 4 : 3,
+      defaultReps: reps ?? (mechanic === 'c' ? 10 : 12),
+      defaultRestSeconds: tracking === 'duration' || tracking === 'distance' ? 45 : DEFAULT_REST[mechanic],
+      instructions: [],
+      imageUrl: imageFrames.at(-1) ?? null,
+      imageFrames,
+    };
+  },
 );
 
 export const SYSTEM_EXERCISE_IDS = new Set(SYSTEM_EXERCISES.map((exercise) => exercise.id));

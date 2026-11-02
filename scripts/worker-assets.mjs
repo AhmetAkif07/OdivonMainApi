@@ -1,4 +1,4 @@
-import { copyFile, mkdir, writeFile } from 'node:fs/promises';
+import { copyFile, cp, mkdir, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 
@@ -16,5 +16,7 @@ await writeFile(new URL('index.html', target), `<!doctype html>
 <script src="/docs/init.js"></script></body></html>`);
 await writeFile(new URL('init.js', target),
   'window.onload = () => SwaggerUIBundle({url:"/docs-json",dom_id:"#swagger-ui",deepLinking:true});\n');
+// Files kept in the repo and served as-is (exercise illustrations, see system-exercise-media.ts).
+await cp(new URL('../static/', import.meta.url), new URL('../', target), { recursive: true });
 await writeFile(new URL('../_headers', target),
-  '/*\n  X-Content-Type-Options: nosniff\n  Referrer-Policy: no-referrer\n  Content-Security-Policy: default-src \'self\'; style-src \'self\' \'unsafe-inline\'; img-src \'self\' data:; frame-ancestors \'none\'\n/docs-json\n  Content-Type: application/json; charset=utf-8\n');
+  '/*\n  X-Content-Type-Options: nosniff\n  Referrer-Policy: no-referrer\n  Content-Security-Policy: default-src \'self\'; style-src \'self\' \'unsafe-inline\'; img-src \'self\' data:; frame-ancestors \'none\'\n/docs-json\n  Content-Type: application/json; charset=utf-8\n/exercise-media/*\n  Cache-Control: public, max-age=31536000, immutable\n  Access-Control-Allow-Origin: *\n');

@@ -138,6 +138,7 @@ export function toCatalogExercise(item: Doc): CatalogExercise {
     defaultRestSeconds: typeof item['defaultRestSeconds'] === 'number' ? item['defaultRestSeconds'] : 60,
     instructions: Array.isArray(item['instructions']) ? (item['instructions'] as string[]) : [],
     imageUrl: (item['imageUrl'] as string | null) ?? null,
+    imageFrames: item['imageUrl'] ? [item['imageUrl'] as string] : [],
   };
 }
 

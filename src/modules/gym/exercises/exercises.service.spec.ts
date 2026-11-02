@@ -35,6 +35,18 @@ describe('GymExercisesService', () => {
     expect(SYSTEM_EXERCISES.every((exercise) => exercise.id.startsWith('sys-ex-') && exercise.defaultSets > 0)).toBe(true);
   });
 
+  it('gives mapped system exercises RepDB frames and leaves the rest without an image', () => {
+    const bench = SYSTEM_EXERCISES.find((exercise) => exercise.id === 'sys-ex-bench-press')!;
+    expect(bench.imageFrames).toHaveLength(2);
+    expect(bench.imageFrames[0]).toContain('bench-press-start.webp');
+    expect(bench.imageUrl).toBe(bench.imageFrames[1]);
+    expect(SYSTEM_EXERCISES.find((exercise) => exercise.id === 'sys-ex-plank')!.imageFrames).toHaveLength(1);
+    const woodchopper = SYSTEM_EXERCISES.find((exercise) => exercise.id === 'sys-ex-woodchopper')!;
+    expect(woodchopper.imageFrames).toEqual([]);
+    expect(woodchopper.imageUrl).toBeNull();
+    expect(SYSTEM_EXERCISES.filter((exercise) => exercise.imageFrames.length).length).toBeGreaterThan(120);
+  });
+
   it('shows staff the system and gym exercises but not members private ones', async () => {
     const items = await service.listForStaff({});
     const ids = items.map((item) => item.id);
