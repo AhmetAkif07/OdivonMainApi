@@ -656,7 +656,7 @@ export class GymCommerceService {
         .replace(/^_+|_+$/g, '');
     return this.store.create(TENANT_COLLECTION.gymSupplierCategories, {
       ...dto,
-      key: rawKey || cat_\,
+      key: rawKey || `cat_${Date.now()}`,
     });
   }
 
