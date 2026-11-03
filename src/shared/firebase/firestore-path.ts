@@ -82,6 +82,8 @@ export const TENANT_COLLECTION = {
   gymSmsConfig: 'gymSmsConfig',
   gymEinvoiceConfig: 'gymEinvoiceConfig',
   gymEinvoiceItems: 'gymEinvoiceItems',
+  gymBanks: 'gymBanks',
+  gymDailyCloseSettings: 'gymDailyCloseSettings',
   gymSaasSubscription: 'gymSaasSubscription',
   gymQrTokens: 'gymQrTokens',
   gymWorkoutLogs: 'gymWorkoutLogs',

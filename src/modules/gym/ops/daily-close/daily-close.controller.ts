@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   Param,
+  Patch,
   Post,
   Query,
   Req,
@@ -17,7 +18,11 @@ import { RequirePermission } from '../../../../shared/authorization/require-perm
 import { RoleGuard } from '../../../../shared/authorization/role.guard';
 import { TenantGuard } from '../../../../shared/tenancy/tenant.guard';
 import { GymDailyCloseService } from './daily-close.service';
-import { SubmitDailyCloseDto, VerifyDailyCloseDto } from './daily-close.dto';
+import {
+  SubmitDailyCloseDto,
+  VerifyDailyCloseDto,
+  UpdateDailyCloseReminderSettingsDto,
+} from './daily-close.dto';
 
 const Guards = [FirebaseAuthGuard, TenantGuard, ModuleGuard, RoleGuard, PermissionGuard] as const;
 
@@ -36,6 +41,20 @@ export class GymDailyCloseController {
   @RequirePermission('accounting', 'view')
   preview(@Query('date') date?: string, @Query('branchId') branchId?: string) {
     return this.dailyCloseService.getPreClosePreview(date, branchId);
+  }
+
+  @Get('reminder-settings')
+  @ApiOperation({ summary: 'Gün sonu kapanış saati hatırlatma bildirimi ayarlarını getirir' })
+  @RequirePermission('accounting', 'view')
+  getReminderSettings() {
+    return this.dailyCloseService.getReminderSettings();
+  }
+
+  @Patch('reminder-settings')
+  @ApiOperation({ summary: 'Gün sonu kapanış saati hatırlatma bildirimi ayarlarını günceller' })
+  @RequirePermission('accounting', 'update')
+  updateReminderSettings(@Body() dto: UpdateDailyCloseReminderSettingsDto) {
+    return this.dailyCloseService.updateReminderSettings(dto);
   }
 
   @Post()

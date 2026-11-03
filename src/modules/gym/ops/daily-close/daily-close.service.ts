@@ -9,6 +9,8 @@ import {
   ExpenseSummaryDto,
   PreClosePreviewResponse,
   SubmitDailyCloseDto,
+  DailyCloseReminderSettings,
+  UpdateDailyCloseReminderSettingsDto,
 } from './daily-close.dto';
 
 const DAILY_CLOSINGS_COLLECTION = 'gymDailyClosings';
@@ -157,6 +159,34 @@ export class GymDailyCloseService {
     const expectedCash = Math.round((openingCash + incomeSummary.cash - expenseSummary.cash) * 100) / 100;
     const expectedPos = Math.round(incomeSummary.posCard * 100) / 100;
 
+    // 4. Query active banks with POS for separate per-bank closing
+    let bankPosExpected: Array<{ bankId: string; bankName: string; terminalNo?: string; expectedPos: number }> = [];
+    try {
+      const banks = await this.store.list<Doc>(TENANT_COLLECTION.gymBanks);
+      const activePosBanks = (banks || []).filter((b) => b['status'] !== 'inactive' && b['hasPos'] !== false);
+
+      bankPosExpected = activePosBanks.map((b) => {
+        const bankId = String(b.id || '');
+        const bankName = String(b['bankName'] || 'Banka');
+        const terminalNo = String(b['posTerminalNo'] || '');
+
+        let matchedAmount = 0;
+        for (const e of dayEntries) {
+          if (e['bankId'] === bankId || e['bankName'] === bankName) {
+            matchedAmount += Number(e['amount'] || 0);
+          }
+        }
+        return {
+          bankId,
+          bankName,
+          terminalNo,
+          expectedPos: Math.round(matchedAmount * 100) / 100,
+        };
+      });
+    } catch {
+      bankPosExpected = [];
+    }
+
     return {
       date: targetDate,
       branchId,
@@ -165,6 +195,7 @@ export class GymDailyCloseService {
       expenseSummary,
       expectedCash,
       expectedPos,
+      bankPosExpected,
       isAlreadyClosed: Boolean(existingClosing && existingClosing.status === 'closed'),
       existingClosing,
     };
@@ -177,9 +208,14 @@ export class GymDailyCloseService {
     const preview = await this.getPreClosePreview(dto.date, dto.branchId);
 
     const actualCash = Number(dto.actualCashCounted ?? 0);
-    const actualPos = dto.actualPosCounted !== undefined && dto.actualPosCounted !== null
+    let actualPos = dto.actualPosCounted !== undefined && dto.actualPosCounted !== null
       ? Number(dto.actualPosCounted)
       : preview.expectedPos;
+
+    if (dto.bankPosClosings && dto.bankPosClosings.length > 0) {
+      actualPos = dto.bankPosClosings.reduce((sum, b) => sum + Number(b.actualPos || 0), 0);
+      actualPos = Math.round(actualPos * 100) / 100;
+    }
 
     const cashDiff = Math.round((actualCash - preview.expectedCash) * 100) / 100;
     const posDiff = Math.round((actualPos - preview.expectedPos) * 100) / 100;
@@ -216,6 +252,7 @@ export class GymDailyCloseService {
       expectedPos: preview.expectedPos,
       actualPosCounted: actualPos,
       posDifference: posDiff,
+      bankPosClosings: dto.bankPosClosings || [],
       retainedCashForNextDay: retained,
       bankDepositAmount: bankDeposit,
       notes: dto.notes?.trim() || '',
@@ -281,5 +318,46 @@ export class GymDailyCloseService {
       ...existing,
       ...updatePayload,
     };
+  }
+
+  async getReminderSettings(): Promise<DailyCloseReminderSettings> {
+    const list = await this.store.list<DailyCloseReminderSettings>(TENANT_COLLECTION.gymDailyCloseSettings);
+    if (list && list.length > 0) {
+      return list[0];
+    }
+    return {
+      id: 'default',
+      enabled: true,
+      reminderTime: '22:00',
+      days: ['0', '1', '2', '3', '4', '5', '6'],
+      notifyInApp: true,
+    } as unknown as DailyCloseReminderSettings;
+  }
+
+  async updateReminderSettings(dto: UpdateDailyCloseReminderSettingsDto): Promise<DailyCloseReminderSettings> {
+    const list = await this.store.list<DailyCloseReminderSettings>(TENANT_COLLECTION.gymDailyCloseSettings);
+    const payload = {
+      enabled: Boolean(dto.enabled),
+      reminderTime: dto.reminderTime || '22:00',
+      days: dto.days || ['0', '1', '2', '3', '4', '5', '6'],
+      notifyInApp: dto.notifyInApp !== undefined ? Boolean(dto.notifyInApp) : true,
+    };
+
+    if (list && list.length > 0) {
+      await this.store.update(
+        TENANT_COLLECTION.gymDailyCloseSettings,
+        list[0].id,
+        ErrorCode.GYM_ACCOUNTING_NOT_FOUND,
+        'Ayarlar güncellenemedi',
+        payload,
+      );
+      return {
+        ...list[0],
+        ...payload,
+      };
+    }
+
+    const created = await this.store.create(TENANT_COLLECTION.gymDailyCloseSettings, payload);
+    return created as unknown as DailyCloseReminderSettings;
   }
 }

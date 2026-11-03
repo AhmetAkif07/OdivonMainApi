@@ -1,5 +1,7 @@
 import { GymDailyCloseController } from './daily-close/daily-close.controller';
 import { GymDailyCloseService } from './daily-close/daily-close.service';
+import { GymBankController } from './banks/gym-bank.controller';
+import { GymBankService } from './banks/gym-bank.service';
 import { Module } from '@nestjs/common';
 import { GymAccessModule } from '../access/access.module';
 import { GymMembersModule } from '../members/members.module';
@@ -57,6 +59,7 @@ import { GymStockService } from './stock/stock.service';
     GymSuppliersController,
     GymAccountingController,
     GymDailyCloseController,
+    GymBankController,
     GymEinvoiceController,
     GymAccessController,
     GymCampaignsController,
@@ -65,7 +68,7 @@ import { GymStockService } from './stock/stock.service';
     GymReceivablesController,
     GymStockController,
   ],
-  providers: [GymStore, GymDailyCloseService, GymSportService, GymCommerceService, GymOpsService, GymReceivablesService, GymClassBookingService, GymStockService],
-  exports: [GymStore, GymDailyCloseService, GymSportService, GymCommerceService, GymOpsService, GymReceivablesService, GymClassBookingService],
+  providers: [GymStore, GymDailyCloseService, GymBankService, GymSportService, GymCommerceService, GymOpsService, GymReceivablesService, GymClassBookingService, GymStockService],
+  exports: [GymStore, GymDailyCloseService, GymBankService, GymSportService, GymCommerceService, GymOpsService, GymReceivablesService, GymClassBookingService],
 })
 export class GymOpsModule {}
