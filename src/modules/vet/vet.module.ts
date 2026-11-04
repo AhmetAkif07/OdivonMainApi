@@ -20,6 +20,7 @@ import { StaffModule } from './staff/staff.module';
 import { SurveysModule } from './surveys/surveys.module';
 import { InsightsModule } from './insights/insights.module';
 import { SurgeriesModule } from './surgeries/surgeries.module';
+import { PagingModule } from './paging/paging.module';
 
 @Module({
   imports: [
@@ -44,6 +45,7 @@ import { SurgeriesModule } from './surgeries/surgeries.module';
     SurveysModule,
     InsightsModule,
     SurgeriesModule,
+    PagingModule,
   ],
 })
 export class VetModule {}
