@@ -1,5 +1,5 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { FirebaseAuthGuard } from '../../../../shared/auth/firebase-auth.guard';
 import { RequireModule } from '../../../../shared/authorization/module.decorator';
 import { ModuleGuard } from '../../../../shared/authorization/module.guard';
@@ -7,7 +7,7 @@ import { PermissionGuard } from '../../../../shared/authorization/permission.gua
 import { RequirePermission } from '../../../../shared/authorization/require-permission.decorator';
 import { PagingQueryDto } from '../../../../shared/http/paging.dto';
 import { TenantGuard } from '../../../../shared/tenancy/tenant.guard';
-import { CreateAgendaDto, UpdateAgendaDto } from './agenda.dto';
+import { AgendaScopeQueryDto, CreateAgendaDto, UpdateAgendaDto } from './agenda.dto';
 import { AgendaService } from './agenda.service';
 
 @ApiTags('vet-agenda')
@@ -37,15 +37,17 @@ export class AgendaController {
   }
 
   @Patch(':id')
+  @ApiOperation({ summary: 'Update; for repeating tasks ?scope=single|following|series' })
   @RequirePermission('agenda', 'update')
-  update(@Param('id') id: string, @Body() dto: UpdateAgendaDto) {
-    return this.service.update(id, dto);
+  update(@Param('id') id: string, @Body() dto: UpdateAgendaDto, @Query() query: AgendaScopeQueryDto) {
+    return this.service.update(id, dto, query.scope);
   }
 
   @Delete(':id')
+  @ApiOperation({ summary: 'Delete; for repeating tasks ?scope=single|following|series' })
   @RequirePermission('agenda', 'delete')
-  async remove(@Param('id') id: string) {
-    await this.service.softDelete(id);
+  async remove(@Param('id') id: string, @Query() query: AgendaScopeQueryDto) {
+    await this.service.softDelete(id, query.scope);
     return { id };
   }
 }
