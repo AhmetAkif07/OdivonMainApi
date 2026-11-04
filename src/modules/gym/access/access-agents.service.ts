@@ -186,7 +186,7 @@ export class AccessAgentsService {
 
   async work(agent: AgentPrincipal, limit = DEFAULT_WORK_LIMIT, now = new Date()) {
     const devices = await this.agentGates(agent);
-    const syncGateIds = devices.filter((gate) => gateCapabilities(gate['protocol']).userSync).map((gate) => gate.id);
+    const syncGateIds = devices.filter((gate) => gateCapabilities(gate['protocol'], gate).userSync).map((gate) => gate.id);
     const items = syncGateIds.length ? await this.leaseWork(agent.tenantId, syncGateIds, limit, now) : [];
     return {
       devices: devices.map((gate) => {
@@ -198,7 +198,7 @@ export class AccessAgentsService {
           host: gate['host'] ?? null,
           port: gate['port'] ?? PROTOCOL_TABLE[protocol].defaultPort,
           direction: gate['direction'] ?? 'in',
-          capabilities: gateCapabilities(protocol),
+          capabilities: gateCapabilities(protocol, gate),
         };
       }),
       items,
@@ -435,7 +435,9 @@ export function decorateGate<T extends AccessDoc>(
     host: gate['host'] ?? null,
     port: gate['port'] ?? table.defaultPort,
     agentId: gate['agentId'] ?? null,
-    capabilities: { ...table.capabilities },
+    capabilities: gateCapabilities(protocol, gate),
+    userSync: gate['userSync'] === true,
+    userSyncOptIn: table.userSyncOptIn,
     adapterStatus: table.adapterStatus,
     lastSeenAt: gate['lastSeenAt'] ?? null,
     lastError: gate['lastError'] ?? null,

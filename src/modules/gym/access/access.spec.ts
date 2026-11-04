@@ -376,6 +376,35 @@ describe('desired-state recomputation', () => {
     expect(env.db.docs.get('tenants/t1/gymDeviceCommands/g1_m1')).toMatchObject({ userId: '2000', replacesUserId: 'N-m1' });
   });
 
+  it('sends members to a ZK gate only after the gym turns member sync on for that gate', async () => {
+    const env = setup();
+    seedGate(env.db, 't1', 'zk', { protocol: 'zk-tcp-4370', host: '192.168.1.202' });
+    const member = seedMember(env.db, 't1', 'm1');
+    const agent = principal(await pairAndEnroll(env, 't1', ['zk']));
+    expect(await env.sync.syncMember('t1', member, NOW)).toBe(0);
+    await expect(env.context.run(admin('t1'), () => env.sync.resync('zk', NOW))).rejects.toThrow('does not support user sync');
+    expect((await env.agents.work(agent, 50, NOW)).items).toEqual([]);
+
+    env.db.docs.set('tenants/t1/gymTurnstileGates/zk', { ...env.db.docs.get('tenants/t1/gymTurnstileGates/zk')!, userSync: true });
+    expect(await env.sync.syncMember('t1', member, NOW)).toBe(1);
+    const work = await env.agents.work(agent, 50, NOW);
+    expect(work.devices).toEqual([
+      expect.objectContaining({ gateId: 'zk', protocol: 'zk-tcp-4370', capabilities: { events: true, userSync: true, doorOpen: false } }),
+    ]);
+    expect(work.items).toEqual([expect.objectContaining({ id: 'zk_m1', userId: 'N-m1', validEnd: '20261031', enabled: true })]);
+    const zkGates = await env.repo.listGates('t1');
+    const [decorated] = await env.context.run(admin('t1'), () => env.agents.decorateGates(zkGates, NOW.getTime()));
+    expect(decorated).toMatchObject({ userSync: true, userSyncOptIn: true, capabilities: { userSync: true } });
+    const summary = await env.context.run(admin('t1'), () => env.sync.summary());
+    expect(summary).toEqual({ zk: { pending: 0, delivered: 1, applied: 0, error: 0 } });
+
+    // A YT gate syncs without the switch and ignores it.
+    seedGate(env.db, 't1', 'yt', { userSync: false });
+    const gates = await env.repo.listGates('t1');
+    const yt = (await env.context.run(admin('t1'), () => env.agents.decorateGates(gates, NOW.getTime()))).find((gate) => gate.id === 'yt');
+    expect(yt).toMatchObject({ userSyncOptIn: false, capabilities: { userSync: true } });
+  });
+
   it('resync queues every member, including ones to remove', async () => {
     const env = setup();
     seedGate(env.db, 't1', 'g1');

@@ -540,6 +540,11 @@ export class GymRecordDto {
   @IsIn(GATE_PROTOCOLS)
   protocol?: GateProtocol;
 
+  /** Turnstile gates whose protocol needs an opt-in (ZK): send members to this device. */
+  @IsOptional()
+  @IsBoolean()
+  userSync?: boolean;
+
   @IsOptional()
   @IsString()
   host?: string | null;

@@ -12,27 +12,34 @@ export interface GateCapabilities {
 
 export type AdapterStatus = 'ready' | 'hardware_pending' | 'not_validated';
 
-/** Server-side capability table (contract §5); clients never write these fields. */
+/**
+ * Server-side capability table (contract §5); clients never write these fields.
+ * `userSyncOptIn`: member sync is off by default and a gate turns it on with `userSync: true`.
+ */
 export const PROTOCOL_TABLE: Record<
   GateProtocol,
-  { capabilities: GateCapabilities; adapterStatus: AdapterStatus; defaultPort: number | null }
+  { capabilities: GateCapabilities; adapterStatus: AdapterStatus; defaultPort: number | null; userSyncOptIn: boolean }
 > = {
   'yt-http-digest': {
     capabilities: { events: true, userSync: true, doorOpen: false },
     adapterStatus: 'hardware_pending',
     defaultPort: 80,
+    userSyncOptIn: false,
   },
   'zk-tcp-4370': {
-    // Edge Agent can read historical + real-time ZK attendance events. User writes
-    // stay disabled until expiry/card semantics are verified on supported hardware.
+    // Edge Agent 2.4+ writes ZK users through the ZKEMKeeper driver. The device keeps no end
+    // date, so the agent disables expired members itself. A device often still holds the users
+    // of the gym's previous software, so sync starts only when the gym turns it on per gate.
     capabilities: { events: true, userSync: false, doorOpen: false },
     adapterStatus: 'hardware_pending',
     defaultPort: 4370,
+    userSyncOptIn: true,
   },
   'vendor-sdk': {
     capabilities: { events: false, userSync: false, doorOpen: false },
     adapterStatus: 'not_validated',
     defaultPort: null,
+    userSyncOptIn: false,
   },
 };
 
@@ -49,8 +56,13 @@ export function resolveProtocol(value: unknown): GateProtocol {
   return GATE_PROTOCOLS.includes(value as GateProtocol) ? (value as GateProtocol) : 'yt-http-digest';
 }
 
-export function gateCapabilities(protocol: unknown): GateCapabilities {
-  return { ...PROTOCOL_TABLE[resolveProtocol(protocol)].capabilities };
+/** Pass the gate document so a per-gate opt-in (`userSync: true`) is honoured. */
+export function gateCapabilities(protocol: unknown, gate?: Record<string, unknown> | null): GateCapabilities {
+  const table = PROTOCOL_TABLE[resolveProtocol(protocol)];
+  return {
+    ...table.capabilities,
+    userSync: table.capabilities.userSync || (table.userSyncOptIn && gate?.['userSync'] === true),
+  };
 }
 
 export function isRecent(value: unknown, now: number): boolean {

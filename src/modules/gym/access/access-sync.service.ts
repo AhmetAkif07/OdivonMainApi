@@ -49,7 +49,7 @@ export class AccessSyncService {
   }
 
   async syncMember(tenantId: string, member: GymMember, now = new Date()): Promise<number> {
-    const gates = (await this.repo.listGates(tenantId)).filter((gate) => gateCapabilities(gate['protocol']).userSync);
+    const gates = (await this.repo.listGates(tenantId)).filter((gate) => gateCapabilities(gate['protocol'], gate).userSync);
     if (gates.length === 0) return 0;
     const memberId = member.uid || (member as GymMember & { id?: string }).id || '';
     if (!memberId) return 0;
@@ -80,7 +80,7 @@ export class AccessSyncService {
     if (!gate) {
       throw new AppException(ErrorCode.GYM_GATE_NOT_FOUND, 'Gate not found');
     }
-    if (!gateCapabilities(gate['protocol']).userSync) {
+    if (!gateCapabilities(gate['protocol'], gate).userSync) {
       throw new AppException(ErrorCode.VALIDATION_ERROR, 'Gate protocol does not support user sync');
     }
     const members = await this.repo.listAllMembers(tenantId);
@@ -129,7 +129,7 @@ export class AccessSyncService {
    */
   async summary() {
     const tenantId = this.tenantContext.getTenantId();
-    const gates = (await this.repo.listGates(tenantId)).filter((gate) => gateCapabilities(gate['protocol']).userSync);
+    const gates = (await this.repo.listGates(tenantId)).filter((gate) => gateCapabilities(gate['protocol'], gate).userSync);
     const counts = await Promise.all(
       gates.flatMap((gate) =>
         SYNC_STATUSES.map(async (status) => ({
