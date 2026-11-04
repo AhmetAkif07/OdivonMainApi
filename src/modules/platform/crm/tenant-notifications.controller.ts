@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
+import { Controller, Delete, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { FirebaseAuthGuard } from '../../../shared/auth/firebase-auth.guard';
 import { CurrentUser } from '../../../shared/auth/current-user.decorator';
@@ -32,5 +32,17 @@ export class TenantPlatformNotificationsController {
   @Post(':id/read')
   read(@CurrentUser() user: TenantStore, @Param('id') id: string) {
     return this.notifications.markRead(user.tenantId, user.userId, id);
+  }
+
+  @Delete('clear/read')
+  @ApiOperation({ summary: 'Okunmuş bildirimleri temizle' })
+  clearRead(@CurrentUser() user: TenantStore) {
+    return this.notifications.clearReadForTenant(user.tenantId, user.userId);
+  }
+
+  @Delete(':id')
+  @ApiOperation({ summary: 'İşletme bildirimini sil/kaldır' })
+  remove(@CurrentUser() user: TenantStore, @Param('id') id: string) {
+    return this.notifications.deleteForTenant(user.tenantId, id);
   }
 }

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, Post, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { FirebaseAuthGuard } from '../../shared/auth/firebase-auth.guard';
 import { RoleGuard } from '../../shared/authorization/role.guard';
@@ -43,6 +43,18 @@ export class SaasBillingController {
   @HttpCode(200)
   readNotices() {
     return this.billing.markNoticesRead();
+  }
+
+  @Delete('notices/clear/read')
+  @ApiOperation({ summary: 'Okunmuş abonelik hatırlatmalarını temizle' })
+  clearReadNotices() {
+    return this.billing.clearReadNotices();
+  }
+
+  @Delete('notices/:id')
+  @ApiOperation({ summary: 'Abonelik hatırlatmasını sil' })
+  deleteNotice(@Param('id') id: string) {
+    return this.billing.deleteNotice(id);
   }
 
   @Post('subscribe')

@@ -275,6 +275,28 @@ export class CrmNotificationsService {
     for (const n of items) await this.markRead(tenantId, uid, n.id);
     return { ok: true, count: items.length };
   }
+
+  async deleteForTenant(tenantId: string, id: string) {
+    const ref = this.tenantCollection(tenantId).doc(id);
+    const snap = await ref.get();
+    if (!snap.exists) throw new AppException(ErrorCode.CRM_NOT_FOUND, 'Bildirim bulunamadı');
+    await ref.update({ deletedAt: new Date().toISOString() });
+    return { ok: true };
+  }
+
+  async clearReadForTenant(tenantId: string, uid: string) {
+    const { items } = await this.listForTenant(tenantId, uid, { limit: 100 });
+    const readItems = items.filter((n) => n.read);
+    const batch = this.firebase.db.batch();
+    const now = new Date().toISOString();
+    for (const item of readItems) {
+      batch.update(this.tenantCollection(tenantId).doc(item.id), { deletedAt: now });
+    }
+    if (readItems.length > 0) {
+      await batch.commit();
+    }
+    return { ok: true, count: readItems.length };
+  }
 }
 
 function stripUndefined<T extends object>(value: T): T {

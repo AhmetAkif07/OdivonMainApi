@@ -97,6 +97,19 @@ export class SaasBillingService {
     return { updated: unread.length };
   }
 
+  async deleteNotice(id: string): Promise<{ ok: boolean }> {
+    await this.col('saasNotices').doc(id).delete();
+    return { ok: true };
+  }
+
+  async clearReadNotices(): Promise<{ count: number }> {
+    const read = (await this.col('saasNotices').get()).docs.filter(
+      (doc) => Boolean(doc.data()['readAt']),
+    );
+    await Promise.all(read.map((doc) => doc.ref.delete()));
+    return { count: read.length };
+  }
+
   /**
    * Daily (cron, per gym): an in-app notice to the owner 7, 3 and 1 days before the paid period
    * ends and once when the grace period starts. The notice id is the reminder key, written with
