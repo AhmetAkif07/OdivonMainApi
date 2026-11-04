@@ -19,6 +19,7 @@ import { VetAiModule } from './ai/ai.module';
 import { StaffModule } from './staff/staff.module';
 import { SurveysModule } from './surveys/surveys.module';
 import { InsightsModule } from './insights/insights.module';
+import { SurgeriesModule } from './surgeries/surgeries.module';
 
 @Module({
   imports: [
@@ -42,6 +43,7 @@ import { InsightsModule } from './insights/insights.module';
     StaffModule,
     SurveysModule,
     InsightsModule,
+    SurgeriesModule,
   ],
 })
 export class VetModule {}

@@ -151,7 +151,9 @@ export class AgendaService {
       priority: dto.priority ?? item.priority,
       notes: dto.notes === undefined ? item.notes : dto.notes || null,
     };
-    const delta = dto.dueAt ? new Date(dto.dueAt).getTime() - new Date(item.dueAt).getTime() : 0;
+    // Under a minute is form rounding, not a move.
+    const rawDelta = dto.dueAt ? new Date(dto.dueAt).getTime() - new Date(item.dueAt).getTime() : 0;
+    const delta = Math.abs(rawDelta) < 60_000 ? 0 : rawDelta;
 
     // New times or a new rule: end the old series at the split point and generate a new one.
     if (delta !== 0 || dto.recurrence !== undefined) {
