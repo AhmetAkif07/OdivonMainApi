@@ -15,10 +15,18 @@ export type CommissionBasis = (typeof COMMISSION_BASES)[number];
 export interface CommissionRule extends BaseDocument {
   name: string;
   kind: CommissionKind;
-  /** null = applies to everyone. */
+  /** null = applies to everyone (or to everyone in `roleId`). */
   userId: string | null;
   staffName: string | null;
+  /** Applies to members of this role when no person is set. */
+  roleId?: string | null;
+  roleName?: string | null;
   active: boolean;
+  /** Inclusive YYYY-MM-DD; sales outside the range do not count for this rule. */
+  validFrom?: string | null;
+  validTo?: string | null;
+  /** Commission rules: paid only when the person's base for this rule reaches it in the period. */
+  minTotal?: number;
   scope: CommissionScope;
   /** productType values ('product' | 'service' | 'vaccine'), category ids or product ids. */
   targetIds: string[];

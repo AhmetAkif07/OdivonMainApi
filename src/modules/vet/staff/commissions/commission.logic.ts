@@ -37,6 +37,19 @@ export interface CommissionInput {
   appointmentDoctors: Map<string, string>;
   /** uid → name */
   staffNames: Map<string, string>;
+  /** uid → role ids */
+  staffRoles?: Map<string, string[]>;
+}
+
+/** Whether a rule is for this person: personal, for one of their roles, or for everyone. */
+export function appliesTo(rule: CommissionRule, userId: string, roles: string[]): boolean {
+  if (rule.userId) return rule.userId === userId;
+  if (rule.roleId) return roles.includes(rule.roleId);
+  return true;
+}
+
+export function validOn(rule: CommissionRule, day: string): boolean {
+  return (!rule.validFrom || day >= rule.validFrom) && (!rule.validTo || day <= rule.validTo);
 }
 
 const SPECIFICITY: Record<CommissionScope, number> = { all: 0, productType: 1, category: 2, product: 3 };
@@ -64,14 +77,18 @@ export function pickRule(
   userId: string,
   productId: string,
   product: CommissionProduct | undefined,
+  roles: string[] = [],
+  day?: string,
 ): CommissionRule | null {
   let best: CommissionRule | null = null;
   let bestScore = -1;
   for (const rule of rules) {
     if (!rule.active || rule.kind !== 'commission') continue;
-    if (rule.userId && rule.userId !== userId) continue;
+    if (!appliesTo(rule, userId, roles)) continue;
+    if (day && !validOn(rule, day)) continue;
     if (!covers(rule, product, productId)) continue;
-    const score = SPECIFICITY[rule.scope] * 2 + (rule.userId ? 1 : 0);
+    // Scope first; then personal > role > everyone.
+    const score = SPECIFICITY[rule.scope] * 3 + (rule.userId ? 2 : rule.roleId ? 1 : 0);
     if (score > bestScore) {
       best = rule;
       bestScore = score;
@@ -127,7 +144,7 @@ export function buildCommissionReport(input: CommissionInput): CommissionReport 
       const base = item.net * factor;
       row.salesNet += base;
       const product = input.products.get(item.line.productId);
-      const rule = pickRule(input.rules, userId, item.line.productId, product);
+      const rule = pickRule(input.rules, userId, item.line.productId, product, input.staffRoles?.get(userId) ?? [], day);
       if (!rule) continue;
       const amount = rule.basis === 'percent' ? (base * rule.rate) / 100 : item.line.quantity * rule.rate;
       row.commission += amount;
@@ -138,11 +155,25 @@ export function buildCommissionReport(input: CommissionInput): CommissionReport 
     }
   }
 
+  // Minimum totals: a commission rule pays nothing until the person's base for it reaches minTotal.
+  const byId = new Map(input.rules.map((rule) => [rule.id, rule]));
+  for (const row of rows.values()) {
+    for (const entry of row.ruleMap.values()) {
+      const min = byId.get(entry.ruleId)?.minTotal ?? 0;
+      if (min > 0 && entry.base + 0.005 < min) {
+        row.commission -= entry.amount;
+        entry.amount = 0;
+      }
+    }
+  }
+
   // Target bonuses: checked for everyone who sold something in the period.
   for (const row of rows.values()) {
     for (const rule of input.rules) {
       if (!rule.active || rule.kind !== 'target') continue;
-      if (rule.userId && rule.userId !== row.userId) continue;
+      if (!appliesTo(rule, row.userId, input.staffRoles?.get(row.userId) ?? [])) continue;
+      if (rule.validTo && rule.validTo < input.from) continue;
+      if (rule.validFrom && rule.validFrom > input.to) continue;
       if (row.salesNet + 0.005 >= rule.threshold) {
         row.targetBonus += rule.amount;
         row.ruleMap.set(rule.id, { ruleId: rule.id, ruleName: rule.name, kind: 'target', base: row.salesNet, amount: rule.amount });
