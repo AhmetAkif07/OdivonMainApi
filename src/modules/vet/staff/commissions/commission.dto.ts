@@ -51,12 +51,12 @@ export class CreateCommissionRuleDto {
 
   @ApiPropertyOptional({ description: 'Active from, YYYY-MM-DD' })
   @IsOptional()
-  @Matches(/^d{4}-d{2}-d{2}$/)
+  @Matches(/^\d{4}-\d{2}-\d{2}$/)
   validFrom?: string | null;
 
   @ApiPropertyOptional({ description: 'Active until, YYYY-MM-DD' })
   @IsOptional()
-  @Matches(/^d{4}-d{2}-d{2}$/)
+  @Matches(/^\d{4}-\d{2}-\d{2}$/)
   validTo?: string | null;
 
   @ApiPropertyOptional({ description: 'Commission rules: minimum base in the period before anything is paid' })

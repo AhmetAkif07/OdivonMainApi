@@ -91,8 +91,41 @@ describe('commission logic', () => {
   });
 });
 
+describe('commission rule targeting', () => {
+  const sale = (id: string, date: string, createdBy: string, qty = 1): CommissionSale => ({
+    id, type: 'sale', date, discount: 0, appointmentId: null, createdBy, lines: [line('food', qty, 100)],
+  });
+
+  it('applies role rules to members, prefers personal ones and honours active dates', () => {
+    const rules = [
+      rule({ id: 'role', roleId: 'tech', rate: 5 }),
+      rule({ id: 'me', userId: 'u2', rate: 8 }),
+      rule({ id: 'nov', rate: 1, validFrom: '2026-11-10', validTo: '2026-11-20' }),
+    ];
+    expect(pickRule(rules, 'u1', 'food', products.get('food'), ['tech'], '2026-11-05')!.id).toBe('role');
+    expect(pickRule(rules, 'u2', 'food', products.get('food'), ['tech'], '2026-11-05')!.id).toBe('me');
+    expect(pickRule(rules, 'u3', 'food', products.get('food'), [], '2026-11-05')).toBeNull();
+    expect(pickRule(rules, 'u3', 'food', products.get('food'), [], '2026-11-15')!.id).toBe('nov');
+  });
+
+  it('pays nothing until the minimum base is reached', () => {
+    const report = buildCommissionReport({
+      from: '2026-11-01',
+      to: '2026-11-30',
+      sales: [sale('a', '2026-11-02', 'u1', 2), sale('b', '2026-11-03', 'u2', 6)],
+      products,
+      rules: [rule({ id: 'min', rate: 10, minTotal: 500 })],
+      appointmentDoctors: new Map(),
+      staffNames: new Map(),
+      staffRoles: new Map(),
+    });
+    expect(report.rows.find((row) => row.userId === 'u1')!.commission).toBe(0);
+    expect(report.rows.find((row) => row.userId === 'u2')!.commission).toBe(60);
+  });
+});
+
 describe('CommissionsService', () => {
-  const repo = { create: jest.fn(), getByIdOrThrow: jest.fn(), save: jest.fn(), collect: jest.fn(), softDelete: jest.fn() };
+  const repo = { create: jest.fn(), getByIdOrThrow: jest.fn(), save: jest.fn(), collect: jest.fn(), softDelete: jest.fn(), readAll: jest.fn() };
   const identity = { listByCurrentTenant: jest.fn() };
   let service: CommissionsService;
 
@@ -113,6 +146,15 @@ describe('CommissionsService', () => {
     await expect(service.create({ name: 'X', kind: 'commission', scope: 'category', rate: 5 })).rejects.toMatchObject({
       code: ErrorCode.VALIDATION_ERROR,
     });
+  });
+
+  it('stores the role name for a role rule and checks the dates', async () => {
+    repo.readAll.mockResolvedValue([{ id: 'tech', name: 'Teknisyen' }]);
+    const created = await service.create({ name: 'Teknisyen %3', kind: 'commission', roleId: 'tech', rate: 3 });
+    expect(created).toMatchObject({ userId: null, roleId: 'tech', roleName: 'Teknisyen' });
+    await expect(
+      service.create({ name: 'X', kind: 'commission', rate: 1, validFrom: '2026-12-01', validTo: '2026-11-01' }),
+    ).rejects.toMatchObject({ code: ErrorCode.VALIDATION_ERROR });
   });
 
   it('limits the report range to a year', async () => {

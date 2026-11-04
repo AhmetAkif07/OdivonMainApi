@@ -56,6 +56,31 @@ export class CommissionsService {
     return new Map(users.map((user) => [user.uid, user.displayName || user.email]));
   }
 
+  private async staffRoles(): Promise<Map<string, string[]>> {
+    const users = await this.identity.listByCurrentTenant();
+    return new Map(users.map((user) => [user.uid, user.roleIds ?? []]));
+  }
+
+  /** Person or role a rule is for; a person wins over a role. */
+  private async target(userId: string | null | undefined, roleId: string | null | undefined) {
+    if (userId) {
+      const names = await this.staffNames();
+      return { userId, staffName: names.get(userId) ?? null, roleId: null, roleName: null };
+    }
+    if (roleId) {
+      const role = (await this.rules.readAll<{ id: string; name?: string }>(TENANT_COLLECTION.roles)).find((item) => item.id === roleId);
+      if (!role) throw new AppException(ErrorCode.VALIDATION_ERROR, 'Rol bulunamadı');
+      return { userId: null, staffName: null, roleId, roleName: role.name ?? null };
+    }
+    return { userId: null, staffName: null, roleId: null, roleName: null };
+  }
+
+  private checkDates(validFrom: string | null, validTo: string | null): void {
+    if (validFrom && validTo && validTo < validFrom) {
+      throw new AppException(ErrorCode.VALIDATION_ERROR, 'Bitiş tarihi başlangıçtan önce olamaz');
+    }
+  }
+
   private normalize(dto: CreateCommissionRuleDto | UpdateCommissionRuleDto, current?: CommissionRule) {
     const kind = dto.kind ?? current?.kind ?? 'commission';
     const basis = dto.basis ?? current?.basis ?? 'percent';
@@ -76,12 +101,16 @@ export class CommissionsService {
   }
 
   async create(dto: CreateCommissionRuleDto): Promise<CommissionRule> {
-    const names = dto.userId ? await this.staffNames() : new Map<string, string>();
+    const validFrom = dto.validFrom || null;
+    const validTo = dto.validTo || null;
+    this.checkDates(validFrom, validTo);
     return this.rules.create({
       name: dto.name.trim(),
-      userId: dto.userId || null,
-      staffName: dto.userId ? names.get(dto.userId) ?? null : null,
+      ...(await this.target(dto.userId, dto.roleId)),
       active: dto.active ?? true,
+      validFrom,
+      validTo,
+      minTotal: dto.minTotal ?? 0,
       threshold: dto.threshold ?? 0,
       amount: dto.amount ?? 0,
       ...this.normalize(dto),
@@ -90,8 +119,10 @@ export class CommissionsService {
 
   async update(id: string, dto: UpdateCommissionRuleDto): Promise<CommissionRule> {
     const current = await this.rules.getByIdOrThrow(id);
-    const userChanged = dto.userId !== undefined;
-    const names = userChanged && dto.userId ? await this.staffNames() : new Map<string, string>();
+    const targetChanged = dto.userId !== undefined || dto.roleId !== undefined;
+    const validFrom = dto.validFrom === undefined ? current.validFrom ?? null : dto.validFrom || null;
+    const validTo = dto.validTo === undefined ? current.validTo ?? null : dto.validTo || null;
+    this.checkDates(validFrom, validTo);
     return this.rules.save({
       ...current,
       ...omitUndefined({
@@ -99,8 +130,16 @@ export class CommissionsService {
         active: dto.active,
         threshold: dto.threshold,
         amount: dto.amount,
+        minTotal: dto.minTotal,
       }),
-      ...(userChanged ? { userId: dto.userId || null, staffName: dto.userId ? names.get(dto.userId) ?? null : null } : {}),
+      validFrom,
+      validTo,
+      ...(targetChanged
+        ? await this.target(
+            dto.userId === undefined ? current.userId : dto.userId,
+            dto.roleId === undefined ? current.roleId : dto.roleId,
+          )
+        : {}),
       ...this.normalize(dto, current),
     });
   }
@@ -115,11 +154,12 @@ export class CommissionsService {
     }
     // One day earlier covers sales stored in UTC just before local midnight.
     const fromKey = addDaysToDate(query.from, -1);
-    const [sales, rules, products, staffNames] = await Promise.all([
+    const [sales, rules, products, staffNames, staffRoles] = await Promise.all([
       this.rules.readSince<CommissionSale>(TENANT_COLLECTION.sales, 'date', fromKey),
       this.rules.collect(),
       this.rules.readAll<CommissionProduct>(TENANT_COLLECTION.products),
       this.staffNames(),
+      this.staffRoles(),
     ]);
     const appointmentIds = [...new Set(sales.map((sale) => sale.appointmentId).filter((id): id is string => Boolean(id)))];
     const appointments = appointmentIds.length
@@ -136,6 +176,7 @@ export class CommissionsService {
       products: new Map(products.map((product) => [product.id, product])),
       appointmentDoctors,
       staffNames,
+      staffRoles,
     });
   }
 }
