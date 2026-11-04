@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { paginateInMemory } from '../../../shared/http/paginate-memory';
 import { PagingQueryDto } from '../../../shared/http/paging.dto';
 import { FirebaseService } from '../../../shared/firebase/firebase.service';
@@ -43,11 +43,21 @@ export class StaffService {
   async create(dto: CreateStaffDto) {
     const store = this.tenantContext.getStore();
     const email = dto.email.trim().toLowerCase();
-    const rawPassword = dto.password?.trim() || generateSecureStaffPassword();
-    let authUid: string | undefined;
+    const rawPassword = dto.password?.trim();
 
+    // 1. Parola Kontrolü: Yeni personel tanımlanırken parola boş olamaz
+    if (!rawPassword) {
+      throw new BadRequestException('Yeni personel tanımlamak için sisteme giriş parolası zorunludur.');
+    }
+    if (rawPassword.length < 6) {
+      throw new BadRequestException('Sisteme giriş parolası en az 6 karakter olmalıdır.');
+    }
+
+    let authUid: string;
+    let isNewAuthUser = false;
+
+    // 2. Firebase Authentication Kullanıcısı Oluşturma / Eşleştirme
     try {
-      // 1. Firebase Auth'ta kullanıcı var mı kontrol et veya oluştur
       let userRecord = await this.firebase.auth.getUserByEmail(email).catch(() => null);
       if (!userRecord) {
         userRecord = await this.firebase.auth.createUser({
@@ -56,15 +66,21 @@ export class StaffService {
           displayName: dto.displayName.trim(),
           emailVerified: true,
         });
-      } else if (dto.password?.trim()) {
+        isNewAuthUser = true;
+      } else {
         await this.firebase.auth.updateUser(userRecord.uid, {
-          password: dto.password.trim(),
+          password: rawPassword,
           displayName: dto.displayName.trim(),
-        }).catch((err) => this.logger.error('Firebase Auth updateUser failed:', err));
+        });
       }
+
+      if (!userRecord || !userRecord.uid) {
+        throw new Error('Firebase Authentication kullanıcısı oluşturulamadı veya UID alınamadı.');
+      }
+
       authUid = userRecord.uid;
 
-      // 2. UserProfile kaydı oluştur veya güncelle
+      // 3. UserProfile kaydı oluştur veya güncelle
       const now = new Date().toISOString();
       const profile: UserProfile = {
         uid: authUid,
@@ -84,28 +100,46 @@ export class StaffService {
       };
       await this.users.createProfile(profile);
 
-      // 3. Custom Claims ata
+      // 4. Custom Claims ata
       await this.firebase.auth.setCustomUserClaims(authUid, {
         tenantId: store.tenantId,
         role: dto.role || 'trainer',
         accountType: 'staff',
         modules: store.modules || ['gym'],
       });
-    } catch (err: unknown) {
-      this.logger.error(`Personel Firebase Auth kullanıcısı oluşturulamadı (${email}): ${(err as any)?.message || err}`);
+    } catch (err: any) {
+      this.logger.error(`Personel Firebase Auth kullanıcısı oluşturulamadı (${email}): ${err?.message || err}`);
+      let errorDetail = err?.message || 'Bilinmeyen bir kimlik doğrulama hatası oluştu.';
+      if (err?.code === 'auth/email-already-exists') {
+        errorDetail = 'Bu e-posta adresi ile kayıtlı bir kullanıcı zaten mevcut.';
+      } else if (err?.code === 'auth/invalid-email') {
+        errorDetail = 'Geçersiz e-posta formatı.';
+      } else if (err?.code === 'auth/weak-password') {
+        errorDetail = 'Belirlenen parola çok zayıf. Lütfen en az 6 karakterden oluşan güçlü bir parola belirleyin.';
+      }
+      // KRİTİK KURAL: Firebase Authentication oluşmadıysa kullanıcı kayıt edilmesine ASLA izin verme!
+      throw new BadRequestException(`Firebase Authentication hesabı oluşturulamadığı için personel kaydedilmedi: ${errorDetail}`);
     }
 
-    // 4. gymStaff koleksiyonuna kaydet (userId = authUid)
-    const created = await this.staff.create(dto, authUid);
+    // 5. gymStaff koleksiyonuna kaydet (Yalnızca Firebase Auth başarılı olduğunda buraya gelebilir!)
+    try {
+      const created = await this.staff.create(dto, authUid);
 
-    // 5. Hoş geldin & aktivasyon e-postasını gönder
-    if (dto.sendWelcomeEmail !== false && created?.email) {
-      this.sendStaffWelcomeSafely(created, rawPassword).catch((err) =>
-        this.logger.error(`Personel karşılama e-postası gönderilemedi (${email}): ${(err as any)?.message || err}`),
-      );
+      // 6. Hoş geldin & aktivasyon e-postasını gönder
+      if (dto.sendWelcomeEmail !== false && created?.email) {
+        this.sendStaffWelcomeSafely(created, rawPassword).catch((err) =>
+          this.logger.error(`Personel karşılama e-postası gönderilemedi (${email}): ${(err as any)?.message || err}`),
+        );
+      }
+
+      return created;
+    } catch (dbErr: any) {
+      // Eğer Firestore kaydı başarısız olursa ve Firebase kullanıcısı bu işlemde yeni oluşturulduysa geri al
+      if (isNewAuthUser && authUid) {
+        await this.firebase.auth.deleteUser(authUid).catch(() => null);
+      }
+      throw dbErr;
     }
-
-    return created;
   }
 
   getById(id: string) {
