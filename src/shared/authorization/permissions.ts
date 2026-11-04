@@ -25,6 +25,7 @@ export const PERMISSION_RESOURCES = [
   { key: 'vaccineSchedules', label: 'Aşı takvimi', group: 'clinic', modules: ['vet'] },
   { key: 'agenda', label: 'Ajanda', group: 'clinic', modules: ['vet'] },
   { key: 'staffSchedule', label: 'Vardiya & İzin', group: 'clinic', modules: ['vet'] },
+  { key: 'surveys', label: 'Memnuniyet anketleri', group: 'clinic', modules: ['vet'] },
   { key: 'labDocuments', label: 'Lab dokümanları', group: 'clinic', modules: ['vet'] },
   { key: 'files', label: 'Dosyalar', group: 'clinic', modules: ['vet'] },
   { key: 'clinicParameters', label: 'Klinik parametreleri', group: 'admin', modules: ['vet'] },

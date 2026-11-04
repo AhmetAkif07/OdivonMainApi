@@ -36,6 +36,8 @@ export const TENANT_COLLECTION = {
   cheques: 'cheques',
   staffShifts: 'staffShifts',
   staffLeaves: 'staffLeaves',
+  surveyTemplates: 'surveyTemplates',
+  surveyInvites: 'surveyInvites',
   stockMovements: 'stockMovements',
   demands: 'demands',
   approvalWorkflows: 'approvalWorkflows',
@@ -278,6 +280,7 @@ export const ROOT_COLLECTION = {
   rentPublicTenants: 'rentPublicTenants',
   rentPublicOtps: 'rentPublicOtps',
   apmPublicBranches: 'apmPublicBranches',
+  vetSurveyTokens: 'vetSurveyTokens',
   parkingAgentIndex: 'parkingAgentIndex',
   parkingAgentPairingCodes: 'parkingAgentPairingCodes',
 } as const;
