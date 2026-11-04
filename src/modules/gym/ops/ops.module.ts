@@ -1,3 +1,4 @@
+import { MailModule } from '../../../shared/mail/mail.module';
 import { GymDailyCloseController } from './daily-close/daily-close.controller';
 import { GymDailyCloseService } from './daily-close/daily-close.service';
 import { GymBankController } from './banks/gym-bank.controller';
@@ -42,7 +43,7 @@ import { GymStockController } from './stock/stock.controller';
 import { GymStockService } from './stock/stock.service';
 
 @Module({
-  imports: [GymMembersModule, GymPackagesModule, GymAccessModule],
+  imports: [GymMembersModule, GymPackagesModule, GymAccessModule, MailModule],
   controllers: [
     GymClassesController,
     GymAppointmentsController,

@@ -33,6 +33,9 @@ export interface TenantNotificationDoc {
   /** Uids of tenant users who have read it. */
   readBy: string[];
   deletedAt: string | null;
+  targetRoles?: string[];
+  targetUids?: string[];
+  category?: string;
 }
 
 export interface NotificationBroadcastDoc {
@@ -247,13 +250,31 @@ export class CrmNotificationsService {
 
   // ---------- Tenant side ----------
 
-  async listForTenant(tenantId: string, uid: string, opts: { unreadOnly?: boolean; limit?: number }) {
+  async listForTenant(
+    tenantId: string,
+    uid: string,
+    opts: { unreadOnly?: boolean; limit?: number; userRole?: string },
+  ) {
     const limit = Math.min(100, Math.max(1, opts.limit ?? 30));
     const snap = await this.tenantCollection(tenantId).orderBy('createdAt', 'desc').limit(limit).get();
     const now = new Date().toISOString();
     const items = snap.docs
       .map((d) => d.data() as TenantNotificationDoc)
       .filter((n) => !n.deletedAt && (!n.expiresAt || n.expiresAt > now))
+      .filter((n) => {
+        if (n.targetRoles && n.targetRoles.length > 0) {
+          const matchesRole = Boolean(opts.userRole && n.targetRoles.includes(opts.userRole));
+          const matchesUid = Boolean(n.targetUids && n.targetUids.length > 0 && n.targetUids.includes(uid));
+          if (!matchesRole && !matchesUid) {
+            return false;
+          }
+        } else if (n.targetUids && n.targetUids.length > 0) {
+          if (!n.targetUids.includes(uid)) {
+            return false;
+          }
+        }
+        return true;
+      })
       .map(({ readBy, ...n }) => ({ ...n, read: (readBy ?? []).includes(uid) }))
       .filter((n) => !opts.unreadOnly || !n.read);
     return { items, unreadCount: items.filter((n) => !n.read).length };

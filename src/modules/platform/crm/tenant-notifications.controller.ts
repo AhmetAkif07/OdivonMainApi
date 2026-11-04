@@ -21,6 +21,7 @@ export class TenantPlatformNotificationsController {
     return this.notifications.listForTenant(user.tenantId, user.userId, {
       unreadOnly: query.unreadOnly === 'true',
       limit: Number(query.limit) || undefined,
+      userRole: user.role,
     });
   }
 
