@@ -17,7 +17,8 @@ interface StoreConfig {
   actions: { created: AuditAction; updated: AuditAction; deleted: AuditAction };
 }
 
-/** Small tenant-scoped document store shared by shifts and leaves. */
+/** Small tenant-scoped document store shared by shifts and leaves (decorated so Nest injects its constructor). */
+@Injectable()
 abstract class StaffStore<T extends BaseDocument> {
   protected abstract readonly config: StoreConfig;
 

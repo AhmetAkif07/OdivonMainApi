@@ -1,3 +1,4 @@
+import { Injectable } from '@nestjs/common';
 import { AuditService } from '../../../shared/audit/audit.service';
 import { AuditAction } from '../../../shared/audit/audit.types';
 import { AppException } from '../../../shared/errors/app.exception';
@@ -15,7 +16,12 @@ export interface DocStoreConfig {
   actions: { created: AuditAction; updated: AuditAction; deleted: AuditAction };
 }
 
-/** Small tenant-scoped document store with soft delete and audit records. */
+/**
+ * Small tenant-scoped document store with soft delete and audit records.
+ * @Injectable() here makes TypeScript emit the constructor parameter types; subclasses without
+ * their own constructor inherit them, otherwise Nest would inject nothing.
+ */
+@Injectable()
 export abstract class TenantDocStore<T extends BaseDocument> {
   protected abstract readonly config: DocStoreConfig;
 
