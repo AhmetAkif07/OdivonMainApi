@@ -164,6 +164,11 @@ export class StockLedgerService {
     return paginateInMemory(items, query.limit, query.cursor);
   }
 
+  /** Every product/store balance with its low-stock flag. */
+  allBalances(): Promise<StockBalance[]> {
+    return this.balances();
+  }
+
   isManual(movement: StockMovement): boolean {
     return !movement.source || movement.source.type === 'manual';
   }
