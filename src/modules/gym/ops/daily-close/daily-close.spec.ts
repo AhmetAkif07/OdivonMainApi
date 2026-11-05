@@ -1,6 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { GymDailyCloseService } from './daily-close.service';
 import { GymStore } from '../../shared/gym-store';
+import { FirebaseService } from '../../../../shared/firebase/firebase.service';
+import { MailService } from '../../../../shared/mail/mail.service';
 
 describe('GymDailyCloseService', () => {
   let service: GymDailyCloseService;
@@ -77,10 +79,24 @@ describe('GymDailyCloseService', () => {
       }),
     };
 
+    // Owner lookup returns no users; notification write succeeds.
+    const query = { where: jest.fn(), get: jest.fn().mockResolvedValue({ docs: [] }) };
+    query.where.mockReturnValue(query);
+    const mockFirebase = {
+      db: {
+        collection: jest.fn().mockReturnValue({
+          ...query,
+          doc: jest.fn().mockReturnValue({ id: 'notif-1', set: jest.fn().mockResolvedValue(undefined) }),
+        }),
+      },
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         GymDailyCloseService,
         { provide: GymStore, useValue: mockStore },
+        { provide: FirebaseService, useValue: mockFirebase },
+        { provide: MailService, useValue: { sendDailyCloseEmail: jest.fn().mockResolvedValue(undefined) } },
       ],
     }).compile();
 
