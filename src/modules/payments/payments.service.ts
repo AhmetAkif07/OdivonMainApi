@@ -264,6 +264,8 @@ export class PaymentsService {
   async reconcile(id: string) {
     const session = await this.getSessionForTenant(id);
     if (!session.token) throw new AppException(ErrorCode.INVALID_STATUS, 'Checkout has no token yet');
+    // PayTR results arrive only by notification: "check again" just returns the current state.
+    if (session.provider === 'paytr') return this.get(id);
     await this.handleCallback(id, session.token);
     return this.get(id);
   }
@@ -274,6 +276,7 @@ export class PaymentsService {
     if (session.userId !== this.tenant.getUserId() || !session.token) {
       throw new AppException(ErrorCode.INVALID_STATUS, 'Payment session was not found');
     }
+    if (session.provider === 'paytr') return this.getOwn(id);
     await this.handleCallback(id, session.token);
     return this.getOwn(id);
   }
@@ -306,6 +309,8 @@ export class PaymentsService {
   /**
    * PayTR notification for SaaS subscriptions (set once in the PayTR panel). PayTR gives no retrieve
    * call here, so the signed hash is the proof of the result; the amount is checked against the session.
+   * A signed success that cannot be applied (amount or order mismatch) is kept for manual review and
+   * acknowledged, so PayTR stops retrying; storage errors still fail and PayTR retries.
    */
   async handlePaytrNotification(body: Record<string, string | undefined>) {
     const merchantOid = String(body['merchant_oid'] ?? '');
@@ -321,13 +326,28 @@ export class PaymentsService {
       throw new AppException(ErrorCode.INVALID_STATUS, 'Unknown checkout');
     }
     if (session.status === 'succeeded' || session.status === 'failed') return { status: session.status };
+    if (status !== 'success') return this.applyVerified(id, session, { status: 'failed', providerPaymentId: merchantOid });
     if (Number(totalAmount) !== session.amountKurus) {
-      throw new AppException(ErrorCode.FINANCE_INVALID, 'PayTR amount does not match the order');
+      return this.flagForReview(id, session, merchantOid, `PayTR charged ${totalAmount} kuruş, the order is ${session.amountKurus} kuruş`);
     }
-    return this.applyVerified(id, session, {
-      status: status === 'success' ? 'succeeded' : 'failed',
-      providerPaymentId: merchantOid,
+    try {
+      return await this.applyVerified(id, session, { status: 'succeeded', providerPaymentId: merchantOid });
+    } catch (error) {
+      if (!(error instanceof AppException) || error.code !== ErrorCode.FINANCE_INVALID) throw error;
+      return this.flagForReview(id, session, merchantOid, error.message);
+    }
+  }
+
+  /** A charged payment that could not be applied: recorded under `paymentReviews` and logged, never dropped. */
+  private async flagForReview(id: string, session: PaymentSession, providerPaymentId: string, reason: string) {
+    const at = new Date().toISOString();
+    await this.sessions().doc(id).update({ reviewPending: true, reviewReason: reason, providerPaymentId, updatedAt: at });
+    await this.firebase.db.doc(`paymentReviews/${id}`).set({
+      id, tenantId: session.tenantId, provider: session.provider, source: session.source, sourceId: session.sourceId,
+      amountKurus: session.amountKurus, providerPaymentId, reason, createdAt: at, resolvedAt: null,
     });
+    this.logger.error(`Payment ${id} (tenant ${session.tenantId}) was charged but not applied: ${reason}`);
+    return { status: 'pending' as const, reviewPending: true };
   }
 
   /** Applies a verified provider result to its session once; repeated results are no-ops. */

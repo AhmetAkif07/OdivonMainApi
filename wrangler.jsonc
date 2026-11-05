@@ -70,7 +70,11 @@
     "SMTP_PORT": "465",
     "SMTP_SECURE": "true",
     "SMTP_USER": "info@odivon.com",
-    "SMTP_FROM": "\"OdivonGYM\" <info@odivon.com>"
+    "SMTP_FROM": "\"OdivonGYM\" <info@odivon.com>",
+    // SaaS subscriptions are paid with PayTR. PAYTR_MERCHANT_ID / _KEY / _SALT are secrets.
+    // Switch PAYTR_MODE to "live" after a successful sandbox payment.
+    "SAAS_PAYMENT_PROVIDER": "paytr",
+    "PAYTR_MODE": "sandbox"
   },
   "previews": {
     "vars": {

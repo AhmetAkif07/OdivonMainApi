@@ -2,7 +2,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
 import { AppException } from '../../shared/errors/app.exception';
 import { ErrorCode } from '../../shared/errors/error-codes';
-import { CheckoutInput, CheckoutResult } from './payment-provider';
+import { CheckoutInput, CheckoutResult, PaymentSource } from './payment-provider';
 
 const GET_TOKEN_URL = 'https://www.paytr.com/odeme/api/get-token';
 const IFRAME_URL = 'https://www.paytr.com/odeme/guvenli/';
@@ -34,6 +34,13 @@ export function paytrSessionId(merchantOid: string): string | null {
   const hex = merchantOid.toLowerCase();
   if (!/^[0-9a-f]{32}$/.test(hex)) return null;
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
+/** Product name the buyer sees on the PayTR page. */
+const PRODUCT_NAMES: Partial<Record<PaymentSource, string>> = { saas_subscription: 'Odivon abonelik' };
+
+export function paytrProductName(source: PaymentSource): string {
+  return PRODUCT_NAMES[source] ?? 'Odivon ödeme';
 }
 
 /** Basket is sent base64 encoded as `[[name, price, quantity]]` with the price in TL. */
@@ -84,7 +91,7 @@ export class PaytrProvider {
     const userIp = input.buyer.ip;
     const email = input.buyer.email;
     const paymentAmount = String(input.amountKurus);
-    const userBasket = paytrBasket(input.source, input.amountKurus);
+    const userBasket = paytrBasket(paytrProductName(input.source), input.amountKurus);
     const noInstallment = '1';
     const maxInstallment = '0';
     const currency = 'TL';

@@ -59,7 +59,7 @@ describe('PaytrProvider', () => {
 
     expect(result).toEqual({ token: 'iframe-token', paymentPageUrl: 'https://www.paytr.com/odeme/guvenli/iframe-token' });
     const form = fetchMock.mock.calls[0][1].body as URLSearchParams;
-    const basket = paytrBasket('saas_subscription', 12550);
+    const basket = paytrBasket('Odivon abonelik', 12550);
     const expectedToken = paytrSign(credentials.merchantKey,
       '123456' + '127.0.0.1' + '7c9e6679742540de944be07fc1f90ae7' + 'ayse@example.com' + '12550' + basket + '1' + '0' + 'TL' + '1' +
       credentials.merchantSalt);
