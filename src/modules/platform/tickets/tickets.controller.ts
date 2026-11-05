@@ -47,14 +47,13 @@ export class SupportTicketsController {
   }
 
   @Get('my-tickets')
-  @ApiOperation({ summary: "Signed-in user's tickets (by uid + email); anonymous callers search by ?email" })
-  getMyTickets(@Req() req: Request, @Query('email') email?: string) {
+  @ApiOperation({ summary: "Signed-in user's tickets (by uid and verified e-mail); anonymous callers get an empty list" })
+  getMyTickets(@Req() req: Request) {
     const user = getOptionalDecodedToken(req);
-    if (user) {
-      // A signed-in user only sees their own tickets, whatever ?email says.
-      return this.ticketsService.getMyTickets(user.email || email, user.uid);
-    }
-    return this.ticketsService.getMyTickets(email, undefined);
+    // Anonymous lookup by ?email was removed: anyone could read another person's tickets.
+    if (!user) return [];
+    const verifiedEmail = user.email_verified === true ? user.email : undefined;
+    return this.ticketsService.getMyTickets(verifiedEmail, user.uid);
   }
 }
 

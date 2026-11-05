@@ -4,7 +4,7 @@ import { createBaseFields } from '../../../shared/firestore/base-document';
 import { TenantContext } from '../../../shared/tenancy/tenant.context';
 import { IdentityRepository } from '../../identity/identity.repository';
 import { TenantService } from '../../tenant/tenant.service';
-import { farmForbidden } from '../shared/farm-errors';
+import { farmForbidden, farmPrecondition } from '../shared/farm-errors';
 import { addDays, FARM_PLANS, TRIAL_DAYS, trialSubscription } from '../shared/farm-plans';
 import { FARM_ROLE_TITLES } from '../shared/farm-roles';
 import { FarmStore, toPlain } from '../shared/farm-store';
@@ -17,6 +17,8 @@ import {
 
 /** The only account allowed to force its own trial into the expired state (sales demo). */
 export const DEMO_EXPIRED_EMAIL = 'demo-expired@odivonfarm.com';
+/** E-mails a farm may queue in 24 hours (invitations, welcome, kurban payments). */
+export const FARM_MAIL_DAILY_LIMIT = 50;
 
 const SETTINGS_FIELDS = ['address', 'phone', 'countryCode', 'country', 'language'] as const;
 
@@ -97,6 +99,12 @@ export class FarmCoreService {
 
   async changePlan(dto: ChangeFarmPlanDto) {
     await this.store.assertAdmin();
+    // No payment is taken here, so a paid plan must not be activated by this call in production.
+    if (process.env['ALLOW_DEMO_BILLING'] !== 'true') {
+      throw farmPrecondition(
+        'Plan değişikliği için online ödeme henüz aktif değil. Lütfen destek ekibiyle iletişime geçin.',
+      );
+    }
     const plan = FARM_PLANS[dto.planId];
     const billingCycle = dto.billingCycle ?? 'monthly';
     const now = new Date();
@@ -114,7 +122,10 @@ export class FarmCoreService {
     };
     const tenantId = this.store.tenantId();
     await this.store.doc(TENANT_COLLECTION.farmSubscription, tenantId).set(patch, { merge: true });
-    await this.tenants.update(tenantId, { membershipStatus: 'active' });
+    await this.tenants.update(tenantId, {
+      membershipStatus: 'active',
+      subscriptionEndsAt: patch.currentPeriodEnd,
+    });
     return this.subscription();
   }
 
@@ -209,7 +220,16 @@ export class FarmCoreService {
    * tenant-scoped (`tenants/{tenantId}/farmMailQueue`) and each message has one recipient.
    */
   async queueMail(dto: QueueFarmMailDto) {
-    await this.store.requireRole();
+    // Mail goes out as info@odivon.com: only farm admins may queue it, within a daily quota.
+    await this.store.assertAdmin();
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const recent = await this.store
+      .collection(TENANT_COLLECTION.farmMailQueue)
+      .where('createdAt', '>=', since)
+      .get();
+    if (recent.size >= FARM_MAIL_DAILY_LIMIT) {
+      throw farmPrecondition('Günlük e-posta gönderim sınırına ulaşıldı. Lütfen yarın tekrar deneyin.');
+    }
     const ref = this.store.collection(TENANT_COLLECTION.farmMailQueue).doc();
     await ref.set({
       id: ref.id,

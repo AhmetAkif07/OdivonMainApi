@@ -1,3 +1,4 @@
+import { randomInt } from 'crypto';
 import { Injectable, Logger } from '@nestjs/common';
 import { FirebaseService } from '../../../shared/firebase/firebase.service';
 import { AppException } from '../../../shared/errors/app.exception';
@@ -33,12 +34,14 @@ export class PlatformTicketsService {
   constructor(private readonly firebase: FirebaseService) {}
 
   /**
-   * Generates a unique, friendly tracking code (e.g., TK-2026-482910)
+   * Tracking code like TK-2026-7KQ2M9XH4D: 10 characters from a 31-letter alphabet (~49 bits), drawn
+   * with crypto randomness, so codes cannot be guessed or enumerated.
    */
   private generateTrackingNumber(): string {
     const year = new Date().getFullYear();
-    const rand = Math.floor(100000 + Math.random() * 900000);
-    return `TK-${year}-${rand}`;
+    let code = '';
+    for (let i = 0; i < 10; i++) code += TRACKING_ALPHABET[randomInt(TRACKING_ALPHABET.length)];
+    return `TK-${year}-${code}`;
   }
 
   async createTicket(
@@ -82,7 +85,8 @@ export class PlatformTicketsService {
 
     // Store with document ID = trackingNumber for fast, direct O(1) lookups
     const docRef = this.firebase.db.collection(COLLECTION_NAME).doc(trackingNumber);
-    await docRef.set(ticket);
+    // create(), not set(): a colliding code must never overwrite someone else's ticket.
+    await docRef.create(ticket);
     this.logger.log(`Support ticket created: ${trackingNumber} by ${ticket.email}`);
 
     return {
@@ -91,35 +95,38 @@ export class PlatformTicketsService {
     };
   }
 
-  async trackTicket(trackingNumber: string): Promise<SupportTicket> {
+  /**
+   * Anonymous status lookup by tracking code. Returns only the ticket's progress, never the
+   * requester's contact details, description or the admin note.
+   */
+  async trackTicket(trackingNumber: string): Promise<PublicTicketStatus> {
     const cleanNo = trackingNumber.trim().toUpperCase();
+    if (!/^TK-\d{4}-[A-Z0-9]{6,12}$/.test(cleanNo)) {
+      throw new AppException(ErrorCode.CRM_NOT_FOUND, 'Belirtilen takip numarasına ait talep bulunamadı.');
+    }
     const doc = await this.firebase.db.collection(COLLECTION_NAME).doc(cleanNo).get();
 
     if (!doc.exists) {
       throw new AppException(ErrorCode.CRM_NOT_FOUND, 'Belirtilen takip numarasına ait talep bulunamadı.');
     }
 
-    return {
-      id: doc.id,
-      ...(doc.data() as Omit<SupportTicket, 'id'>),
-    };
+    return toPublicTicketStatus(doc.id, doc.data() as Omit<SupportTicket, 'id'>);
   }
 
+  /** Signed-in user's tickets: by uid, plus tickets sent from their verified e-mail address. */
   async getMyTickets(email?: string, userId?: string): Promise<SupportTicket[]> {
-    if (!email && !userId) return [];
-
-    const snapshot = await this.firebase.db.collection(COLLECTION_NAME).get();
-    const list: SupportTicket[] = [];
-
+    if (!userId) return [];
+    const collection = this.firebase.db.collection(COLLECTION_NAME);
     const cleanEmail = email?.trim().toLowerCase();
-    snapshot.forEach((doc) => {
-      const data = doc.data() as Omit<SupportTicket, 'id'>;
-      if ((cleanEmail && data.email === cleanEmail) || (userId && data.userId === userId)) {
-        list.push({ id: doc.id, ...data });
-      }
-    });
-
-    return list.sort(
+    const [byUser, byEmail] = await Promise.all([
+      collection.where('userId', '==', userId).get(),
+      cleanEmail ? collection.where('email', '==', cleanEmail).get() : Promise.resolve(null),
+    ]);
+    const tickets = new Map<string, SupportTicket>();
+    for (const doc of [...byUser.docs, ...(byEmail?.docs ?? [])]) {
+      tickets.set(doc.id, { id: doc.id, ...(doc.data() as Omit<SupportTicket, 'id'>) });
+    }
+    return [...tickets.values()].sort(
       (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
     );
   }
@@ -289,4 +296,35 @@ export class PlatformTicketsService {
     const [ticket] = await this.enrichTickets([{ id: updated.id, ...(updated.data() as Omit<SupportTicket, 'id'>) }]);
     return ticket;
   }
+}
+
+/** No 0/O, 1/I/L: codes are read and typed by people. */
+const TRACKING_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+
+export interface PublicTicketStatus {
+  id: string;
+  trackingNumber: string;
+  productLabel: string | null;
+  categoryLabel: string;
+  subject: string;
+  status: SupportTicket['status'];
+  approvedAt: string | null;
+  completedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export function toPublicTicketStatus(id: string, data: Omit<SupportTicket, 'id'>): PublicTicketStatus {
+  return {
+    id,
+    trackingNumber: data.trackingNumber ?? id,
+    productLabel: data.productLabel ?? null,
+    categoryLabel: data.categoryLabel,
+    subject: data.subject,
+    status: data.status,
+    approvedAt: data.approvedAt ?? null,
+    completedAt: data.completedAt ?? null,
+    createdAt: data.createdAt,
+    updatedAt: data.updatedAt,
+  };
 }
