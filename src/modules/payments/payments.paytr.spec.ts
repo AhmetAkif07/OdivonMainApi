@@ -68,6 +68,7 @@ describe('PaymentsService PayTR notification', () => {
     expect(documents.get(`paymentSessions/${SESSION_ID}`)?.status).toBe('succeeded');
     expect(documents.get(`tenants/tenant-a/paymentSaasOrders/${ORDER}`)?.status).toBe('paid');
     expect(documents.get('tenants/tenant-a')?.membershipStatus).toBe('active');
+    expect(documents.get('tenants/tenant-a')).toMatchObject({ planId: 'pro', billingCycle: 'monthly' });
     expect(documents.has(`tenants/tenant-a/saasPayments/${SESSION_ID}`)).toBe(true);
     const endsAt = documents.get('tenants/tenant-a')?.subscriptionEndsAt;
     await expect(notify('success', '12550')).resolves.toEqual({ status: 'succeeded' });

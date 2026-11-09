@@ -33,6 +33,7 @@ const DEFAULT_RETURN_ORIGINS = [
   'https://odivon-panel.dogangns-98.workers.dev',
   'https://odivonapm.dogangns-98.workers.dev',
   'https://rent.odivon.com',
+  'https://vet.odivon.com',
   'https://hair.odivon.com',
   'https://odivonprohair.dogangns-98.workers.dev',
   'http://localhost:4200',
@@ -423,7 +424,14 @@ export class PaymentsService {
             updatedAt: paidAt,
             updatedBy: 'system:billing',
           });
-          tx.update(tenantRef!, { membershipStatus: 'active', subscriptionEndsAt: period.endsAt, updatedAt: paidAt });
+          // planId/billingCycle on the tenant: the panels (vet, fire-safe, fgas) read the plan from there.
+          tx.update(tenantRef!, {
+            membershipStatus: 'active',
+            planId: order.planId,
+            billingCycle: order.billingCycle,
+            subscriptionEndsAt: period.endsAt,
+            updatedAt: paidAt,
+          });
           tx.set(this.firebase.db.doc(`tenants/${session.tenantId}/saasPayments/${id}`), {
             id,
             receiptNo: receiptNo(id, paidAt),
