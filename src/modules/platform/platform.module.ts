@@ -4,6 +4,8 @@ import {
   SupportTicketsController,
 } from './tickets/tickets.controller';
 import { Module } from '@nestjs/common';
+import { PlatformBackendsService } from './backends/backends.service';
+import { PlatformBackendsController } from './backends/backends.controller';
 import { MailModule } from '../../shared/mail/mail.module';
 import { APP_INTERCEPTOR } from '@nestjs/core';
 import { PlatformReleasesService } from './releases/releases.service';
@@ -61,8 +63,10 @@ import { TenantPlatformNotificationsController } from './crm/tenant-notification
     PlatformCrmNotificationsController,
     TenantPlatformNotificationsController,
     PlatformReleasesController,
+    PlatformBackendsController,
   ],
   providers: [
+    PlatformBackendsService,
     PlatformTicketsService,
     PlatformAdminGuard,
     PlatformAuditService,

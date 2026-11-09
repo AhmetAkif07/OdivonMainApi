@@ -209,3 +209,13 @@ node scripts/grant-platform-admin.mjs admin@odivon.com
 node scripts/grant-platform-admin.mjs admin@odivon.com --revoke
 ```
 
+
+## SaaS altyapı takibi (`/api/v1/platform/backends`)
+
+OdivonManagement'taki "SaaS Altyapı" sayfası her ürün ailesinin hangi API'yi ve hangi Firebase
+projesini kullandığını, API'nin canlılığını, yanıt süresini, yayındaki web sürümünü ve (destekleyen
+API'lerde) kiracı özetini gösterir. Varsayılan kayıtlar `src/modules/platform/backends/backend.types.ts`
+içindedir; panelden yapılan değişiklikler `platformBackends` koleksiyonunda tutulur.
+
+- `PLATFORM_BACKEND_TOKENS`: harici API servis tokenları, JSON. Örnek: `{"erp":"<OdivonerpAPI PLATFORM_SYNC_TOKEN>"}`.
+  Yalnız Worker secret'ı olarak tanımlanır (`wrangler secret put PLATFORM_BACKEND_TOKENS`); Firestore'a veya tarayıcıya gitmez.
