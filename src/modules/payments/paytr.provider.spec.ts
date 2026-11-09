@@ -1,5 +1,5 @@
 import { createHmac } from 'node:crypto';
-import { PaytrProvider, paytrBasket, paytrMerchantOid, paytrSessionId, paytrSign, verifyPaytrCallbackHash } from './paytr.provider';
+import { PaytrProvider, paytrBasket, paytrMerchantOid, paytrResultFields, paytrSessionId, paytrSign, verifyPaytrCallbackHash } from './paytr.provider';
 import { CheckoutInput } from './payment-provider';
 
 const credentials = { merchantId: '123456', merchantKey: 'merchant-key', merchantSalt: 'merchant-salt' };
@@ -66,6 +66,21 @@ describe('PaytrProvider', () => {
     expect(form.get('paytr_token')).toBe(expectedToken);
     expect(form.get('test_mode')).toBe('1');
     expect(form.get('payment_amount')).toBe('12550');
+  });
+
+  it('uses the per-checkout mode for test_mode', async () => {
+    const fetchMock = jest.fn().mockResolvedValue(new Response(JSON.stringify({ status: 'success', token: 't' }), { status: 200 }));
+    global.fetch = fetchMock as unknown as typeof fetch;
+    const credentials = { merchantId: '1', merchantKey: 'k', merchantSalt: 's' };
+    const input = { id: '7c9e6679-7425-40de-944b-e07fc1f90ae7', amountKurus: 100, source: 'saas_subscription' as const, sourceId: 'o',
+      callbackUrl: 'https://x', buyer: { id: 'b', name: 'A', surname: 'B', identityNumber: '1', email: 'a@b.c', gsmNumber: '1', address: 'x', city: 'y', country: 'Turkey', ip: '1.1.1.1' } };
+    await new PaytrProvider().createCheckout(input, credentials, 'live');
+    expect((fetchMock.mock.calls[0][1].body as URLSearchParams).get('test_mode')).toBe('0');
+  });
+
+  it('keeps only the documented notification fields', () => {
+    expect(paytrResultFields({ merchant_oid: 'x', status: 'failed', hash: 'secret', failed_reason_msg: 'Kart reddedildi', other: 'y' }))
+      .toEqual({ merchant_oid: 'x', status: 'failed', failed_reason_msg: 'Kart reddedildi' });
   });
 
   it('turns a rejected token request into a finance error', async () => {

@@ -12,12 +12,14 @@ import type { GymPackage } from '../gym/packages/package.entity';
 import { fulfillGymPayment, isGymSource } from './gym-fulfillment';
 import { GymPaymentCredentialsService } from './gym-payment-credentials.service';
 import { IyzicoProvider } from './iyzico.provider';
-import { PaytrProvider, paytrSessionId, verifyPaytrCallbackHash } from './paytr.provider';
+import { PaytrProvider, paytrResultFields, paytrSessionId, verifyPaytrCallbackHash } from './paytr.provider';
 import { CreateCheckoutDto, CreateSaasOrderDto, MemberCheckoutDto } from './payments.dto';
 import { CheckoutInput, IyzicoCredentials, PaymentProvider, PaymentProviderId, PaymentSession, PaymentSource, VerifiedPayment } from './payment-provider';
 import { nextPeriod, receiptNo, SaasCycle } from './saas-billing';
 import { SAAS_PLAN_MODULE } from './saas-prices';
 import { pricingProduct, SaasPlanPricing, SaasPricingService, STATIC_SAAS_PRICING } from '../saas-pricing/saas-pricing.service';
+import { PaymentEventInput, PaymentEventsService } from './monitoring/payment-events.service';
+import { PaymentModesService } from './monitoring/payment-modes.service';
 
 /** iyzico checkout form tokens live ~30 minutes; an older pending session is treated as abandoned. */
 export const CHECKOUT_TTL_MS = 30 * 60_000;
@@ -60,6 +62,8 @@ export class PaymentsService {
     @Optional() private readonly accessSync?: AccessSyncService,
     @Optional() private readonly pricing: SaasPricingService = STATIC_SAAS_PRICING,
     @Optional() private readonly paytr: PaytrProvider = new PaytrProvider(),
+    @Optional() private readonly events?: PaymentEventsService,
+    @Optional() private readonly modes?: PaymentModesService,
   ) {
     this.providers = new Map([[iyzico.id, iyzico]]);
   }
@@ -153,6 +157,12 @@ export class PaymentsService {
       id, planId: dto.planId, billingCycle: dto.billingCycle, amountKurus,
       status: 'open', createdAt: now, createdBy: this.tenant.getUserId(),
     });
+    await this.logEvent({
+      type: 'order_created', message: `Abonelik siparişi oluşturuldu: ${dto.planId} / ${dto.billingCycle}`,
+      orderId: id, tenantId, source: 'saas_subscription', amountKurus,
+      product: pricingProduct(this.tenant.getStore().modules, dto.planId),
+      detail: { planId: dto.planId, billingCycle: dto.billingCycle },
+    });
     return { id, planId: dto.planId, billingCycle: dto.billingCycle, amountKurus };
   }
 
@@ -162,9 +172,9 @@ export class PaymentsService {
     if (dto.source === 'saas_subscription' && this.tenant.getStore().role !== 'owner') {
       throw new AppException(ErrorCode.FORBIDDEN_ROLE, 'Only the tenant owner can start a SaaS checkout');
     }
-    const { amountKurus, buyerId } = await this.resolveSource(tenantId, dto.source, dto.sourceId);
+    const { amountKurus, buyerId, planId, billingCycle } = await this.resolveSource(tenantId, dto.source, dto.sourceId);
     const userId = dto.source === 'gym_receivable' ? buyerId : null;
-    return this.startCheckout({ source: dto.source, sourceId: dto.sourceId, amountKurus, buyerId, userId, buyer: dto, ip, origin });
+    return this.startCheckout({ source: dto.source, sourceId: dto.sourceId, amountKurus, buyerId, userId, buyer: dto, ip, origin, planId, billingCycle });
   }
 
   /**
@@ -317,21 +327,29 @@ export class PaymentsService {
     const status = String(body['status'] ?? '');
     const totalAmount = String(body['total_amount'] ?? '');
     const credentials = this.paytr.platformCredentials();
+    const providerResult = paytrResultFields(body);
     if (!verifyPaytrCallbackHash(credentials, { merchantOid, status, totalAmount, hash: String(body['hash'] ?? '') })) {
+      await this.logEvent({ type: 'notification_rejected', level: 'error', provider: 'paytr', source: 'saas_subscription',
+        message: 'PayTR bildirimi imza (hash) doğrulamasından geçmedi', detail: providerResult });
       throw new AppException(ErrorCode.FINANCE_INVALID, 'PayTR notification could not be verified');
     }
     const id = paytrSessionId(merchantOid);
     const session = id ? (await this.sessions().doc(id).get()).data() as PaymentSession | undefined : undefined;
     if (!id || !session || session.provider !== 'paytr' || session.source !== 'saas_subscription') {
+      await this.logEvent({ type: 'notification_rejected', level: 'error', provider: 'paytr', source: 'saas_subscription', sessionId: id,
+        message: 'PayTR bildirimi bilinmeyen bir siparişe ait', detail: providerResult });
       throw new AppException(ErrorCode.INVALID_STATUS, 'Unknown checkout');
     }
+    await this.logEvent({ ...this.sessionEvent(id, session), type: 'notification_received', level: status === 'success' ? 'info' : 'warn',
+      message: status === 'success' ? 'PayTR başarılı ödeme bildirdi' : `PayTR başarısız ödeme bildirdi${providerResult.failed_reason_msg ? `: ${providerResult.failed_reason_msg}` : ''}`,
+      detail: providerResult });
     if (session.status === 'succeeded' || session.status === 'failed') return { status: session.status };
-    if (status !== 'success') return this.applyVerified(id, session, { status: 'failed', providerPaymentId: merchantOid });
+    if (status !== 'success') return this.applyVerified(id, session, { status: 'failed', providerPaymentId: merchantOid }, providerResult);
     if (Number(totalAmount) !== session.amountKurus) {
       return this.flagForReview(id, session, merchantOid, `PayTR charged ${totalAmount} kuruş, the order is ${session.amountKurus} kuruş`);
     }
     try {
-      return await this.applyVerified(id, session, { status: 'succeeded', providerPaymentId: merchantOid });
+      return await this.applyVerified(id, session, { status: 'succeeded', providerPaymentId: merchantOid }, providerResult);
     } catch (error) {
       if (!(error instanceof AppException) || error.code !== ErrorCode.FINANCE_INVALID) throw error;
       return this.flagForReview(id, session, merchantOid, error.message);
@@ -347,13 +365,17 @@ export class PaymentsService {
       amountKurus: session.amountKurus, providerPaymentId, reason, createdAt: at, resolvedAt: null,
     });
     this.logger.error(`Payment ${id} (tenant ${session.tenantId}) was charged but not applied: ${reason}`);
+    await this.logEvent({ ...this.sessionEvent(id, session), type: 'review_flagged', level: 'error',
+      message: `Ödeme alındı ama uygulanamadı, inceleme gerekiyor: ${reason}`, detail: { providerPaymentId } });
     return { status: 'pending' as const, reviewPending: true };
   }
 
   /** Applies a verified provider result to its session once; repeated results are no-ops. */
-  private async applyVerified(id: string, session: PaymentSession, verified: VerifiedPayment) {
+  private async applyVerified(id: string, session: PaymentSession, verified: VerifiedPayment, providerResult?: Record<string, unknown>) {
     const ref = this.sessions().doc(id);
     let renewedMember: GymMember | null = null;
+    let applied = false;
+    let saasOutcome: { activated: boolean; periodEndsAt?: string } | null = null;
     await this.firebase.db.runTransaction(async (tx) => {
       const lock = this.firebase.db.doc(`tenants/${session.tenantId}/paymentReservations/${session.source}_${session.sourceId}`);
       const orderRef = session.source === 'saas_subscription'
@@ -384,6 +406,7 @@ export class PaymentsService {
         const paidAt = new Date().toISOString();
         if (!activates) {
           tx.update(orderRef, { status: 'sandbox_succeeded', sessionId: id, updatedAt: paidAt });
+          saasOutcome = { activated: false };
         } else {
           const subscription = subscriptionSnapshot?.data() as { currentPeriodEndsAt?: string; status?: string } | undefined;
           const currentEnd = subscription?.status === 'active' ? subscription.currentPeriodEndsAt : null;
@@ -417,6 +440,7 @@ export class PaymentsService {
             paidBy: current.createdBy,
           });
           tx.update(orderRef, { status: 'paid', sessionId: id, updatedAt: paidAt });
+          saasOutcome = { activated: true, periodEndsAt: period.endsAt };
         }
       }
       const at = new Date().toISOString();
@@ -440,12 +464,37 @@ export class PaymentsService {
         providerPaymentId: verified.providerPaymentId,
         ...(verified.status === 'pending' ? { reviewPending: true } : {}),
         ...(fulfil || (verified.status === 'succeeded' && current.source === 'rentacar_reservation') ? { fulfilledAt: at } : {}),
+        ...(providerResult ? { providerResult } : {}),
         updatedAt: at,
       });
       if (reservation.data()?.sessionId === id) tx.update(lock, { status: verified.status });
+      applied = true;
     });
     if (renewedMember) await this.syncAccess(session.tenantId, renewedMember);
+    if (applied) await this.logResult(id, session, verified, saasOutcome, providerResult);
     return { status: verified.status };
+  }
+
+  private async logResult(id: string, session: PaymentSession, verified: VerifiedPayment,
+    saas: { activated: boolean; periodEndsAt?: string } | null, providerResult?: Record<string, unknown>) {
+    const base = this.sessionEvent(id, session);
+    if (verified.status === 'failed') {
+      const reason = providerResult?.['failed_reason_msg'];
+      await this.logEvent({ ...base, type: 'payment_failed', level: 'warn', detail: providerResult ?? null,
+        message: `Ödeme başarısız${reason ? `: ${String(reason)}` : ''}` });
+      return;
+    }
+    if (verified.status !== 'succeeded') return;
+    if (saas && !saas.activated) {
+      await this.logEvent({ ...base, type: 'payment_sandbox_succeeded', level: 'warn', detail: providerResult ?? null,
+        message: 'TEST ödemesi başarılı; abonelik aktifleştirilmedi (yalnızca CANLI ödemeler aktifleştirir)' });
+      return;
+    }
+    await this.logEvent({ ...base, type: 'payment_succeeded', message: 'Ödeme başarılı', detail: providerResult ?? null });
+    if (saas?.activated) {
+      await this.logEvent({ ...base, type: 'subscription_activated', message: `Abonelik ${saas.periodEndsAt?.slice(0, 10) ?? ''} tarihine kadar uzatıldı`,
+        detail: { planId: session.planId ?? null, billingCycle: session.billingCycle ?? null, periodEndsAt: saas.periodEndsAt ?? null } });
+    }
   }
 
   // ─── Internals ───────────────────────────────────────────────────────────────────────────
@@ -455,8 +504,23 @@ export class PaymentsService {
     return process.env.SAAS_PAYMENT_PROVIDER === 'paytr' ? 'paytr' : 'iyzico';
   }
 
-  private providerMode(id: PaymentProviderId): 'sandbox' | 'live' {
-    return id === 'paytr' ? this.paytr.mode() : this.providers.get('iyzico')!.mode();
+  /** PayTR can run TEST or CANLI per product (panel setting); iyzico follows its keys. */
+  private async platformMode(id: PaymentProviderId, product: string | null): Promise<'sandbox' | 'live'> {
+    if (id !== 'paytr') return this.providers.get('iyzico')!.mode();
+    return this.modes ? this.modes.modeFor(product as never, this.paytr.mode()) : this.paytr.mode();
+  }
+
+  private async logEvent(event: PaymentEventInput) {
+    if (!this.events) return;
+    await this.events.record(event);
+  }
+
+  private sessionEvent(id: string, session: PaymentSession) {
+    return {
+      sessionId: id, orderId: session.source === 'saas_subscription' ? session.sourceId : null, tenantId: session.tenantId,
+      provider: session.provider, source: session.source, product: session.product ?? null, mode: session.mode ?? null,
+      amountKurus: session.amountKurus,
+    };
   }
 
   private async startCheckout(input: {
@@ -468,8 +532,11 @@ export class PaymentsService {
     buyer: Buyer;
     ip: string;
     origin?: string;
+    planId?: string;
+    billingCycle?: string;
   }) {
     const tenantId = this.tenant.getTenantId();
+    const product = pricingProduct(this.tenant.getStore().modules, input.planId);
     // SaaS subscription payments go to the platform account; everything else to the gym's own.
     const platform = input.source === 'saas_subscription';
     const selected: PaymentProviderId = platform ? this.saasProviderId() : 'iyzico';
@@ -477,7 +544,11 @@ export class PaymentsService {
     if (platform) {
       // Odivon's own account: no per-gym provider choice, only the platform keys are needed.
       const configured = selected === 'paytr' ? this.paytr.configured() : this.providers.get('iyzico')!.configured();
-      if (!configured) throw new AppException(ErrorCode.INVALID_STATUS, 'Online subscription payment is not available yet');
+      if (!configured) {
+        await this.logEvent({ type: 'checkout_failed', level: 'error', message: `${selected} anahtarları tanımlı değil; ödeme başlatılamadı`,
+          orderId: input.sourceId, tenantId, provider: selected, source: input.source, product, amountKurus: input.amountKurus });
+        throw new AppException(ErrorCode.INVALID_STATUS, 'Online subscription payment is not available yet');
+      }
     } else {
       credentials = (await this.gymCredentials?.resolve(tenantId)) ?? undefined;
       if (!credentials) throw new AppException(ErrorCode.INVALID_STATUS, 'Card payments are not set up for this gym');
@@ -490,8 +561,13 @@ export class PaymentsService {
       providerPaymentId: null, createdBy: this.tenant.getUserId(), createdAt: now.toISOString(), updatedAt: now.toISOString(),
       userId: input.userId, returnOrigin: this.returnOrigin(input.origin), fulfilledAt: null,
       credentialScope: platform ? 'platform' : 'tenant',
-      mode: platform ? this.providerMode(selected) : credentials!.mode,
+      mode: platform ? await this.platformMode(selected, product) : credentials!.mode,
+      product,
+      planId: input.planId ?? null,
+      billingCycle: input.billingCycle ?? null,
     };
+    const eventBase = { sessionId: id, orderId: platform ? input.sourceId : null, tenantId, provider: selected,
+      source: input.source, product, mode: session.mode, amountKurus: input.amountKurus };
     const ref = this.sessions().doc(id);
     const lock = this.firebase.db.doc(`tenants/${tenantId}/paymentReservations/${input.source}_${input.sourceId}`);
     let existing: PaymentSession | null = null;
@@ -515,7 +591,12 @@ export class PaymentsService {
       tx.set(lock, { sessionId: id, status: 'initializing', createdAt: now.toISOString() });
       tx.set(ref, session);
     });
-    if (existing) return this.publicSession(existing);
+    if (existing) {
+      const reused = existing as PaymentSession;
+      await this.logEvent({ ...eventBase, sessionId: reused.id, mode: reused.mode ?? null, type: 'checkout_reused',
+        message: 'Açık ödeme sayfası yeniden kullanıldı' });
+      return this.publicSession(reused);
+    }
 
     const checkoutInput: CheckoutInput = {
       id, amountKurus: input.amountKurus, source: input.source, sourceId: input.sourceId,
@@ -525,19 +606,25 @@ export class PaymentsService {
     try {
       // PayTR sends the buyer back to the panel result page; its result arrives by notification.
       const checkout = selected === 'paytr'
-        ? await this.paytr.createCheckout({ ...checkoutInput, callbackUrl: (await this.returnUrl(id, 'pending')) ?? checkoutInput.callbackUrl })
+        ? await this.paytr.createCheckout({ ...checkoutInput, callbackUrl: (await this.returnUrl(id, 'pending')) ?? checkoutInput.callbackUrl },
+          undefined, session.mode)
         : await this.providers.get('iyzico')!.createCheckout(checkoutInput, credentials);
       await this.firebase.db.runTransaction(async (tx) => {
         tx.update(ref, { token: checkout.token, paymentPageUrl: checkout.paymentPageUrl,
           status: 'pending', updatedAt: new Date().toISOString() });
         tx.update(lock, { status: 'pending' });
       });
+      await this.logEvent({ ...eventBase, type: 'checkout_created',
+        message: `Ödeme sayfası açıldı (${session.mode === 'live' ? 'CANLI' : 'TEST'})` });
       return this.publicSession({ ...session, ...checkout, status: 'pending' });
     } catch (error) {
+      const errorMessage = (error as Error).message;
       await this.firebase.db.runTransaction(async (tx) => {
-        tx.update(ref, { status: 'failed', updatedAt: new Date().toISOString() });
+        tx.update(ref, { status: 'failed', errorMessage, updatedAt: new Date().toISOString() });
         tx.update(lock, { status: 'failed' });
       });
+      await this.logEvent({ ...eventBase, type: 'checkout_failed', level: 'error',
+        message: `Ödeme sayfası oluşturulamadı: ${errorMessage}` });
       throw error;
     }
   }
@@ -572,12 +659,12 @@ export class PaymentsService {
     return publicRecord;
   }
 
-  private async resolveSource(tenantId: string, source: PaymentSource, id: string): Promise<{ amountKurus: number; buyerId: string }> {
+  private async resolveSource(tenantId: string, source: PaymentSource, id: string): Promise<{ amountKurus: number; buyerId: string; planId?: string; billingCycle?: string }> {
     if (source === 'saas_subscription') {
       const snapshot = await this.firebase.db.doc(`tenants/${tenantId}/paymentSaasOrders/${id}`).get();
       const order = snapshot.data();
       if (!order || order.status !== 'open') throw new AppException(ErrorCode.FINANCE_INVALID, 'SaaS order is not open');
-      return { amountKurus: Number(order.amountKurus), buyerId: tenantId };
+      return { amountKurus: Number(order.amountKurus), buyerId: tenantId, planId: String(order.planId ?? ''), billingCycle: String(order.billingCycle ?? '') };
     }
     if (source === 'rentacar_reservation') {
       const snapshot = await this.firebase.db.doc(`${tenantCollectionPath(tenantId, TENANT_COLLECTION.rentReservations)}/${id}`).get();

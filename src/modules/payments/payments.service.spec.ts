@@ -74,7 +74,7 @@ describe('PaymentsService tenant and source boundaries', () => {
     const order = await service.createSaasOrder({ planId: 'pro', billingCycle: 'yearly' });
     expect(order.amountKurus).toBe(PRO_YEARLY_KURUS);
     await expect(service['resolveSource']('tenant-a', 'saas_subscription', order.id)).resolves.toEqual({
-      amountKurus: PRO_YEARLY_KURUS, buyerId: 'tenant-a',
+      amountKurus: PRO_YEARLY_KURUS, buyerId: 'tenant-a', planId: 'pro', billingCycle: 'yearly',
     });
     documents.set('paymentSessions/saas-session', {
       id: 'saas-session', tenantId: 'tenant-a', provider: 'iyzico', source: 'saas_subscription',

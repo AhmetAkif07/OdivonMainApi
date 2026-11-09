@@ -31,6 +31,8 @@ import { PlatformErrorLogsController } from './logs/error-logs.controller';
 import { PlatformOrphanTenantsService } from './orphans/orphan-tenants.service';
 import { PlatformOrphanTenantsController } from './orphans/orphan-tenants.controller';
 import { PlatformSaasPricingController } from './pricing/saas-pricing.controller';
+import { PlatformPaymentsController } from './payments/platform-payments.controller';
+import { PlatformPaymentsService } from './payments/platform-payments.service';
 import { HostingerMailClient } from './crm/hostinger-mail.client';
 import { CrmDirectoryService } from './crm/crm-directory.service';
 import { CrmMailService } from './crm/crm-mail.service';
@@ -58,6 +60,7 @@ import { TenantPlatformNotificationsController } from './crm/tenant-notification
     PlatformAuditController,
     PlatformOrphanTenantsController,
     PlatformSaasPricingController,
+    PlatformPaymentsController,
     PlatformCrmMailController,
     PlatformCrmCampaignsController,
     PlatformCrmNotificationsController,
@@ -77,6 +80,7 @@ import { TenantPlatformNotificationsController } from './crm/tenant-notification
     PlatformDemosService,
     PlatformErrorLogsService,
     PlatformOrphanTenantsService,
+    PlatformPaymentsService,
     HostingerMailClient,
     CrmDirectoryService,
     CrmMailService,

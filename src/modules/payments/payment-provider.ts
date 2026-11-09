@@ -75,4 +75,14 @@ export interface PaymentSession {
   credentialScope?: 'tenant' | 'platform';
   /** iyzico environment the checkout ran in; only live SaaS payments activate a subscription. */
   mode?: 'sandbox' | 'live';
+  /** Product (module) the payment belongs to, for the panel's per-product view. */
+  product?: string | null;
+  /** SaaS order plan and cycle, copied for the panel. */
+  planId?: string | null;
+  billingCycle?: string | null;
+  reviewReason?: string | null;
+  /** What the provider reported with the result (PayTR notification fields, no signatures). */
+  providerResult?: Record<string, unknown> | null;
+  /** Why the checkout could not be created at the provider. */
+  errorMessage?: string | null;
 }

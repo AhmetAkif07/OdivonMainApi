@@ -20,6 +20,7 @@ import { GymModule } from './modules/gym/gym.module';
 import { SpaModule } from './modules/spa/spa.module';
 import { HairModule } from './modules/hair/hair.module';
 import { PaymentsModule } from './modules/payments/payments.module';
+import { PaymentMonitoringModule } from './modules/payments/monitoring/payment-monitoring.module';
 import { ApmModule } from './modules/apm/apm.module';
 import { PlatformModule } from './modules/platform/platform.module';
 import { SaasPricingModule } from './modules/saas-pricing/saas-pricing.module';
@@ -54,6 +55,7 @@ import { FgasModule } from './modules/fgas/fgas.module';
     FireSafeModule,
     FgasModule,
     SaasPricingModule,
+    PaymentMonitoringModule,
     PaymentsModule,
     ApmModule,
     PlatformModule,

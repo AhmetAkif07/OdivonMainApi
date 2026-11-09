@@ -59,6 +59,19 @@ export function verifyPaytrCallbackHash(credentials: PaytrCredentials, fields: {
   return expected.length === received.length && timingSafeEqual(expected, received);
 }
 
+/** Notification fields kept for the panel (the signature `hash` is never stored). */
+const PAYTR_RESULT_FIELDS = ['merchant_oid', 'status', 'total_amount', 'payment_amount', 'payment_type', 'installment_count',
+  'currency', 'test_mode', 'failed_reason_code', 'failed_reason_msg'] as const;
+
+export function paytrResultFields(body: Record<string, string | undefined>): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const key of PAYTR_RESULT_FIELDS) {
+    const value = body[key];
+    if (value !== undefined && value !== null && value !== '') result[key] = String(value).slice(0, 500);
+  }
+  return result;
+}
+
 @Injectable()
 export class PaytrProvider {
   readonly id = 'paytr' as const;
@@ -86,7 +99,8 @@ export class PaytrProvider {
   }
 
   /** Creates an iFrame token; the buyer pays on the returned PayTR page. */
-  async createCheckout(input: CheckoutInput, credentials = this.platformCredentials()): Promise<CheckoutResult> {
+  /** `mode` overrides PAYTR_MODE for one checkout (the panel can set TEST / CANLI per product). */
+  async createCheckout(input: CheckoutInput, credentials = this.platformCredentials(), mode: 'sandbox' | 'live' = this.mode()): Promise<CheckoutResult> {
     const merchantOid = paytrMerchantOid(input.id);
     const userIp = input.buyer.ip;
     const email = input.buyer.email;
@@ -95,7 +109,7 @@ export class PaytrProvider {
     const noInstallment = '1';
     const maxInstallment = '0';
     const currency = 'TL';
-    const testMode = this.mode() === 'live' ? '0' : '1';
+    const testMode = mode === 'live' ? '0' : '1';
     const paytrToken = paytrSign(credentials.merchantKey,
       credentials.merchantId + userIp + merchantOid + email + paymentAmount + userBasket +
       noInstallment + maxInstallment + currency + testMode + credentials.merchantSalt);
