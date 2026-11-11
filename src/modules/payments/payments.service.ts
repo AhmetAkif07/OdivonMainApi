@@ -17,6 +17,7 @@ import { CreateCheckoutDto, CreateSaasOrderDto, MemberCheckoutDto } from './paym
 import { CheckoutInput, IyzicoCredentials, PaymentProvider, PaymentProviderId, PaymentSession, PaymentSource, VerifiedPayment } from './payment-provider';
 import { nextPeriod, receiptNo, SaasCycle } from './saas-billing';
 import { SAAS_PLAN_MODULE } from './saas-prices';
+import { allowedCorsOrigins } from '../../config/cors';
 import { pricingProduct, SaasPlanPricing, SaasPricingService, STATIC_SAAS_PRICING } from '../saas-pricing/saas-pricing.service';
 import { PaymentEventInput, PaymentEventsService } from './monitoring/payment-events.service';
 import { PaymentModesService } from './monitoring/payment-modes.service';
@@ -26,7 +27,14 @@ export const CHECKOUT_TTL_MS = 30 * 60_000;
 export const WALLET_TOPUP_MIN_KURUS = 50_00;
 export const WALLET_TOPUP_MAX_KURUS = 20_000_00;
 
+// The first entry is the fallback when the browser's origin is not listed, so it must be the live panel.
 const DEFAULT_RETURN_ORIGINS = [
+  'https://gym.odivon.com',
+  'https://admin.odivon.com',
+  'https://vet.odivon.com',
+  'https://spa.odivon.com',
+  'https://beauty.odivon.com',
+  'https://farm.odivon.com',
   'https://odivon-main-api-a2095.web.app',
   'https://odivon-main-api-a2095.firebaseapp.com',
   'https://odivon-gym-client.dogangns-98.workers.dev',
@@ -38,6 +46,27 @@ const DEFAULT_RETURN_ORIGINS = [
   'https://odivonprohair.dogangns-98.workers.dev',
   'http://localhost:4200',
 ];
+
+/** Live panel of each product: where the browser lands when the paying origin is unknown. */
+const PRODUCT_HOME: Partial<Record<string, string>> = {
+  gym: 'https://gym.odivon.com',
+  hair: 'https://hair.odivon.com',
+  vet: 'https://vet.odivon.com',
+  spa: 'https://spa.odivon.com',
+  beauty: 'https://beauty.odivon.com',
+  farm: 'https://farm.odivon.com',
+  rentacar: 'https://rent.odivon.com',
+  parking: 'https://park.odivon.com',
+};
+
+/** Live panel for a payment, from its source (SaaS payments use the tenant's product). */
+function productHome(source: PaymentSource, tenantModules?: readonly string[]): string {
+  let product: string = 'gym';
+  if (source === 'rentacar_reservation') product = 'rentacar';
+  else if (source === 'vet_sale') product = 'vet';
+  else if (source === 'saas_subscription') product = pricingProduct(tenantModules) ?? 'gym';
+  return PRODUCT_HOME[product] ?? PRODUCT_HOME['gym']!;
+}
 
 interface Buyer {
   name: string;
@@ -254,19 +283,19 @@ export class PaymentsService {
     if (!session) return null;
     if (session.source === 'saas_subscription') {
       // Outside the subscription guard: an expired gym must be able to see its payment result.
-      const url = new URL(`${session.returnOrigin ?? DEFAULT_RETURN_ORIGINS[0]}/subscription-result`);
+      const url = new URL(`${session.returnOrigin ?? productHome(session.source)}/subscription-result`);
       url.searchParams.set('paymentSession', id);
       url.searchParams.set('status', outcome);
       return url.toString();
     }
     if (session.source === 'rentacar_reservation') {
-      const url = new URL(`${session.returnOrigin ?? DEFAULT_RETURN_ORIGINS[0]}/app/rezervasyonlar`);
+      const url = new URL(`${session.returnOrigin ?? productHome(session.source)}/app/rezervasyonlar`);
       url.searchParams.set('paymentSession', id);
       url.searchParams.set('status', outcome);
       return url.toString();
     }
     if (!isGymSource(session.source)) return null;
-    const url = new URL(`${session.returnOrigin ?? DEFAULT_RETURN_ORIGINS[0]}/payment-result`);
+    const url = new URL(`${session.returnOrigin ?? productHome(session.source)}/payment-result`);
     url.searchParams.set('paymentSession', id);
     url.searchParams.set('status', outcome);
     return url.toString();
@@ -567,7 +596,7 @@ export class PaymentsService {
       id, tenantId, provider: selected, source: input.source, sourceId: input.sourceId,
       amountKurus: input.amountKurus, currency: 'TRY', status: 'initializing', token: null, paymentPageUrl: null,
       providerPaymentId: null, createdBy: this.tenant.getUserId(), createdAt: now.toISOString(), updatedAt: now.toISOString(),
-      userId: input.userId, returnOrigin: this.returnOrigin(input.origin), fulfilledAt: null,
+      userId: input.userId, returnOrigin: this.returnOrigin(input.origin, input.source), fulfilledAt: null,
       credentialScope: platform ? 'platform' : 'tenant',
       mode: platform ? await this.platformMode(selected, product) : credentials!.mode,
       product,
@@ -637,10 +666,25 @@ export class PaymentsService {
     }
   }
 
-  /** The panel origin to send the browser back to; only known panel origins are accepted. */
-  private returnOrigin(origin?: string): string {
-    const allowed = (process.env.PAYMENT_RETURN_ORIGINS?.split(',').map((o) => o.trim()).filter(Boolean)) ?? DEFAULT_RETURN_ORIGINS;
-    return origin && allowed.includes(origin) ? origin : allowed[0];
+  /**
+   * The panel origin to send the browser back to. Every origin allowed to call this API (CORS list,
+   * plus `CORS_ORIGIN` and `PAYMENT_RETURN_ORIGINS`) is accepted, so a new product domain only needs
+   * adding once. Anything else goes to the live panel of the payment's product.
+   */
+  private returnOrigin(origin: string | undefined, source: PaymentSource): string {
+    const allowed = new Set([
+      ...DEFAULT_RETURN_ORIGINS,
+      ...allowedCorsOrigins(process.env.CORS_ORIGIN),
+      ...(process.env.PAYMENT_RETURN_ORIGINS ?? '').split(',').map((o) => o.trim().replace(/\/+$/, '')).filter(Boolean),
+    ]);
+    if (origin && allowed.has(origin)) return origin;
+    let modules: readonly string[] | undefined;
+    try {
+      modules = this.tenant.getStore().modules;
+    } catch {
+      modules = undefined;
+    }
+    return productHome(source, modules);
   }
 
   private async syncAccess(tenantId: string, member: GymMember) {

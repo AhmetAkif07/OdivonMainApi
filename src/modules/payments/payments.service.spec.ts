@@ -91,6 +91,24 @@ describe('PaymentsService tenant and source boundaries', () => {
     expect(documents.get('paymentSessions/saas-session')?.status).toBe('succeeded');
   });
 
+  it('returns the browser to the paying panel, or to the live panel of the payment product', () => {
+    const back = (origin: string | undefined, source: string) => service['returnOrigin'](origin, source as never);
+    // any origin allowed to call the API is a valid return origin
+    expect(back('https://hair.odivon.com', 'saas_subscription')).toBe('https://hair.odivon.com');
+    expect(back('https://rent.odivon.com', 'rentacar_reservation')).toBe('https://rent.odivon.com');
+    expect(back('https://odivon-management.dogangns-98.workers.dev', 'saas_subscription')).toBe('https://odivon-management.dogangns-98.workers.dev');
+    // unknown origins never leave the Odivon domains and land on the product's live panel
+    expect(back('https://evil.example', 'gym_wallet_topup')).toBe('https://gym.odivon.com');
+    expect(back(undefined, 'rentacar_reservation')).toBe('https://rent.odivon.com');
+    expect(back(undefined, 'vet_sale')).toBe('https://vet.odivon.com');
+    modules = ['hair'];
+    expect(back(undefined, 'saas_subscription')).toBe('https://hair.odivon.com');
+    modules = ['parking'];
+    expect(back(undefined, 'saas_subscription')).toBe('https://park.odivon.com');
+    modules = ['fgas'];
+    expect(back(undefined, 'saas_subscription')).toBe('https://gym.odivon.com');
+  });
+
   it('rejects SaaS order creation by a tenant admin', async () => {
     role = 'admin';
     await expect(service.createSaasOrder({ planId: 'starter', billingCycle: 'monthly' }))

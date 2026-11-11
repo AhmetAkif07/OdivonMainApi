@@ -114,7 +114,7 @@ describe('PaymentsService member card payments', () => {
     expect(entry).toMatchObject({ actorType: 'system', label: 'Online paket satın alımı: 3 Aylık', targetUserId: 'm1', memberIds: ['m1'] });
     expect((entry['memberChanges'] as Record<string, Record<string, unknown>>)['m1']).toHaveProperty('membershipEndsAt');
     // default return origin when the browser origin is unknown
-    expect(await service.returnUrl(session.id, 'succeeded')).toContain('https://odivon-main-api-a2095.web.app/payment-result');
+    expect(await service.returnUrl(session.id, 'succeeded')).toContain('https://gym.odivon.com/payment-result');
   });
 
   it('applies nothing on a failed payment or when the result cannot be verified (amount mismatch)', async () => {
