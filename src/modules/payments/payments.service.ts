@@ -9,6 +9,7 @@ import { TenantContext } from '../../shared/tenancy/tenant.context';
 import { AccessSyncService } from '../gym/access/access-sync.service';
 import type { GymMember } from '../gym/members/member.entity';
 import type { GymPackage } from '../gym/packages/package.entity';
+import { FARM_PLANS, FarmPlanId } from '../farm/shared/farm-plans';
 import { fulfillGymPayment, isGymSource } from './gym-fulfillment';
 import { GymPaymentCredentialsService } from './gym-payment-credentials.service';
 import { IyzicoProvider } from './iyzico.provider';
@@ -476,6 +477,23 @@ export class PaymentsService {
             paidAt,
             paidBy: current.createdBy,
           });
+          // Farm keeps its plan limits in its own subscription document (farm panel reads them there).
+          const farmPlan = current.product === 'farm' ? FARM_PLANS[order.planId as FarmPlanId] : undefined;
+          if (farmPlan) {
+            tx.set(this.firebase.db.doc(`${tenantCollectionPath(session.tenantId, TENANT_COLLECTION.farmSubscription)}/${session.tenantId}`), {
+              farmId: session.tenantId,
+              planId: order.planId,
+              status: 'active',
+              billingCycle: order.billingCycle,
+              currentPeriodEnd: period.endsAt,
+              animalLimit: farmPlan.animalLimit,
+              userLimit: farmPlan.userLimit,
+              storageLimitMb: farmPlan.storageLimitMb,
+              pricePaid: current.amountKurus / 100,
+              paymentMethod: 'credit_card',
+              updatedAt: paidAt,
+            }, { merge: true });
+          }
           tx.update(orderRef, { status: 'paid', sessionId: id, updatedAt: paidAt });
           saasOutcome = { activated: true, periodEndsAt: period.endsAt };
         }

@@ -83,6 +83,17 @@ describe('SaasPricingService', () => {
     expect(await service.price('enterprise', 'monthly', 'kids')).toBeUndefined();
   });
 
+  it('charges farm its own catalog prices unless the panel sets a farm price', async () => {
+    expect(await service.price('starter', 'monthly', 'farm')).toBe(299);
+    expect(await service.price('enterprise', 'yearly', 'farm')).toBe(14990);
+    expect(await service.price('starter', 'monthly', 'gym')).toBe(1490);
+    await service.update('pro', { monthly: 3000 }, 'admin');
+    expect(await service.price('pro', 'monthly', 'farm')).toBe(699);
+    await service.update('pro', { monthly: 799 }, 'admin', 'farm');
+    expect(await service.price('pro', 'monthly', 'farm')).toBe(799);
+    expect(await service.price('pro', 'yearly', 'farm')).toBe(6990);
+  });
+
   it('can stop selling one billing cycle with null', async () => {
     await service.update('starter', { yearly: null }, 'a');
     expect((await service.priceMap('gym')).starter).toEqual({ monthly: 1490 });

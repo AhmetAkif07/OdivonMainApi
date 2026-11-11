@@ -1,3 +1,4 @@
+import { FARM_PLANS } from '../farm/shared/farm-plans';
 // Production defaults. Product-specific prices can still be overridden from the platform panel.
 export const SAAS_SANDBOX_PRICES = {
   starter: { monthly: 1490, yearly: 14900 },
@@ -10,6 +11,19 @@ export const SAAS_SANDBOX_PRICES = {
   rent_business: { monthly: 2990, yearly: 29900 },
   rent_professional: { monthly: 5990, yearly: 59900 },
 } as const;
+
+/**
+ * A product's own code prices for the shared plans (TL). They replace the shared defaults for that
+ * product; a price set for the product in the platform panel still wins. Farm sells the shared
+ * plan ids at the prices of its own catalog (modules/farm/shared/farm-plans.ts).
+ */
+export const SAAS_PRODUCT_PRICES: Record<string, Record<string, { monthly: number; yearly: number }>> = {
+  farm: {
+    starter: { monthly: FARM_PLANS.starter.monthlyPrice, yearly: FARM_PLANS.starter.yearlyPrice },
+    pro: { monthly: FARM_PLANS.pro.monthlyPrice, yearly: FARM_PLANS.pro.yearlyPrice },
+    enterprise: { monthly: FARM_PLANS.enterprise.monthlyPrice, yearly: FARM_PLANS.enterprise.yearlyPrice },
+  },
+};
 
 /** Default display names; the platform panel can rename a plan (see modules/saas-pricing). */
 export const SAAS_PLAN_NAMES: Record<string, string> = {

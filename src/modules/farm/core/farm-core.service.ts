@@ -102,7 +102,7 @@ export class FarmCoreService {
     // No payment is taken here, so a paid plan must not be activated by this call in production.
     if (process.env['ALLOW_DEMO_BILLING'] !== 'true') {
       throw farmPrecondition(
-        'Plan değişikliği için online ödeme henüz aktif değil. Lütfen destek ekibiyle iletişime geçin.',
+        'Plan değişikliği kartla ödeme ile yapılır: Abonelik ekranından paket seçip PayTR ile ödeyin.',
       );
     }
     const plan = FARM_PLANS[dto.planId];

@@ -4,7 +4,7 @@ import { AppException } from '../../shared/errors/app.exception';
 import { ErrorCode } from '../../shared/errors/error-codes';
 import { FirebaseService } from '../../shared/firebase/firebase.service';
 import { ROOT_COLLECTION } from '../../shared/firebase/firestore-path';
-import { SAAS_PLAN_MODULE, SAAS_PLAN_NAMES, SAAS_SANDBOX_PRICES } from '../payments/saas-prices';
+import { SAAS_PLAN_MODULE, SAAS_PLAN_NAMES, SAAS_PRODUCT_PRICES, SAAS_SANDBOX_PRICES } from '../payments/saas-prices';
 
 export type SaasPriceCycle = 'monthly' | 'yearly';
 /** `shared` = the common Odivon plan set every product sells; the others are one product's own packages. */
@@ -120,7 +120,15 @@ export function mergeSaasPricing(stored: StoredPricing | undefined, product: Pro
   const productOverrides = (product && stored?.products?.[product]) || {};
   const plans = SAAS_PLAN_IDS.map((id) => applyOverride(codePlan(id), defaults[id], 'default'))
     .filter((plan) => planSoldBy(plan, product))
-    .map((plan) => (plan.module === 'shared' ? applyOverride(plan, productOverrides[plan.id], 'product') : plan));
+    .map((plan) => {
+      if (plan.module !== 'shared') return plan;
+      const own = product ? SAAS_PRODUCT_PRICES[product]?.[plan.id] : undefined;
+      // A cycle the panel stopped selling for every product (null) stays unsold.
+      const base = own
+        ? { ...plan, monthly: plan.monthly === null ? null : own.monthly, yearly: plan.yearly === null ? null : own.yearly }
+        : plan;
+      return applyOverride(base, productOverrides[plan.id], 'product');
+    });
   return { currency: 'TRY', product, updatedAt: stored?.updatedAt ?? null, plans };
 }
 

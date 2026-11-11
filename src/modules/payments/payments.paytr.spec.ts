@@ -1,4 +1,6 @@
 import { FirebaseService } from '../../shared/firebase/firebase.service';
+import { TENANT_COLLECTION, tenantCollectionPath } from '../../shared/firebase/firestore-path';
+import { FARM_PLANS } from '../farm/shared/farm-plans';
 import { TenantContext } from '../../shared/tenancy/tenant.context';
 import { IyzicoProvider } from './iyzico.provider';
 import { PaymentsService } from './payments.service';
@@ -73,6 +75,21 @@ describe('PaymentsService PayTR notification', () => {
     const endsAt = documents.get('tenants/tenant-a')?.subscriptionEndsAt;
     await expect(notify('success', '12550')).resolves.toEqual({ status: 'succeeded' });
     expect(documents.get('tenants/tenant-a')?.subscriptionEndsAt).toBe(endsAt);
+  });
+
+  it('applies the farm plan limits when a farm subscription is paid', async () => {
+    const session = documents.get(`paymentSessions/${SESSION_ID}`)!;
+    documents.set(`paymentSessions/${SESSION_ID}`, { ...session, product: 'farm' });
+    await notify('success', '12550');
+    const farm = documents.get(`${tenantCollectionPath('tenant-a', TENANT_COLLECTION.farmSubscription)}/tenant-a`);
+    expect(farm).toMatchObject({ planId: 'pro', status: 'active', animalLimit: FARM_PLANS.pro.animalLimit,
+      userLimit: FARM_PLANS.pro.userLimit, pricePaid: 125.5 });
+    expect(farm?.currentPeriodEnd).toBe(documents.get('tenants/tenant-a')?.subscriptionEndsAt);
+  });
+
+  it('leaves the farm subscription alone for other products', async () => {
+    await notify('success', '12550');
+    expect(documents.has(`${tenantCollectionPath('tenant-a', TENANT_COLLECTION.farmSubscription)}/tenant-a`)).toBe(false);
   });
 
   it('keeps a sandbox success from activating unless allowed', async () => {
