@@ -89,7 +89,7 @@ export class CreateStaffDto {
   @IsString()
   notes?: string | null;
 
-  @ApiPropertyOptional({ description: 'Sisteme giriş şifresi (boş bırakılırsa güvenli rastgele şifre üretilir)' })
+  @ApiPropertyOptional({ description: 'Sisteme giriş şifresi (yeni personel için zorunlu, en az 6 karakter; güncellemede boş bırakılırsa değişmez)' })
   @IsOptional()
   @IsString()
   password?: string;

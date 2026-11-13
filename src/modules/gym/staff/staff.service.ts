@@ -11,22 +11,6 @@ import { CreateStaffDto, UpdateStaffDto } from './staff.dto';
 import { StaffRepository } from './staff.repository';
 import { GymStaff } from './staff.entity';
 
-function generateSecureStaffPassword(): string {
-  const upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
-  const lower = 'abcdefghijkmnpqrstuvwxyz';
-  const numbers = '23456789';
-  const specials = '!@#$%*';
-  let out = upper[Math.floor(Math.random() * upper.length)]
-    + lower[Math.floor(Math.random() * lower.length)]
-    + numbers[Math.floor(Math.random() * numbers.length)]
-    + specials[Math.floor(Math.random() * specials.length)];
-  const all = upper + lower + numbers + specials;
-  for (let i = 0; i < 6; i++) {
-    out += all[Math.floor(Math.random() * all.length)];
-  }
-  return out;
-}
-
 @Injectable()
 export class StaffService {
   private readonly logger = new Logger(StaffService.name);
