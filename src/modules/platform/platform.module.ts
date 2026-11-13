@@ -44,6 +44,8 @@ import {
   PlatformCrmNotificationsController,
 } from './crm/crm.controller';
 import { TenantPlatformNotificationsController } from './crm/tenant-notifications.controller';
+import { PlatformAiResearchController } from './ai-research/ai-research.controller';
+import { PlatformAiResearchService } from './ai-research/ai-research.service';
 
 @Module({
   imports: [MailModule],
@@ -67,6 +69,7 @@ import { TenantPlatformNotificationsController } from './crm/tenant-notification
     TenantPlatformNotificationsController,
     PlatformReleasesController,
     PlatformBackendsController,
+    PlatformAiResearchController,
   ],
   providers: [
     PlatformBackendsService,
@@ -87,6 +90,7 @@ import { TenantPlatformNotificationsController } from './crm/tenant-notification
     CrmNotificationsService,
     CrmCampaignsService,
     PlatformReleasesService,
+    PlatformAiResearchService,
     ClientVersionTracker,
     { provide: APP_INTERCEPTOR, useClass: ClientVersionTrackingInterceptor },
   ],

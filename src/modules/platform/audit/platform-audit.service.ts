@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { FirebaseService } from '../../../shared/firebase/firebase.service';
 import { ROOT_COLLECTION } from '../../../shared/firebase/firestore-path';
 
-export type AuditTargetType = 'tenant' | 'user' | 'payment' | 'demo' | 'pricing' | 'crm' | 'release' | 'backend';
+export type AuditTargetType = 'tenant' | 'user' | 'payment' | 'demo' | 'pricing' | 'crm' | 'release' | 'backend' | 'aiResearchRun';
 
 export interface RecordPlatformAuditInput {
   adminUid: string;

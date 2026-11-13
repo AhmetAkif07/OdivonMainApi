@@ -287,6 +287,9 @@ export const ROOT_COLLECTION = {
   vetSurveyTokens: 'vetSurveyTokens',
   parkingAgentIndex: 'parkingAgentIndex',
   parkingAgentPairingCodes: 'parkingAgentPairingCodes',
+  // Odivon AI pazar araştırması: kuyruktaki işler ve bulunan potansiyel müşteriler (OdivonAI runner yazar).
+  aiResearchRuns: 'aiResearchRuns',
+  aiLeads: 'aiLeads',
 } as const;
 
 export function tenantCollectionPath(tenantId: string, collection: string): string {
