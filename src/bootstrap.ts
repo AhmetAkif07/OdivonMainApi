@@ -30,8 +30,8 @@ export async function bootstrap(
   const app = await NestFactory.create(
     AppModule,
     startupLogs
-      ? { bufferLogs: true, abortOnError: false }
-      : { logger: ['fatal', 'error', 'warn'], abortOnError: false },
+      ? { bufferLogs: true, abortOnError: false, rawBody: true }
+      : { logger: ['fatal', 'error', 'warn'], abortOnError: false, rawBody: true },
   );
   application = app;
   if (startupLogs) app.useLogger(app.get(Logger));

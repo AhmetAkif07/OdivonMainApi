@@ -372,7 +372,7 @@ export class BeautyBookingService {
     });
   }
 
-  async book(slug: string, dto: PublicBookAppointmentDto) {
+  async book(slug: string, dto: PublicBookAppointmentDto, source = 'online_booking') {
     return this.withSalon(slug, true, async ({ tenant, branch }) => {
       const serviceSnap = await this.store.doc('beautyServices', dto.serviceId).get();
       if (!serviceSnap.exists || isDeleted(serviceSnap.data() as BeautyDoc)) {
@@ -456,7 +456,7 @@ export class BeautyBookingService {
           phone: dto.phone,
           email: dto.email || '',
           branchId: branch.id,
-          source: 'online_booking',
+          source,
           status: 'active',
           ...createBaseFields(newCustRef.id, 'public:booking'),
         });
@@ -481,7 +481,7 @@ export class BeautyBookingService {
         durationMinutes: durationMin,
         status: 'pending',
         notes: dto.notes || '',
-        source: 'online_booking',
+        source,
         cancelToken: token,
         kvkkConsent: dto.kvkkConsent,
         ...createBaseFields(apptRef.id, 'public:booking'),

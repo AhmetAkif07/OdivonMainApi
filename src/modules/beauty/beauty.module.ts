@@ -15,6 +15,13 @@ import {
   BeautyPublicBookingController,
 } from './booking/beauty-booking.controller';
 import { BeautyBookingService } from './booking/beauty-booking.service';
+import {
+  BeautyAiAssistantController,
+  BeautyPublicAssistantController,
+  BeautyWhatsappWebhookController,
+} from './ai-assistant/beauty-ai-assistant.controller';
+import { BeautyAiAssistantService } from './ai-assistant/beauty-ai-assistant.service';
+import { BeautyWhatsappService } from './ai-assistant/beauty-whatsapp.service';
 import { BeautyService } from './beauty.service';
 import { BeautyMobileAccessService } from './beauty-mobile-access.service';
 import { BeautyStore } from './shared/beauty-store';
@@ -24,6 +31,9 @@ import { BeautyStore } from './shared/beauty-store';
   controllers: [
     BeautyBookingLinkController,
     BeautyPublicBookingController,
+    BeautyPublicAssistantController,
+    BeautyWhatsappWebhookController,
+    BeautyAiAssistantController,
     BeautyCoreController,
     BeautyMobileAccessController,
     BeautyAppointmentsController,
@@ -37,6 +47,8 @@ import { BeautyStore } from './shared/beauty-store';
     BeautyService,
     BeautyMobileAccessService,
     BeautyBookingService,
+    BeautyAiAssistantService,
+    BeautyWhatsappService,
   ],
   exports: [BeautyService, BeautyBookingService],
 })

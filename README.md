@@ -219,3 +219,20 @@ içindedir; panelden yapılan değişiklikler `platformBackends` koleksiyonunda 
 
 - `PLATFORM_BACKEND_TOKENS`: harici API servis tokenları, JSON. Örnek: `{"erp":"<OdivonerpAPI PLATFORM_SYNC_TOKEN>"}`.
   Yalnız Worker secret'ı olarak tanımlanır (`wrangler secret put PLATFORM_BACKEND_TOKENS`); Firestore'a veya tarayıcıya gitmez.
+
+### Beauty AI randevu asistanı
+
+`src/modules/beauty/ai-assistant/` Claude ile çalışan bir randevu asistanıdır. Salonun online
+randevu linkindeki (public booking) hizmet, uzman ve boş saat akışını araç olarak kullanır, yani
+asistan müşterinin linkte gördüğünden farklı bir şey önermez.
+
+- `GET/PATCH /beauty/ai-assistant`: durum, aç/kapat, salona özel talimat, aylık kullanım (panel)
+- `POST /beauty/ai-assistant/test-chat`: salon sahibinin denemesi; `createBookings: true` değilse randevu yazılmaz
+- `GET/POST /beauty/public/booking/:slug/assistant`: müşteri sohbeti (asistan açıksa)
+- `PUT/DELETE /beauty/ai-assistant/whatsapp`: şubeye WhatsApp Cloud API `phone_number_id` bağlar
+- `GET/POST /beauty/whatsapp/webhook`: Meta webhook'u (imza `X-Hub-Signature-256` ile doğrulanır)
+
+Secret'lar: `ANTHROPIC_API_KEY` (zorunlu), `BEAUTY_AI_MODEL` (isteğe bağlı),
+`WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_APP_SECRET`, `WHATSAPP_ACCESS_TOKEN` (WhatsApp için).
+Konuşmalar `tenants/{id}/beautyAiConversations`, aylık kullanım `tenants/{id}/beautyAiUsage/{YYYY-MM}`
+altında tutulur; ek paket faturalaması bu sayaçtan yapılabilir.
