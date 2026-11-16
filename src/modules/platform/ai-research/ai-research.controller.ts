@@ -3,7 +3,7 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentPlatformAdmin, RequirePlatformAdmin } from '../platform-admin.decorator';
 import { PlatformAdminUser } from '../platform-admin.guard';
 import { PlatformAiResearchService } from './ai-research.service';
-import { CreateAiResearchRunDto, UpdateAiLeadDto } from './dto';
+import { BulkUpdateAiLeadProductsDto, CreateAiResearchRunDto, UpdateAiLeadDto } from './dto';
 
 @ApiTags('platform-ai-research')
 @RequirePlatformAdmin()
@@ -62,9 +62,22 @@ export class PlatformAiResearchController {
     @Query('district') district?: string,
     @Query('segment') segment?: string,
     @Query('competitor') competitor?: string,
+    @Query('product') product?: string,
     @Query('q') q?: string,
   ) {
-    return this.service.listLeads({ runId, priority, status, district, segment, competitor, q });
+    return this.service.listLeads({ runId, priority, status, district, segment, competitor, product, q });
+  }
+
+  @Get('products')
+  @ApiOperation({ summary: 'Lead ürün kategorileri (Odivon ürün modülleri)' })
+  products() {
+    return this.service.getProductCatalog();
+  }
+
+  @Post('leads/bulk-products')
+  @ApiOperation({ summary: 'Seçili lead\'lere toplu ürün kategorisi ata / ekle / çıkar' })
+  bulkProducts(@Body() dto: BulkUpdateAiLeadProductsDto, @CurrentPlatformAdmin() admin: PlatformAdminUser) {
+    return this.service.bulkUpdateProducts(dto, admin);
   }
 
   @Get('leads/:id')
@@ -74,7 +87,7 @@ export class PlatformAiResearchController {
   }
 
   @Patch('leads/:id')
-  @ApiOperation({ summary: 'Satış durumu ve notu güncelle' })
+  @ApiOperation({ summary: 'Satış durumu, not, ürün kategorisi ve iletişim bilgilerini güncelle' })
   updateLead(
     @Param('id') id: string,
     @Body() dto: UpdateAiLeadDto,

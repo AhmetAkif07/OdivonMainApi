@@ -290,6 +290,10 @@ export const ROOT_COLLECTION = {
   // Odivon AI pazar araştırması: kuyruktaki işler ve bulunan potansiyel müşteriler (OdivonAI runner yazar).
   aiResearchRuns: 'aiResearchRuns',
   aiLeads: 'aiLeads',
+  // Satış & pazarlama: teklif şablonları, gönderilen teklifler ve takip aktiviteleri (lead'lere bağlı).
+  salesTemplates: 'salesTemplates',
+  salesOffers: 'salesOffers',
+  salesActivities: 'salesActivities',
 } as const;
 
 export function tenantCollectionPath(tenantId: string, collection: string): string {

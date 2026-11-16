@@ -1,3 +1,5 @@
+import { PRODUCT_MODULES } from '../../../shared/authorization/constants';
+
 /**
  * Odivon AI pazar araştırması: şehir/ilçe listesi ve sabitler.
  * OdivonAI/src/config.ts ile aynı tutulmalı (runner aynı şehir anahtarlarını bekler).
@@ -27,6 +29,11 @@ export const AI_LEAD_PIPELINE_STATUSES = [
   'new', 'contacted', 'replied', 'demo', 'won', 'lost', 'ignored',
 ] as const;
 export type AiLeadPipelineStatus = (typeof AI_LEAD_PIPELINE_STATUSES)[number];
+
+/** Lead'in hangi Odivon ürünü için hedeflendiği (ürün kategorisi). Panelden atanır; runner dokunmaz. */
+export const AI_LEAD_PRODUCTS = PRODUCT_MODULES;
+/** Ürün filtresinde "ürün atanmamış" anlamına gelen değer. */
+export const AI_LEAD_PRODUCT_UNKNOWN = 'unknown';
 
 /** Runner'ın kalp atışı bu belgeye yazılır (platformSettings koleksiyonu). */
 export const AI_RUNNER_SETTINGS_DOC = 'aiResearchRunner';

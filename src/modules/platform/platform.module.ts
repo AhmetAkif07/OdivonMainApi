@@ -46,6 +46,9 @@ import {
 import { TenantPlatformNotificationsController } from './crm/tenant-notifications.controller';
 import { PlatformAiResearchController } from './ai-research/ai-research.controller';
 import { PlatformAiResearchService } from './ai-research/ai-research.service';
+import { PlatformSalesController } from './sales/sales.controller';
+import { PlatformSalesService } from './sales/sales.service';
+import { SalesChannelsService } from './sales/sales-channels.service';
 
 @Module({
   imports: [MailModule],
@@ -70,6 +73,7 @@ import { PlatformAiResearchService } from './ai-research/ai-research.service';
     PlatformReleasesController,
     PlatformBackendsController,
     PlatformAiResearchController,
+    PlatformSalesController,
   ],
   providers: [
     PlatformBackendsService,
@@ -91,6 +95,8 @@ import { PlatformAiResearchService } from './ai-research/ai-research.service';
     CrmCampaignsService,
     PlatformReleasesService,
     PlatformAiResearchService,
+    PlatformSalesService,
+    SalesChannelsService,
     ClientVersionTracker,
     { provide: APP_INTERCEPTOR, useClass: ClientVersionTrackingInterceptor },
   ],

@@ -7,12 +7,16 @@ import { ErrorCode } from '../../../shared/errors/error-codes';
 import { PlatformAuditService } from '../audit/platform-audit.service';
 import { PlatformAdminUser } from '../platform-admin.guard';
 import {
+  AI_LEAD_PRODUCT_UNKNOWN,
+  AI_LEAD_PRODUCTS,
   AI_RESEARCH_CITIES,
   AI_RESEARCH_DEFAULT_KEYWORDS,
   AI_RUNNER_OFFLINE_AFTER_MS,
   AI_RUNNER_SETTINGS_DOC,
 } from './ai-research.config';
-import { CreateAiResearchRunDto, UpdateAiLeadDto } from './dto';
+import { BulkUpdateAiLeadProductsDto, CreateAiResearchRunDto, UpdateAiLeadDto } from './dto';
+import { leadContact, leadProducts } from './lead-fields';
+import { PRODUCT_LABELS } from '../tickets/ticket-grouping';
 
 export interface AiLeadListFilters {
   runId?: string;
@@ -21,6 +25,8 @@ export interface AiLeadListFilters {
   district?: string;
   segment?: string;
   competitor?: string;
+  /** Ürün modülü (ör. gym) ya da `unknown` = ürün atanmamış. */
+  product?: string;
   q?: string;
 }
 
@@ -28,6 +34,8 @@ type Doc = Record<string, any>;
 
 /** Liste ekranında gereken alanlar; strateji metinleri ve yorumlar detayda gelir. */
 function toListItem(d: Doc) {
+  const products = leadProducts(d);
+  const contact = leadContact(d);
   return {
     id: d.id,
     name: d.name,
@@ -52,6 +60,16 @@ function toListItem(d: Doc) {
           isGym: d.insight.isGym,
         }
       : null,
+    products: products.products,
+    productsInferred: products.inferred,
+    email: contact.email,
+    mobile: contact.mobile,
+    sales: {
+      offerCount: d.pipeline?.offerCount ?? 0,
+      lastOfferAt: d.pipeline?.lastOfferAt ?? null,
+      lastContactAt: d.pipeline?.lastContactAt ?? null,
+      nextFollowUpAt: d.pipeline?.nextFollowUpAt ?? null,
+    },
     hasStrategy: Boolean(d.strategy),
     pipeline: d.pipeline ?? { status: 'new' },
     lastRunId: d.lastRunId ?? null,
@@ -80,7 +98,12 @@ export class PlatformAiResearchService {
     return {
       cities: Object.entries(AI_RESEARCH_CITIES).map(([key, c]) => ({ key, ...c })),
       defaultKeywords: AI_RESEARCH_DEFAULT_KEYWORDS,
+      products: this.getProductCatalog(),
     };
+  }
+
+  getProductCatalog() {
+    return AI_LEAD_PRODUCTS.map((key) => ({ key, label: PRODUCT_LABELS[key] ?? key }));
   }
 
   async getRunnerStatus() {
@@ -241,6 +264,11 @@ export class PlatformAiResearchService {
             ? !(d.enrichment?.competitors ?? []).length
             : (d.enrichment?.competitors ?? []).length > 0,
       )
+      .filter((d) => {
+        if (!f.product) return true;
+        const { products } = leadProducts(d);
+        return f.product === AI_LEAD_PRODUCT_UNKNOWN ? products.length === 0 : products.includes(f.product);
+      })
       .filter((d) => !q || `${d.name} ${d.district ?? ''} ${d.address ?? ''}`.toLocaleLowerCase('tr-TR').includes(q))
       .map(toListItem);
 
@@ -251,11 +279,21 @@ export class PlatformAiResearchService {
         (b.reviewCount ?? 0) - (a.reviewCount ?? 0),
     );
 
-    const summary = { total: items.length, sicak: 0, ilik: 0, soguk: 0, unclassified: 0 };
+    const summary = {
+      total: items.length,
+      sicak: 0,
+      ilik: 0,
+      soguk: 0,
+      unclassified: 0,
+      /** Ürün kategorisi başına lead sayısı; `unknown` = ürün atanmamış. */
+      products: {} as Record<string, number>,
+    };
     for (const i of items) {
       const p = i.insight?.priority as 'sicak' | 'ilik' | 'soguk' | undefined;
       if (p) summary[p]++;
       else summary.unclassified++;
+      const keys = i.products.length ? i.products : [AI_LEAD_PRODUCT_UNKNOWN];
+      for (const k of keys) summary.products[k] = (summary.products[k] ?? 0) + 1;
     }
     return { items, summary };
   }
@@ -263,7 +301,9 @@ export class PlatformAiResearchService {
   async getLead(id: string) {
     const snap = await this.leads().doc(id).get();
     if (!snap.exists) throw new AppException(ErrorCode.CRM_NOT_FOUND, 'Potansiyel müşteri bulunamadı');
-    return snap.data();
+    const d = snap.data() as Doc;
+    const products = leadProducts(d);
+    return { ...d, products: products.products, productsInferred: products.inferred, contact: leadContact(d) };
   }
 
   async updateLead(id: string, dto: UpdateAiLeadDto, admin: PlatformAdminUser) {
@@ -272,16 +312,77 @@ export class PlatformAiResearchService {
     if (!snap.exists) throw new AppException(ErrorCode.CRM_NOT_FOUND, 'Potansiyel müşteri bulunamadı');
     const current = (snap.data() as Doc).pipeline ?? { status: 'new' };
     const now = new Date().toISOString();
+    const contactPatch = Object.fromEntries(
+      (['contactName', 'email', 'whatsapp'] as const)
+        .filter((k) => dto[k] !== undefined)
+        .map((k) => [k, dto[k]!.trim() || null]),
+    );
     const pipeline = {
       ...current,
       ...(dto.status !== undefined ? { status: dto.status } : {}),
       ...(dto.note !== undefined ? { note: dto.note } : {}),
+      ...(dto.products !== undefined ? { products: [...new Set(dto.products)] } : {}),
+      ...(Object.keys(contactPatch).length ? { contact: { ...(current.contact ?? {}), ...contactPatch } } : {}),
       updatedAt: now,
       updatedBy: admin.uid,
       updatedByEmail: admin.email,
     };
     // Sadece pipeline alanı değişir; runner sonraki taramalarda bu alana dokunmaz.
     await ref.update({ pipeline });
+    if (dto.products !== undefined) {
+      await this.audit.record({
+        adminUid: admin.uid,
+        adminEmail: admin.email,
+        action: 'AI_LEAD_PRODUCTS_UPDATED',
+        targetType: 'aiLead',
+        targetId: id,
+        before: { products: current.products ?? null },
+        after: { products: pipeline.products },
+      });
+    }
     return { id, pipeline };
+  }
+
+  /** Seçili lead'lere toplu ürün kategorisi atar (tek Firestore batch, en fazla 200 lead). */
+  async bulkUpdateProducts(dto: BulkUpdateAiLeadProductsDto, admin: PlatformAdminUser) {
+    const ids = [...new Set(dto.leadIds)];
+    const refs = ids.map((id) => this.leads().doc(id));
+    const snaps = await this.firebase.db.getAll(...refs);
+    const mode = dto.mode ?? 'set';
+    const now = new Date().toISOString();
+    const batch = this.firebase.db.batch();
+    let updated = 0;
+    const missing: string[] = [];
+    for (const snap of snaps) {
+      if (!snap.exists) {
+        missing.push(snap.id);
+        continue;
+      }
+      const d = snap.data() as Doc;
+      const current = leadProducts(d).products;
+      const next =
+        mode === 'set'
+          ? dto.products
+          : mode === 'add'
+            ? [...current, ...dto.products]
+            : current.filter((p) => !dto.products.includes(p));
+      batch.update(snap.ref, {
+        'pipeline.products': [...new Set(next)],
+        'pipeline.updatedAt': now,
+        'pipeline.updatedBy': admin.uid,
+        'pipeline.updatedByEmail': admin.email,
+      });
+      updated++;
+    }
+    if (updated) await batch.commit();
+    await this.audit.record({
+      adminUid: admin.uid,
+      adminEmail: admin.email,
+      action: 'AI_LEAD_PRODUCTS_BULK_UPDATED',
+      targetType: 'aiLead',
+      targetId: ids.length === 1 ? ids[0] : `${ids.length} lead`,
+      after: { mode, products: dto.products, updated, leadIds: ids.slice(0, 50) },
+    });
+    return { updated, missing };
   }
 }
