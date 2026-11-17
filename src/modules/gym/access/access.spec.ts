@@ -24,7 +24,8 @@ function setup() {
   const firebase = { db } as never;
   const context = new TenantContext();
   const repo = new AccessRepository(firebase);
-  const agents = new AccessAgentsService(repo, context);
+  const presence = { record: jest.fn().mockResolvedValue(undefined) };
+  const agents = new AccessAgentsService(repo, context, presence as never);
   const sync = new AccessSyncService(repo, context);
   const guard = new AgentAuthGuard(repo, context);
   return { db, context, repo, agents, sync, guard };

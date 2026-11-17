@@ -9,6 +9,7 @@ import {
   IsObject,
   IsOptional,
   IsString,
+  Max,
   Min,
 } from 'class-validator';
 import { PagingQueryDto } from '../../../shared/http/paging.dto';
@@ -418,6 +419,13 @@ export class GymRecordDto {
   @IsOptional()
   @IsNumber()
   targetDaysPerWeek?: number;
+
+  /** Workout plan period in weeks (with `targetDaysPerWeek` it sets the workout target); 0 clears it. */
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(104)
+  durationWeeks?: number;
 
   @IsOptional()
   @IsString()

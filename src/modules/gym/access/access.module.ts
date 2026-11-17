@@ -10,8 +10,10 @@ import {
 } from './access.controllers';
 import { AccessRepository } from './access.repository';
 import { AgentAuthGuard } from './agent-auth.guard';
+import { GymSignalsModule } from '../signals/signals.module';
 
 @Module({
+  imports: [GymSignalsModule],
   controllers: [
     AccessAgentEnrollController,
     AccessAgentController,

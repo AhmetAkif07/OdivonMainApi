@@ -48,6 +48,7 @@ import { GymReceivablesController } from './ops/receivables.controller';
 import { PackagesController } from './packages/packages.controller';
 import { GYM_ROLE_PERMISSIONS } from './shared/gym-roles';
 import { StaffController } from './staff/staff.controller';
+import { GymCoachController } from './coach/coach.controller';
 
 const STAFF_CONTROLLERS: Type[] = [
   MembersController,
@@ -81,6 +82,7 @@ const STAFF_CONTROLLERS: Type[] = [
   GymReportsController,
   AccessAgentsAdminController,
   AccessSyncController,
+  GymCoachController,
 ];
 
 interface Route {
@@ -255,5 +257,12 @@ describe('gym route authorization', () => {
     expect(allowed(find('POST /gym/appointments'), trainer)).toBe(true);
     expect(allowed(find('PATCH /gym/members/:id'), trainer)).toBe(false);
     expect(allowed(find('POST /gym/members/:id/freeze'), trainer)).toBe(false);
+  });
+
+  it('opens trainer mode to trainers, lets reception look but not answer requests', () => {
+    const coachRoutes = routesOf(GymCoachController);
+    expect(coachRoutes.filter((route) => !allowed(route, trainer)).map((route) => route.label)).toEqual([]);
+    expect(allowed(find('GET /gym/coach/floor'), reception)).toBe(true);
+    expect(allowed(find('PATCH /gym/coach/requests/:id'), reception)).toBe(false);
   });
 });

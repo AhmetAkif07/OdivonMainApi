@@ -13,7 +13,7 @@ import { CreateExerciseDto, ExerciseQueryDto } from '../exercises/exercise.dto';
 import { GymExercisesService } from '../exercises/exercises.service';
 import { GymLeadsService } from '../leads/leads.service';
 import { GymClassBookingService } from '../ops/class-booking.service';
-import { CreateProgramRequestDto } from '../ops/program-request.dto';
+import { CreateMemberRequestDto, CreateProgramRequestDto } from '../ops/program-request.dto';
 import { GymReceivablesService } from '../ops/receivables.service';
 import { GymMemberGuard } from './gym-member.guard';
 import { GymMemberRecordsService } from './member-records.service';
@@ -32,8 +32,11 @@ import {
   PatchMobileMeDto,
   StartWorkoutSessionDto,
   PaymentIntentDto,
+  RegisterDeviceDto,
   RenewMembershipDto,
   SendMessageDto,
+  UnregisterDeviceDto,
+  UpdateSessionProgressDto,
   WaterQueryDto,
 } from './mobile.dto';
 import { GymMobileService } from './mobile.service';
@@ -94,6 +97,12 @@ export class GymMobileController {
   @Get('check-ins')
   checkIns() {
     return this.mobile.checkIns();
+  }
+
+  /** "Am I in the gym?" from the last turnstile entry and exit; one small read, fine to poll. */
+  @Get('presence')
+  presence() {
+    return this.mobile.presence();
   }
 
   @Get('workouts')
@@ -159,6 +168,22 @@ export class GymMobileController {
     return this.mobile.createProgramRequest(dto);
   }
 
+  /** Every kind of request to the trainers (program, program change, floor help, measurement). */
+  @Get('requests')
+  requests() {
+    return this.mobile.listRequests();
+  }
+
+  @Post('requests')
+  createRequest(@Body() dto: CreateMemberRequestDto) {
+    return this.mobile.createRequest(dto);
+  }
+
+  @Post('requests/:id/cancel')
+  cancelRequest(@Param('id') id: string) {
+    return this.mobile.cancelRequest(id);
+  }
+
   @Get('workout-logs')
   workoutLogs() {
     return this.mobile.listWorkoutLogs();
@@ -182,6 +207,12 @@ export class GymMobileController {
   @Get('workout-sessions/:id')
   workoutSession(@Param('id') id: string) {
     return this.mobile.getWorkoutSession(id);
+  }
+
+  /** Live snapshot of a running workout for the trainer; best effort, never blocks the workout. */
+  @Patch('workout-sessions/:id/progress')
+  workoutSessionProgress(@Param('id') id: string, @Body() dto: UpdateSessionProgressDto) {
+    return this.mobile.updateWorkoutSessionProgress(id, dto);
   }
 
   @Post('workout-sessions/:id/complete')
@@ -212,6 +243,22 @@ export class GymMobileController {
   @Get('notifications')
   notifications() {
     return this.mobile.listNotifications();
+  }
+
+  @Post('notifications/read-all')
+  readAllNotifications() {
+    return this.mobile.markAllNotificationsRead();
+  }
+
+  @Post('devices')
+  registerDevice(@Body() dto: RegisterDeviceDto) {
+    return this.mobile.registerDevice(dto);
+  }
+
+  /** Sign-out: the token travels in the body (it is long and private, not for a URL). */
+  @Post('devices/remove')
+  unregisterDevice(@Body() dto: UnregisterDeviceDto) {
+    return this.mobile.unregisterDevice(dto.token);
   }
 
   @Patch('notifications/:id/read')

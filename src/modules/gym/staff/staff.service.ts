@@ -7,6 +7,7 @@ import { IdentityRepository } from '../../identity/identity.repository';
 import { UserProfile } from '../../identity/entities/user-profile.entity';
 import { MailService } from '../../../shared/mail/mail.service';
 import { GymInfoService } from '../info/gym-info.service';
+import { ensureGymDefaultRoles, staffAccess } from '../shared/gym-default-roles';
 import { CreateStaffDto, UpdateStaffDto } from './staff.dto';
 import { StaffRepository } from './staff.repository';
 import { GymStaff } from './staff.entity';
@@ -64,12 +65,21 @@ export class StaffService {
 
       authUid = userRecord.uid;
 
-      // 3. UserProfile kaydı oluştur veya güncelle
+      // 3. UserProfile kaydı oluştur veya güncelle. Antrenör / resepsiyon platformda 'user'dır;
+      // izinleri varsayılan salon rolünden (roleIds) gelir, yoksa her personel ucunda 403 alır.
       const now = new Date().toISOString();
+      await ensureGymDefaultRoles(this.firebase, store.tenantId, store.userId);
+      const existingProfile = await this.users.findByUid(authUid);
+      // Bir salon sahibini personel listesine eklemek onun sahipliğini düşürmemeli.
+      const access =
+        existingProfile?.role === 'owner' && existingProfile.tenantId === store.tenantId
+          ? { role: 'owner' as const, roleIds: existingProfile.roleIds ?? [] }
+          : staffAccess(dto.role || 'trainer', existingProfile?.roleIds ?? []);
       const profile: UserProfile = {
         uid: authUid,
         tenantId: store.tenantId,
-        role: (dto.role as any) || 'trainer',
+        role: access.role,
+        roleIds: access.roleIds,
         accountType: 'staff',
         modules: store.modules || ['gym'],
         email,
@@ -87,7 +97,7 @@ export class StaffService {
       // 4. Custom Claims ata
       await this.firebase.auth.setCustomUserClaims(authUid, {
         tenantId: store.tenantId,
-        role: dto.role || 'trainer',
+        role: access.role,
         accountType: 'staff',
         modules: store.modules || ['gym'],
       });
@@ -153,7 +163,25 @@ export class StaffService {
       }
     }
 
-    return this.staff.update(id, dto);
+    const updated = await this.staff.update(id, dto);
+    if (dto.role && dto.role !== current.role) {
+      await this.syncSignInRole(updated.userId ?? current.userId ?? null, dto.role);
+    }
+    return updated;
+  }
+
+  /** Keeps the sign-in profile's platform role and default gym role in step with the staff role. */
+  private async syncSignInRole(uid: string | null, staffRole: string) {
+    if (!uid) return;
+    const store = this.tenantContext.getStore();
+    const profile = await this.users.findByUid(uid);
+    if (!profile || profile.tenantId !== store.tenantId || profile.accountType === 'gym_member' || profile.role === 'owner') return;
+    await ensureGymDefaultRoles(this.firebase, store.tenantId, store.userId);
+    const access = staffAccess(staffRole, profile.roleIds ?? []);
+    await this.users.updateProfile(uid, { role: access.role, roleIds: access.roleIds, updatedAt: new Date().toISOString() });
+    await this.firebase.auth
+      .setCustomUserClaims(uid, { tenantId: store.tenantId, role: access.role, accountType: 'staff', modules: profile.modules ?? store.modules ?? ['gym'] })
+      .catch((err: unknown) => this.logger.warn(`Personel rolü oturum bilgisine yazılamadı (${uid}): ${(err as Error)?.message ?? err}`));
   }
 
   async resendInvite(id: string) {

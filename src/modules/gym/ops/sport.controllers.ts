@@ -6,7 +6,7 @@ import { ModuleGuard } from '../../../shared/authorization/module.guard';
 import { PermissionGuard } from '../../../shared/authorization/permission.guard';
 import { RequirePermission } from '../../../shared/authorization/require-permission.decorator';
 import { TenantGuard } from '../../../shared/tenancy/tenant.guard';
-import { ResolveProgramRequestDto } from './program-request.dto';
+import { ProgramRequestQueryDto, ResolveProgramRequestDto } from './program-request.dto';
 import { GymListQueryDto, GymRecordDto } from '../shared/ops.dto';
 import { AttendanceDto, PromoteDto, SessionQueryDto, StaffBookingDto, StaffWaitlistDto } from './class-booking.dto';
 import { GymClassBookingService } from './class-booking.service';
@@ -197,8 +197,8 @@ export class GymProgramRequestsController {
 
   @Get()
   @RequirePermission('workouts', 'view')
-  list() {
-    return this.sport.listProgramRequests();
+  list(@Query() query: ProgramRequestQueryDto) {
+    return this.sport.listProgramRequests(query);
   }
 
   @Patch(':id')

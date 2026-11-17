@@ -114,6 +114,9 @@ export const TENANT_COLLECTION = {
   gymAccessSettings: 'gymAccessSettings',
   gymReferralSettings: 'gymReferralSettings',
   gymReferralRewards: 'gymReferralRewards',
+  // Trainer–member coordination: one presence doc per member (last turnstile in/out) and push devices.
+  gymPresence: 'gymPresence',
+  gymPushDevices: 'gymPushDevices',
   spaSettings: 'spaSettings',
   spaCustomers: 'spaCustomers',
   spaRooms: 'spaRooms',

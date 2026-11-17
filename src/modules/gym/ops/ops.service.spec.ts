@@ -3,6 +3,7 @@ import { GymOpsService } from './ops.service';
 describe('GymOpsService.scan token', () => {
   const store = {
     create: jest.fn(),
+    tenantId: jest.fn(),
     collection: jest.fn(),
     page: jest.fn(),
     update: jest.fn(),
@@ -19,7 +20,7 @@ describe('GymOpsService.scan token', () => {
     jest.resetAllMocks();
     store.create.mockImplementation(async (_name: string, fields: object) => ({ id: 'log', ...fields }));
     packages.list.mockResolvedValue([]);
-    service = new GymOpsService(store as never, members as never, packages as never, {} as never);
+    service = new GymOpsService(store as never, members as never, packages as never, {} as never, { record: jest.fn().mockResolvedValue(undefined) } as never);
   });
 
   it('denies an expired QR token', async () => {
@@ -77,7 +78,7 @@ describe('GymOpsService.saveSaas', () => {
   it('refuses plan, status and period changes from the gym; only refreshes usage', async () => {
     const store = { upsertSingleton: jest.fn(async (_name: string, fields: object) => fields) };
     const members = { list: jest.fn(async () => [{}, {}]) };
-    const service = new GymOpsService(store as never, members as never, {} as never, {} as never);
+    const service = new GymOpsService(store as never, members as never, {} as never, {} as never, { record: jest.fn().mockResolvedValue(undefined) } as never);
     await expect(service.saveSaas({ status: 'active', planId: 'enterprise' } as never)).rejects.toMatchObject({ code: 'FORBIDDEN_ROLE' });
     await expect(service.saveSaas({ currentPeriodEndsAt: '2030-01-01' } as never)).rejects.toMatchObject({ code: 'FORBIDDEN_ROLE' });
     expect(store.upsertSingleton).not.toHaveBeenCalled();
@@ -92,7 +93,7 @@ describe('GymOpsService access settings', () => {
       getSingleton: jest.fn(async () => stored),
       upsertSingleton: jest.fn(async (_name: string, fields: Record<string, unknown>) => (stored = { ...fields })),
     };
-    const service = new GymOpsService(store as never, {} as never, {} as never, {} as never);
+    const service = new GymOpsService(store as never, {} as never, {} as never, {} as never, { record: jest.fn().mockResolvedValue(undefined) } as never);
     expect(await service.getAccessSettings()).toEqual({ liveRefresh: false });
     expect(await service.saveAccessSettings({ liveRefresh: true })).toEqual({ liveRefresh: true });
     expect(await service.getAccessSettings()).toEqual({ liveRefresh: true });

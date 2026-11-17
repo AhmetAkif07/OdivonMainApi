@@ -3,16 +3,23 @@ import { Injectable } from '@nestjs/common';
 import { AppException } from '../../../shared/errors/app.exception';
 import { ErrorCode } from '../../../shared/errors/error-codes';
 import { TENANT_COLLECTION } from '../../../shared/firebase/firestore-path';
-import { BaseDocument, createBaseFields, omitUndefined } from '../../../shared/firestore/base-document';
+import { BaseDocument, createBaseFields, isDeleted, omitUndefined } from '../../../shared/firestore/base-document';
 import { GymMember } from '../members/member.entity';
 import { AccessSyncService } from '../access/access-sync.service';
 import { MembersRepository } from '../members/members.repository';
 import { GymPackage } from '../packages/package.entity';
 import { PackagesRepository } from '../packages/packages.repository';
 import { StaffRepository } from '../staff/staff.repository';
-import { CreateProgramRequestDto, toProgramRequest } from '../ops/program-request.dto';
+import { CreateMemberRequestDto, CreateProgramRequestDto, toProgramRequest } from '../ops/program-request.dto';
 import { GymStore } from '../shared/gym-store';
+import { buildLiveSession } from '../shared/live-session';
+import { isOpenRequest, MemberRequestType, nextRequestStatus, REQUEST_LABELS, requestStatus, requestType } from '../shared/member-requests';
+import { nextPlanDay, PlanProgress, planProgress, statsFromSessions } from '../shared/plan-progress';
+import { loadPlanStats, savePlanStats } from '../shared/plan-progress.store';
 import { planContent } from '../shared/workout-plan.normalize';
+import { presenceFromLogs, PresenceState, presenceView } from '../signals/presence.rules';
+import { GymPresenceService } from '../signals/presence.service';
+import { GymPushService } from '../signals/push.service';
 import { packageCredits } from '../shared/membership';
 import { creditsLeft, nextSessionDate } from '../ops/class-booking.math';
 import {
@@ -27,14 +34,24 @@ import {
   PatchMobileMeDto,
   StartWorkoutSessionDto,
   PaymentIntentDto,
+  RegisterDeviceDto,
   RenewMembershipDto,
   SendMessageDto,
+  UpdateSessionProgressDto,
 } from './mobile.dto';
 import { ACHIEVEMENT_DEFS, computeBmi, computeStreak } from './mobile.stats';
 import { settleWorkoutSession } from './workout-session.math';
 
 const QR_TTL_MS = 45_000;
 const DEFAULT_WEEKLY_TARGET = 3;
+/** Enough rows for a month of visits (entry and exit) with room to spare. */
+const ACCESS_LOG_LIMIT = 200;
+const OPEN_REQUEST_MESSAGE: Record<MemberRequestType, string> = {
+  program: 'Bekleyen bir program talebin var.',
+  program_change: 'Bekleyen bir program değişikliği talebin var.',
+  floor_help: 'Antrenöre zaten haber verildi.',
+  measurement: 'Bekleyen bir ölçüm talebin var.',
+};
 /** Weeks start on Monday in Türkiye time (UTC+3, no DST). */
 const WEEK_TZ_OFFSET_MS = 3 * 3_600_000;
 type Doc = BaseDocument & Record<string, unknown>;
@@ -47,6 +64,8 @@ export class GymMobileService {
     private readonly packages: PackagesRepository,
     private readonly staff: StaffRepository,
     private readonly accessSync: AccessSyncService,
+    private readonly presenceStore: GymPresenceService,
+    private readonly push: GymPushService,
   ) {}
 
   async home() {
@@ -66,7 +85,11 @@ export class GymMobileService {
     const completedSessions = sessions
       .filter((item) => item['userId'] === userId && item['status'] === 'completed')
       .sort((left, right) => String(right['completedAt'] ?? '').localeCompare(String(left['completedAt'] ?? '')));
-    const todayWorkout = pickTodayWorkout(myWorkouts, completedSessions);
+    const today = pickTodayWorkout(myWorkouts, completedSessions);
+    const todayPlan = today ? myWorkouts.find((item) => item.id === today.planId) : undefined;
+    const todayWorkout = today
+      ? { ...today, progress: todayPlan ? planProgress(todayPlan, statsFromSessions(todayPlan.id, completedSessions)) : null }
+      : null;
     const week = summarizeWeek(completedSessions, member.weeklyWorkoutTarget ?? DEFAULT_WEEKLY_TARGET);
     const lastSession = completedSessions[0] ? toWorkoutSession(completedSessions[0], null) : null;
 
@@ -98,6 +121,11 @@ export class GymMobileService {
 
     const visitsThisMonth = countVisitsThisMonth(logs, userId);
     const monthlyProgress = await this.monthlyProgressFor(userId, visitsThisMonth, measurements);
+    const [presence, requests, notifications] = await Promise.all([
+      this.presenceState(userId, logs.filter((item) => item['userId'] === userId)),
+      this.store.listBy<Doc>(TENANT_COLLECTION.gymProgramRequests, 'userId', userId),
+      this.store.listBy<Doc>(TENANT_COLLECTION.gymMemberNotifications, 'userId', userId),
+    ]);
 
     return {
       member: {
@@ -117,6 +145,10 @@ export class GymMobileService {
       visitsThisMonth,
       monthlyProgress,
       announcements: announcements.slice(0, 5),
+      presence: presenceView(presence, now),
+      trainer: member.trainerId || member.trainerName ? { id: member.trainerId, name: member.trainerName } : null,
+      openRequests: requests.filter((item) => isOpenRequest(item, now)).length,
+      unreadNotifications: notifications.filter((item) => !item['readAt']).length,
     };
   }
 
@@ -228,13 +260,14 @@ export class GymMobileService {
     };
   }
 
+  /** Whether the member is in the gym right now; one small read, safe to poll from the home screen. */
+  async presence() {
+    return presenceView(await this.presenceState(this.store.userId()), Date.now());
+  }
+
   async checkIns() {
     const member = await this.currentMember();
-    const logs = (await this.store.list<Doc>(TENANT_COLLECTION.gymAccessLogs))
-      .filter((item) => item['userId'] === member.uid)
-      .sort((left, right) =>
-        String(right['timestamp'] ?? right.createdAt).localeCompare(String(left['timestamp'] ?? left.createdAt)),
-      );
+    const logs = await this.memberAccessLogs(member.uid);
     const granted = logs.filter((item) => item['status'] === 'granted');
     const lastIn = granted.find((item) => item['direction'] === 'in') ?? null;
     const lastOut = granted.find((item) => item['direction'] === 'out') ?? null;
@@ -249,20 +282,20 @@ export class GymMobileService {
       lastCheckIn: lastIn ? toCheckInItem(lastIn) : null,
       lastCheckOut: lastOut ? toCheckInItem(lastOut) : null,
       openCheckIn,
+      presence: presenceView(await this.presenceState(member.uid, logs), Date.now()),
     };
   }
 
   async listWorkouts() {
-    const userId = this.store.userId();
-    const items = await this.store.list<Doc>(TENANT_COLLECTION.gymWorkoutPlans);
-    return items
-      .filter((item) => item['userId'] === userId)
-      .map(toWorkoutSummary);
+    const plans = await this.store.listBy<Doc>(TENANT_COLLECTION.gymWorkoutPlans, 'userId', this.store.userId());
+    return Promise.all(
+      plans.map(async (plan) => toWorkoutSummary(plan, planProgress(plan, await loadPlanStats(this.store, plan)))),
+    );
   }
 
   async getWorkout(id: string) {
     const plan = await this.ownWorkout(id);
-    const mine = await this.performanceHistory();
+    const { history: mine, sessions } = await this.performanceHistory();
     const { days, exercises } = planContent(plan);
     const withPrevious = <T extends { name: string; exerciseId?: string }>(exercise: T) => ({
       ...exercise,
@@ -270,7 +303,7 @@ export class GymMobileService {
       last: lastSet(mine, exercise.name, undefined, exercise.exerciseId),
     });
     return {
-      ...toWorkoutSummary(plan),
+      ...toWorkoutSummary(plan, planProgress(plan, statsFromSessions(plan.id, sessions))),
       description: (plan['description'] as string | null) ?? null,
       notes: (plan['notes'] as string | null) ?? null,
       days: days.map((day) => ({ ...day, exercises: day.exercises.map(withPrevious) })),
@@ -360,6 +393,23 @@ export class GymMobileService {
     return toWorkoutSession(item as Doc, null);
   }
 
+  /**
+   * Stores where the member is in a running workout so the trainer can follow it. A view only:
+   * nothing is settled from it, and a workout that already ended ignores it.
+   */
+  async updateWorkoutSessionProgress(id: string, dto: UpdateSessionProgressDto) {
+    const current = await this.ownSession(id);
+    if (current['status'] !== 'active') {
+      return { id, live: false };
+    }
+    const nowIso = new Date().toISOString();
+    await this.store
+      .collection(TENANT_COLLECTION.gymWorkoutSessions)
+      .doc(id)
+      .update({ live: buildLiveSession({ ...dto }, nowIso), updatedAt: nowIso });
+    return { id, live: true };
+  }
+
   async listWorkoutSessions() {
     const userId = this.store.userId();
     const items = (await this.store.list<Doc>(TENANT_COLLECTION.gymWorkoutSessions))
@@ -442,8 +492,10 @@ export class GymMobileService {
         activeDurationMs: settled.activeDurationMs,
         calories: settled.calories,
         weekVolumeDeltaPercent: weekVolumeDelta(sessions, userId, String(current['planId'] ?? ''), settled.volumeKg, dto.completedAt),
+        live: null,
       },
     );
+    await this.refreshPlanProgress(String(current['planId'] ?? ''), [...sessions.filter((item) => item.id !== id), updated]);
     await this.unlockAchievements();
     const stats = await this.buildStats();
     return toWorkoutSession(updated, stats.streak);
@@ -520,10 +572,30 @@ export class GymMobileService {
   async listNotifications() {
     const member = await this.currentMember();
     await this.ensureExpiryNotifications(member);
-    const items = await this.store.list<Doc>(TENANT_COLLECTION.gymMemberNotifications);
-    return items
-      .filter((item) => item['userId'] === member.uid)
-      .map(toNotification);
+    const items = await this.store.listBy<Doc>(TENANT_COLLECTION.gymMemberNotifications, 'userId', member.uid);
+    return items.slice(0, 100).map(toNotification);
+  }
+
+  async markAllNotificationsRead() {
+    const unread = (
+      await this.store.listBy<Doc>(TENANT_COLLECTION.gymMemberNotifications, 'userId', this.store.userId())
+    ).filter((item) => !item['readAt']);
+    const readAt = new Date().toISOString();
+    const collection = this.store.collection(TENANT_COLLECTION.gymMemberNotifications);
+    await Promise.all(unread.slice(0, 200).map((item) => collection.doc(item.id).update({ readAt, updatedAt: readAt })));
+    return { read: Math.min(unread.length, 200) };
+  }
+
+  registerDevice(dto: RegisterDeviceDto) {
+    return this.push.registerDevice(this.store.tenantId(), this.store.userId(), 'member', {
+      token: dto.token,
+      platform: dto.platform,
+      appVersion: dto.appVersion,
+    });
+  }
+
+  unregisterDevice(token: string) {
+    return this.push.unregisterDevice(this.store.tenantId(), this.store.userId(), token);
   }
 
   async markNotificationRead(id: string) {
@@ -635,41 +707,102 @@ export class GymMobileService {
     return this.store.softDelete(TENANT_COLLECTION.gymBodyPhotos, id, ErrorCode.GYM_PHOTO_NOT_FOUND, 'Photo not found');
   }
 
+  /** Program requests only: the list older app builds read. */
   async listProgramRequests() {
-    const items = await this.store.list<Doc>(TENANT_COLLECTION.gymProgramRequests);
-    return items
-      .filter((item) => item['userId'] === this.store.userId())
-      .map(toProgramRequest)
-      .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+    return (await this.listRequests()).filter((item) => item.type === 'program');
   }
 
-  async createProgramRequest(dto: CreateProgramRequestDto) {
+  /** Everything the member asked the trainers for, newest first. */
+  async listRequests() {
+    const items = await this.store.listBy<Doc>(TENANT_COLLECTION.gymProgramRequests, 'userId', this.store.userId());
+    return items.map((item) => toProgramRequest(item)).sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+  }
+
+  createProgramRequest(dto: CreateProgramRequestDto) {
+    return this.createRequest({ type: 'program', goal: dto.goal, daysPerWeek: dto.daysPerWeek, message: dto.notes });
+  }
+
+  /**
+   * A request to the gym's trainers. It goes to the member's own trainer when there is one;
+   * otherwise (and always for a call for help on the floor) every trainer of the gym sees it.
+   * One open request per kind at a time.
+   */
+  async createRequest(dto: CreateMemberRequestDto) {
     const member = await this.currentMember();
-    if (!member.trainerId) {
-      throw new AppException(ErrorCode.VALIDATION_ERROR, 'Sana atanmış bir antrenör yok.');
+    const goal = dto.goal?.trim() ?? '';
+    const message = dto.message?.trim() ?? '';
+    if (dto.type === 'program' && (!goal || !dto.daysPerWeek)) {
+      throw new AppException(ErrorCode.VALIDATION_ERROR, 'Hedef ve haftalık gün sayısı gerekli.');
     }
-    const goal = dto.goal.trim();
-    if (!goal) {
-      throw new AppException(ErrorCode.VALIDATION_ERROR, 'Hedef gerekli.');
+    if (dto.type === 'program_change' && !message) {
+      throw new AppException(ErrorCode.VALIDATION_ERROR, 'Programda neyin değişmesini istediğini yaz.');
     }
-    const existing = await this.store.list<Doc>(TENANT_COLLECTION.gymProgramRequests);
-    const pending = existing.some((item) => item['userId'] === member.uid && item['status'] === 'pending');
-    if (pending) {
-      throw new AppException(ErrorCode.VALIDATION_ERROR, 'Bekleyen bir program talebin var.');
+    const existing = await this.store.listBy<Doc>(TENANT_COLLECTION.gymProgramRequests, 'userId', member.uid);
+    if (existing.some((item) => requestType(item) === dto.type && isOpenRequest(item))) {
+      throw new AppException(ErrorCode.VALIDATION_ERROR, OPEN_REQUEST_MESSAGE[dto.type]);
     }
+    const plan = dto.planId ? await this.ownWorkout(dto.planId).catch(() => null) : null;
     const created = await this.store.create<Doc>(TENANT_COLLECTION.gymProgramRequests, {
       userId: member.uid,
       memberName: member.displayName,
-      trainerId: member.trainerId,
-      trainerName: member.trainerName,
+      trainerId: member.trainerId ?? null,
+      trainerName: member.trainerName ?? null,
+      type: dto.type,
       goal,
-      daysPerWeek: dto.daysPerWeek,
-      notes: dto.notes?.trim() ?? '',
+      daysPerWeek: dto.daysPerWeek ?? 0,
+      notes: message,
+      message,
+      context: {
+        planId: plan?.id ?? null,
+        planTitle: plan ? String(plan['title'] ?? '') : null,
+        dayName: dto.dayName?.trim() || null,
+        exerciseName: dto.exerciseName?.trim() || null,
+        sessionId: dto.sessionId ?? null,
+      },
       status: 'pending',
       planId: null,
+      reply: null,
       resolvedAt: null,
     });
+    const urgent = dto.type === 'floor_help';
+    const where = [dto.exerciseName?.trim(), dto.dayName?.trim()].filter(Boolean).join(' · ');
+    this.push.notifyStaff(
+      this.store.tenantId(),
+      urgent || !member.trainerId ? null : await this.trainerUserIds(member.trainerId),
+      {
+        type: 'request_new',
+        title: urgent ? `${member.displayName} yardım istiyor` : `${REQUEST_LABELS[dto.type]}: ${member.displayName}`,
+        body: (urgent ? where || message : message || goal) || REQUEST_LABELS[dto.type],
+        data: { requestId: created.id, memberId: member.uid, requestType: dto.type },
+        urgent,
+      },
+    );
     return toProgramRequest(created);
+  }
+
+  /** The member withdraws a request that nobody has closed yet. */
+  async cancelRequest(id: string) {
+    const item = await this.store.getOrThrow<Doc>(
+      TENANT_COLLECTION.gymProgramRequests,
+      id,
+      ErrorCode.GYM_WORKOUT_NOT_FOUND,
+      'Request not found',
+    );
+    if (item['userId'] !== this.store.userId()) {
+      throw new AppException(ErrorCode.GYM_WORKOUT_NOT_FOUND, 'Request not found');
+    }
+    const status = nextRequestStatus(requestStatus(item), 'cancel');
+    if (!status) {
+      throw new AppException(ErrorCode.VALIDATION_ERROR, 'Bu istek zaten sonuçlanmış.');
+    }
+    const updated = await this.store.update<Doc>(
+      TENANT_COLLECTION.gymProgramRequests,
+      id,
+      ErrorCode.GYM_WORKOUT_NOT_FOUND,
+      'Request not found',
+      { status, resolvedAt: new Date().toISOString() },
+    );
+    return toProgramRequest(updated);
   }
 
   async trainer() {
@@ -1079,14 +1212,88 @@ export class GymMobileService {
     return item;
   }
 
-  /** The member's per-exercise history: manual workout logs plus completed live sessions. */
+  /** The member's per-exercise history (manual workout logs plus completed live sessions) and their sessions. */
   private async performanceHistory() {
     const userId = this.store.userId();
     const [logs, sessions] = await Promise.all([
       this.store.list<Doc>(TENANT_COLLECTION.gymWorkoutLogs),
       this.store.list<Doc>(TENANT_COLLECTION.gymWorkoutSessions),
     ]);
-    return [...logs.filter((item) => item['userId'] === userId), ...sessionPerformance(sessions, userId)];
+    return {
+      history: [...logs.filter((item) => item['userId'] === userId), ...sessionPerformance(sessions, userId)],
+      sessions: sessions.filter((item) => item['userId'] === userId),
+    };
+  }
+
+  /** The member's own access log, newest first; reads only their rows, never the whole log. */
+  private async memberAccessLogs(userId: string): Promise<Doc[]> {
+    const at = (item: Doc) => String(item['timestamp'] ?? item.createdAt);
+    return (await this.store.listRecentBy<Doc>(TENANT_COLLECTION.gymAccessLogs, 'userId', userId, ACCESS_LOG_LIMIT)).sort(
+      (left, right) => at(right).localeCompare(at(left)),
+    );
+  }
+
+  /**
+   * The member's presence document. A member who has none yet (they last used the turnstile
+   * before presence was tracked) gets one built from their access log, once.
+   */
+  private async presenceState(userId: string, knownLogs?: Doc[]): Promise<PresenceState> {
+    const tenantId = this.store.tenantId();
+    const stored = await this.presenceStore.get(tenantId, userId);
+    if (stored) return stored;
+    const state = presenceFromLogs(knownLogs ?? (await this.memberAccessLogs(userId)));
+    await this.presenceStore.save(tenantId, userId, state).catch(() => undefined);
+    return state;
+  }
+
+  /**
+   * Recounts the plan's progress counters after a workout, and tells the member and the trainer
+   * when that workout was the one that reached the plan's target. The plan itself stays as it is.
+   */
+  private async refreshPlanProgress(planId: string, sessions: Doc[]): Promise<void> {
+    if (!planId) return;
+    try {
+      const userId = this.store.userId();
+      const snapshot = await this.store.collection(TENANT_COLLECTION.gymWorkoutPlans).doc(planId).get();
+      const plan = snapshot.exists ? (snapshot.data() as Doc) : null;
+      if (!plan || isDeleted(plan)) return;
+      const stats = statsFromSessions(planId, sessions.filter((item) => item['userId'] === userId));
+      await savePlanStats(this.store, planId, stats);
+      const progress = planProgress(plan, stats);
+      if (progress.targetSessions === null || stats.completedSessions !== progress.targetSessions) return;
+      const tenantId = this.store.tenantId();
+      const title = String(plan['title'] ?? 'Program');
+      const member = await this.currentMember();
+      await this.push.notifyMember(tenantId, userId, {
+        type: 'program_target_reached',
+        title: 'Program hedefine ulaştın',
+        body: `"${title}" programındaki ${progress.targetSessions} antrenmanı tamamladın. Devam edebilir ya da antrenöründen yeni program isteyebilirsin.`,
+        data: { planId },
+      });
+      this.push.notifyStaff(tenantId, await this.trainerUserIds(member.trainerId, plan['trainerId'] as string | null), {
+        type: 'program_target_reached',
+        title: `${member.displayName} programını tamamladı`,
+        body: `"${title}" · ${progress.targetSessions} antrenman. Yeni program ya da süre uzatma bekliyor olabilir.`,
+        data: { memberId: userId, planId },
+      });
+    } catch {
+      // The workout itself is saved; the counters are rebuilt the next time the plan is read.
+    }
+  }
+
+  /**
+   * Accounts to push to for a trainer reference: members point at the staff record, plans written
+   * in the panel at the trainer's sign-in id, so both are tried.
+   */
+  private async trainerUserIds(...references: (string | null | undefined)[]): Promise<string[]> {
+    const ids = new Set<string>();
+    for (const reference of references) {
+      if (!reference) continue;
+      ids.add(reference);
+      const staff = await this.staff.getByIdOrThrow(reference).catch(() => null);
+      if (staff?.userId) ids.add(staff.userId);
+    }
+    return [...ids];
   }
 
   private async ownWorkout(id: string) {
@@ -1256,7 +1463,7 @@ function isGrantedIn(item: Doc, userId: string): boolean {
   return item['userId'] === userId && item['status'] === 'granted' && item['direction'] !== 'out';
 }
 
-function countVisitsThisMonth(logs: Doc[], userId: string): number {
+export function countVisitsThisMonth(logs: Doc[], userId: string): number {
   const now = new Date();
   const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   return logs.filter((item) => {
@@ -1324,8 +1531,7 @@ export function pickTodayWorkout(activePlans: Doc[], completedSessions: Doc[]) {
   const plan = activePlans.find((item) => item.id === lastSession?.['planId']) ?? activePlans[0];
   const { days } = planContent(plan);
   const lastForPlan = completedSessions.find((session) => session['planId'] === plan.id && session['dayId']);
-  const lastIndex = lastForPlan ? days.findIndex((day) => day.id === lastForPlan['dayId']) : -1;
-  const day = days.length ? days[(lastIndex + 1) % days.length] : null;
+  const day = nextPlanDay(days, lastForPlan ? String(lastForPlan['dayId']) : null);
   return {
     planId: plan.id,
     title: String(plan['title'] ?? 'Antrenman'),
@@ -1414,7 +1620,7 @@ export function lastSet(logs: Doc[], exerciseName: string, before?: string, exer
   return latest ? previousSet([latest], exerciseName, undefined, exerciseId) : null;
 }
 
-function toWorkoutSummary(item: Doc) {
+export function toWorkoutSummary(item: Doc, progress: PlanProgress | null = null) {
   return {
     id: item.id,
     title: String(item['title'] ?? 'Program'),
@@ -1426,10 +1632,13 @@ function toWorkoutSummary(item: Doc) {
     dayCount: planContent(item).days.length,
     trainerId: (item['trainerId'] as string | null) ?? null,
     createdByMember: item['createdByMember'] === true,
+    durationWeeks: numberOrNull(item['durationWeeks']),
+    targetDaysPerWeek: numberOrNull(item['targetDaysPerWeek']),
+    progress,
   };
 }
 
-function toWorkoutSession(item: Doc, streak: number | null) {
+export function toWorkoutSession(item: Doc, streak: number | null) {
   const calories = item['calories'];
   return {
     id: item.id,
@@ -1495,12 +1704,13 @@ function toNotification(item: Doc) {
     type: String(item['type'] ?? 'info'),
     title: String(item['title'] ?? ''),
     body: String(item['body'] ?? ''),
+    data: item['data'] && typeof item['data'] === 'object' ? (item['data'] as Record<string, string>) : {},
     readAt: (item['readAt'] as string | null) ?? null,
     createdAt: item.createdAt,
   };
 }
 
-function toCheckInItem(item: Doc) {
+export function toCheckInItem(item: Doc) {
   return {
     id: item.id,
     direction: String(item['direction'] ?? 'in'),

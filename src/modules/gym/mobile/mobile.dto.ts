@@ -10,7 +10,9 @@ import {
   IsOptional,
   IsString,
   Max,
+  MaxLength,
   Min,
+  MinLength,
   ValidateNested,
 } from 'class-validator';
 
@@ -235,6 +237,61 @@ export class MemberWorkoutPlanDto {
   @IsArray()
   @ArrayMaxSize(14)
   days?: Record<string, unknown>[];
+
+  /** Period of the plan in weeks; 0 clears it (open-ended plan). */
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(104)
+  durationWeeks?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(7)
+  targetDaysPerWeek?: number;
+}
+
+/** Where the member is in a running workout; replaces the previous snapshot of the session. */
+export class UpdateSessionProgressDto {
+  @IsIn(['active', 'paused'])
+  status!: 'active' | 'paused';
+
+  @IsInt()
+  @Min(0)
+  exerciseIndex!: number;
+
+  @IsOptional()
+  @IsString()
+  restEndsAt?: string | null;
+
+  /** `{ name, exerciseId?, sets: [{ weight, reps, status }] }`; cleaned by `buildLiveSession`. */
+  @IsArray()
+  @ArrayMaxSize(60)
+  exercises!: Record<string, unknown>[];
+}
+
+export class RegisterDeviceDto {
+  @IsString()
+  @MinLength(20)
+  @MaxLength(4096)
+  token!: string;
+
+  @IsOptional()
+  @IsIn(['android', 'ios'])
+  platform?: 'android' | 'ios';
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  appVersion?: string;
+}
+
+export class UnregisterDeviceDto {
+  @IsString()
+  @MinLength(20)
+  @MaxLength(4096)
+  token!: string;
 }
 
 /** Also the PATCH body of `/gym/mobile/measurements/:id`: every field is optional. */

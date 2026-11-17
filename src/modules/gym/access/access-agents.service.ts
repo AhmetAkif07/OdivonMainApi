@@ -1,7 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { AppException } from '../../../shared/errors/app.exception';
 import { ErrorCode } from '../../../shared/errors/error-codes';
+import { runInBackground } from '../../../shared/http/background';
 import { TenantContext } from '../../../shared/tenancy/tenant.context';
+import { AccessSignal } from '../signals/presence.rules';
+import { GymPresenceService } from '../signals/presence.service';
 import { GymMember } from '../members/member.entity';
 import {
   gateCapabilities,
@@ -42,6 +45,7 @@ export class AccessAgentsService {
   constructor(
     private readonly repo: AccessRepository,
     private readonly tenantContext: TenantContext,
+    private readonly presence: GymPresenceService,
   ) {}
 
   // ─── Admin (Firebase user, tenant from TenantGuard) ─────────────────────────
@@ -338,18 +342,16 @@ export class AccessAgentsService {
     );
     const nowIso = now.toISOString();
     let written = 0;
+    const signals: AccessSignal[] = [];
     for (let start = 0; start < accepted.length; start += EVENT_WRITE_CHUNK) {
-      const results = await Promise.allSettled(
-        accepted.slice(start, start + EVENT_WRITE_CHUNK).map(({ docId, event, timestamp }) =>
-          this.repo
-            .logs(agent.tenantId)
-            .doc(docId)
-            .create(buildAccessLog(agent, docId, event, timestamp, gates.get(event.gateId)!, members, nowIso)),
-        ),
-      );
+      const logs = accepted
+        .slice(start, start + EVENT_WRITE_CHUNK)
+        .map(({ docId, event, timestamp }) => buildAccessLog(agent, docId, event, timestamp, gates.get(event.gateId)!, members, nowIso));
+      const results = await Promise.allSettled(logs.map((log) => this.repo.logs(agent.tenantId).doc(log.id).create(log)));
       results.forEach((result, index) => {
         if (result.status === 'fulfilled') {
           written++;
+          signals.push(logs[index]);
         } else if (isAlreadyExists(result.reason)) {
           duplicates++;
         } else {
@@ -357,6 +359,8 @@ export class AccessAgentsService {
         }
       });
     }
+    // Only newly written events move presence: a re-sent duplicate must not greet the member twice.
+    if (signals.length) void runInBackground(this.presence.record(agent.tenantId, signals, now.getTime()));
     return { accepted: written, duplicates, rejected };
   }
 

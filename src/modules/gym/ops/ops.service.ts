@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { AppException } from '../../../shared/errors/app.exception';
 import { ErrorCode } from '../../../shared/errors/error-codes';
 import { TENANT_COLLECTION } from '../../../shared/firebase/firestore-path';
+import { runInBackground } from '../../../shared/http/background';
 import { PaginatedResult } from '../../../shared/http/paginated.result';
 import { BaseDocument, isDeleted } from '../../../shared/firestore/base-document';
 import { AccessAgentsService } from '../access/access-agents.service';
@@ -12,6 +13,8 @@ import { isWithinCheckInWindow } from '../mobile/check-in-window';
 import { PackagesRepository } from '../packages/packages.repository';
 import { GymStore } from '../shared/gym-store';
 import { AccessSettingsDto, GymListQueryDto, GymRecordDto } from '../shared/ops.dto';
+import { AccessSignal } from '../signals/presence.rules';
+import { GymPresenceService } from '../signals/presence.service';
 
 type Doc = BaseDocument & Record<string, unknown>;
 
@@ -26,7 +29,22 @@ export class GymOpsService {
     private readonly members: MembersRepository,
     private readonly packages: PackagesRepository,
     private readonly accessAgents: AccessAgentsService,
+    private readonly presence: GymPresenceService,
   ) {}
+
+  /** Moves the member's presence after a log is written; never slows down or fails the scan. */
+  private trackPresence(log: Record<string, unknown>) {
+    const signal: AccessSignal = {
+      userId: (log['userId'] as string | null) ?? null,
+      status: String(log['status'] ?? ''),
+      direction: String(log['direction'] ?? 'in'),
+      gateName: String(log['gateName'] ?? ''),
+      timestamp: String(log['timestamp'] ?? log['createdAt'] ?? ''),
+    };
+    if (signal.userId && signal.status === 'granted') {
+      void runInBackground(this.presence.record(this.store.tenantId(), [signal]));
+    }
+  }
 
   async listGates(query: GymListQueryDto) {
     const page = await this.store.page<Doc>(TENANT_COLLECTION.gymTurnstileGates, query);
@@ -72,15 +90,17 @@ export class GymOpsService {
     return this.store.page<Doc>(TENANT_COLLECTION.gymAccessLogs, query, (item) => item['userId'] === query.userId);
   }
 
-  createAccessLog(dto: GymRecordDto) {
+  async createAccessLog(dto: GymRecordDto) {
     const cardNo = dto.card?.trim() || dto.rfidCardNumber?.trim() || null;
-    return this.store.create(TENANT_COLLECTION.gymAccessLogs, {
+    const log = await this.store.create<Doc>(TENANT_COLLECTION.gymAccessLogs, {
       ...dto,
       card: cardNo,
       rfidCardNumber: cardNo,
       timestamp: dto.timestamp || new Date().toISOString(),
       createdAt: new Date().toISOString(),
     });
+    this.trackPresence(log);
+    return log;
   }
 
   queueDeviceCommand(dto: GymRecordDto) {
@@ -173,6 +193,7 @@ export class GymOpsService {
       notes: message,
       timestamp: new Date().toISOString(),
     });
+    this.trackPresence(log as unknown as Record<string, unknown>);
     if (allowed && tokenId) {
       await this.store.collection(TENANT_COLLECTION.gymQrTokens).doc(tokenId).update({
         usedAt: new Date().toISOString(),

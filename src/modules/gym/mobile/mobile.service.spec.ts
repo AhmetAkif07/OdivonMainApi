@@ -7,6 +7,8 @@ describe('GymMobileService', () => {
     userId: jest.fn().mockReturnValue('u1'),
     tenantId: jest.fn().mockReturnValue('t1'),
     list: jest.fn(),
+    listBy: jest.fn(),
+    listRecentBy: jest.fn(),
     create: jest.fn(),
     getOrThrow: jest.fn(),
     update: jest.fn(),
@@ -20,6 +22,8 @@ describe('GymMobileService', () => {
   };
   const packages = { list: jest.fn() };
   const staff = { getByIdOrThrow: jest.fn() };
+  const presence = { get: jest.fn(), save: jest.fn() };
+  const push = { notifyMember: jest.fn(), notifyStaff: jest.fn(), registerDevice: jest.fn(), unregisterDevice: jest.fn() };
   let service: GymMobileService;
 
   const member = {
@@ -64,6 +68,10 @@ describe('GymMobileService', () => {
       },
     ]);
     store.list.mockResolvedValue([]);
+    store.listBy.mockResolvedValue([]);
+    store.listRecentBy.mockResolvedValue([]);
+    presence.get.mockResolvedValue(null);
+    presence.save.mockResolvedValue(undefined);
     store.create.mockImplementation(async (_name: string, fields: object) => ({
       id: 'new',
       createdAt: new Date().toISOString(),
@@ -77,6 +85,8 @@ describe('GymMobileService', () => {
       packages as never,
       staff as never,
       { syncMemberSafely: jest.fn() } as never,
+      presence as never,
+      push as never,
     );
   });
 
@@ -216,16 +226,36 @@ describe('GymMobileService', () => {
       expect(members.save).not.toHaveBeenCalled();
     });
 
-    it('refuses a program request when the member has no trainer', async () => {
-      await expect(service.createProgramRequest({ goal: 'Kuvvet', daysPerWeek: 3 })).rejects.toMatchObject({
+    it('sends the request of a member without a trainer to every trainer', async () => {
+      const created = await service.createProgramRequest({ goal: 'Kuvvet', daysPerWeek: 3 });
+      expect(created).toMatchObject({ trainerId: null, type: 'program', status: 'pending' });
+      expect(push.notifyStaff).toHaveBeenCalledWith('t1', null, expect.objectContaining({ type: 'request_new' }));
+    });
+
+    it('sends a floor-help call to every trainer, even with an assigned one', async () => {
+      members.getByIdOrThrow.mockResolvedValue({ ...member, trainerId: 'st1', trainerName: 'Ali' });
+      await service.createRequest({ type: 'floor_help', exerciseName: 'Bench Press' });
+      expect(push.notifyStaff).toHaveBeenCalledWith('t1', null, expect.objectContaining({ urgent: true, body: 'Bench Press' }));
+    });
+
+    it('allows one open request per kind, not one in total', async () => {
+      store.listBy.mockResolvedValue([{ id: 'r1', userId: 'u1', status: 'pending', createdAt: new Date().toISOString() }]);
+      await expect(service.createRequest({ type: 'measurement' })).resolves.toMatchObject({ type: 'measurement' });
+      await expect(service.createRequest({ type: 'program', goal: 'Kuvvet', daysPerWeek: 3 })).rejects.toMatchObject({
         code: ErrorCode.VALIDATION_ERROR,
       });
-      expect(store.create).not.toHaveBeenCalled();
+    });
+
+    it('lets the member cancel only their own open request', async () => {
+      store.getOrThrow.mockResolvedValue({ id: 'r1', userId: 'other', status: 'pending' });
+      await expect(service.cancelRequest('r1')).rejects.toMatchObject({ code: ErrorCode.GYM_WORKOUT_NOT_FOUND });
+      store.getOrThrow.mockResolvedValue({ id: 'r1', userId: 'u1', status: 'fulfilled' });
+      await expect(service.cancelRequest('r1')).rejects.toMatchObject({ code: ErrorCode.VALIDATION_ERROR });
     });
 
     it('refuses a second pending program request', async () => {
       members.getByIdOrThrow.mockResolvedValue({ ...member, trainerId: 't1', trainerName: 'Ali' });
-      store.list.mockResolvedValue([{ userId: 'u1', status: 'pending' }]);
+      store.listBy.mockResolvedValue([{ userId: 'u1', status: 'pending' }]);
       await expect(service.createProgramRequest({ goal: 'Kuvvet', daysPerWeek: 4 })).rejects.toMatchObject({
         code: ErrorCode.VALIDATION_ERROR,
       });

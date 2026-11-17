@@ -59,6 +59,34 @@ export class GymStore {
     return listUndeleted<T>(this.collection(name));
   }
 
+  /**
+   * Documents whose `field` equals `value`, newest first. One equality filter needs no composite
+   * index and reads only the matching documents, unlike `list` which reads the whole collection.
+   */
+  async listBy<T extends BaseDocument>(name: string, field: string, value: string): Promise<T[]> {
+    const snapshot = await this.collection(name).where(field, '==', value).get();
+    return snapshot.docs
+      .map((doc) => doc.data() as T)
+      .filter((item) => !isDeleted(item))
+      .sort(
+        (left, right) =>
+          (right.createdAt ?? '').localeCompare(left.createdAt ?? '') || (right.id ?? '').localeCompare(left.id ?? ''),
+      );
+  }
+
+  /**
+   * The newest `limit` documents whose `field` equals `value`. Uses the (field, createdAt) index
+   * when it is deployed; until then it reads every match instead (still only that field's rows).
+   */
+  async listRecentBy<T extends BaseDocument>(name: string, field: string, value: string, limit: number): Promise<T[]> {
+    try {
+      const snapshot = await this.collection(name).where(field, '==', value).orderBy('createdAt', 'desc').limit(limit).get();
+      return snapshot.docs.map((doc) => doc.data() as T).filter((item) => !isDeleted(item));
+    } catch {
+      return (await this.listBy<T>(name, field, value)).slice(0, limit);
+    }
+  }
+
   async page<T extends BaseDocument>(name: string, query: PagingQueryDto, filter?: (item: T) => boolean) {
     const items = await this.list<T>(name);
     const filtered = filter ? items.filter(filter) : items;

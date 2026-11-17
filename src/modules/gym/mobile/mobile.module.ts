@@ -6,6 +6,7 @@ import { GymLeadsModule } from '../leads/leads.module';
 import { GymMembersModule } from '../members/members.module';
 import { GymPackagesModule } from '../packages/packages.module';
 import { GymOpsModule } from '../ops/ops.module';
+import { GymSignalsModule } from '../signals/signals.module';
 import { GymStaffModule } from '../staff/staff.module';
 import { GymMemberGuard } from './gym-member.guard';
 import { GymMobileController } from './mobile.controller';
@@ -21,6 +22,7 @@ import { GymMobileService } from './mobile.service';
     GymAccessModule,
     GymLeadsModule,
     GymExercisesModule,
+    GymSignalsModule,
     PaymentsModule,
   ],
   controllers: [GymMobileController],

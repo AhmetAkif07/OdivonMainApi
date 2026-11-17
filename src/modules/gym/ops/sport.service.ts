@@ -9,9 +9,24 @@ import { PaginatedResult } from '../../../shared/http/paginated.result';
 import { GymStore } from '../shared/gym-store';
 import { normalizePlanContent, planContent } from '../shared/workout-plan.normalize';
 import { GymListQueryDto, GymRecordDto } from '../shared/ops.dto';
-import { ResolveProgramRequestDto, toProgramRequest } from './program-request.dto';
+import { isOpenRequest, MemberRequestType, nextRequestStatus, requestStatus, requestType, visibleToTrainer } from '../shared/member-requests';
+import { planPeriodPatch } from '../shared/plan-progress';
+import { isTrainerOnly, trainerIdentity } from '../shared/trainer-scope';
+import { GymPushService } from '../signals/push.service';
+import { ProgramRequestQueryDto, ResolveProgramRequestDto, toProgramRequest } from './program-request.dto';
 
 type Doc = BaseDocument & Record<string, unknown>;
+
+/** A trainer saving a plan several times in a row sends the member one notification. */
+const PLAN_UPDATE_NOTICE_GAP_MS = 10 * 60_000;
+/** Plan fields whose change the member should hear about (a status change alone is not one). */
+const NOTIFY_ON = ['title', 'days', 'exercises', 'durationWeeks', 'targetDaysPerWeek', 'notes'] as const;
+const REPLY_TITLE: Record<MemberRequestType, string> = {
+  program: 'Program talebin',
+  program_change: 'Program değişikliği talebin',
+  floor_help: 'Antrenör çağrın',
+  measurement: 'Ölçüm talebin',
+};
 
 /** Plans and templates always answer with both `days` and the legacy `exercises`. */
 function withPlanContent(item: Doc): Doc {
@@ -22,11 +37,24 @@ function withPlanPage(page: PaginatedResult<Doc>) {
   return new PaginatedResult(page.items.map(withPlanContent), page.limit, page.nextCursor);
 }
 
+/** What the member reads when the trainer answers without writing anything. */
+function replyText(type: MemberRequestType, status: string, trainer: string): string {
+  if (status === 'accepted') {
+    if (type === 'floor_help') return `${trainer} geliyor.`;
+    if (type === 'measurement') return `${trainer} ölçüm için seninle görüşecek.`;
+    if (type === 'program_change') return `${trainer} değişiklik talebini inceliyor.`;
+    return `${trainer} programını hazırlıyor.`;
+  }
+  if (status === 'fulfilled') return type === 'program' ? 'Yeni programın hazır.' : 'Talebin tamamlandı.';
+  return `${trainer} talebini şimdilik karşılayamadı.`;
+}
+
 @Injectable()
 export class GymSportService {
   constructor(
     private readonly store: GymStore,
     private readonly tenant: TenantContext,
+    private readonly push: GymPushService,
   ) {}
 
   listClasses(query: GymListQueryDto) {
@@ -138,93 +166,126 @@ export class GymSportService {
 
   async createWorkout(dto: GymRecordDto) {
     const userId = dto.userId || this.store.userId();
+    const startDate = dto.startDate || new Date().toISOString();
     const created = await this.store.create<Doc>(TENANT_COLLECTION.gymWorkoutPlans, {
       ...dto,
       userId,
       ...normalizePlanContent({ days: dto.days, exercises: dto.exercises ?? [] }),
+      ...planPeriodPatch({ ...dto, startDate }),
       status: dto.status ?? 'active',
-      startDate: dto.startDate || new Date().toISOString(),
+      startDate,
+      progressStats: { completedSessions: 0, lastSessionAt: null, lastDayId: null },
     });
-    await this.store.create(TENANT_COLLECTION.gymMemberNotifications, {
-      userId,
+    const title = String(dto.title ?? 'Yeni program');
+    await this.push.notifyMember(this.store.tenantId(), userId, {
       type: 'new_program',
       title: 'Yeni antrenman programı',
-      body: `${String(dto.title ?? 'Yeni program')} atandı.`,
-      readAt: null,
+      body: dto.durationWeeks ? `${title} atandı · ${dto.durationWeeks} hafta.` : `${title} atandı.`,
+      data: { planId: created.id },
     });
     await this.fulfillPendingProgramRequests(userId, created.id);
     return withPlanContent(created);
   }
 
-  async listProgramRequests() {
-    const trainerId = await this.scopedTrainerId();
+  /**
+   * Requests to the trainers. Without `type` only program requests (what older panel builds
+   * expect); `type=all` every kind. A trainer sees their own members', unassigned ones and floor calls.
+   */
+  async listProgramRequests(query: ProgramRequestQueryDto = {}) {
+    const scope = await this.trainerScope();
+    const wanted = query.type ?? 'program';
     const items = await this.store.list<Doc>(TENANT_COLLECTION.gymProgramRequests);
     return items
-      .filter((item) => !trainerId || item['trainerId'] === trainerId)
-      .map(toProgramRequest)
+      .filter((item) => wanted === 'all' || requestType(item) === wanted)
+      .filter((item) => !scope || visibleToTrainer(item, scope))
+      .map((item) => toProgramRequest(item))
       .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
   }
 
+  /**
+   * A trainer answers a request: `accepted` ("on my way" / "I'll prepare it"), `fulfilled` or
+   * `rejected`, with an optional reply the member reads in the app.
+   */
   async resolveProgramRequest(id: string, dto: ResolveProgramRequestDto) {
     const current = await this.ownProgramRequest(id);
-    if (current['status'] !== 'pending') {
+    const type = requestType(current);
+    const action = dto.status === 'accepted' ? 'accept' : dto.status === 'fulfilled' ? 'fulfill' : 'reject';
+    const status = nextRequestStatus(requestStatus(current), action);
+    if (!status) {
       throw new AppException(ErrorCode.VALIDATION_ERROR, 'Bu talep zaten sonuçlanmış.');
     }
-    if (dto.status === 'fulfilled' && !dto.planId) {
+    if (status === 'fulfilled' && type === 'program' && !dto.planId) {
       throw new AppException(ErrorCode.VALIDATION_ERROR, 'Program gerekli.');
     }
+    const ctx = this.tenant.getStore();
+    const me = await trainerIdentity(this.store, ctx);
+    const nowIso = new Date().toISOString();
+    const reply = (dto.reply ?? dto.notes)?.trim();
+    const patch: Record<string, unknown> =
+      status === 'accepted'
+        ? { status, acceptedAt: nowIso, acceptedBy: ctx.userId, acceptedByName: me.name }
+        : { status, planId: dto.planId ?? current['planId'] ?? null, resolvedAt: nowIso, resolvedBy: ctx.userId, resolvedByName: me.name };
+    if (reply) patch['reply'] = reply;
     const updated = await this.store.update<Doc>(
       TENANT_COLLECTION.gymProgramRequests,
       id,
       ErrorCode.GYM_WORKOUT_NOT_FOUND,
       'Program request not found',
-      {
-        status: dto.status,
-        planId: dto.planId ?? null,
-        notes: dto.notes !== undefined ? dto.notes : current['notes'],
-        resolvedAt: new Date().toISOString(),
-      },
+      patch,
     );
-    if (dto.status === 'rejected') {
-      await this.store.create(TENANT_COLLECTION.gymMemberNotifications, {
-        userId: current['userId'],
-        type: 'program_request_rejected',
-        title: 'Program talebi',
-        body: dto.notes?.trim() || 'Antrenörün program talebini şimdilik karşılayamadı.',
-        readAt: null,
-      });
-    }
+    await this.push.notifyMember(this.store.tenantId(), String(current['userId']), {
+      type: `request_${status}`,
+      title: REPLY_TITLE[type],
+      body: reply || replyText(type, status, me.name),
+      data: { requestId: id, requestType: type, ...(dto.planId ? { planId: dto.planId } : {}) },
+      urgent: type === 'floor_help' && status === 'accepted',
+    });
     return toProgramRequest(updated);
   }
 
+  /** A new plan for the member answers their open program (and program change) requests. */
   private async fulfillPendingProgramRequests(userId: string, planId: string) {
-    const items = await this.store.list<Doc>(TENANT_COLLECTION.gymProgramRequests);
-    const pending = items.filter((item) => item['userId'] === userId && item['status'] === 'pending');
+    const items = await this.store.listBy<Doc>(TENANT_COLLECTION.gymProgramRequests, 'userId', userId);
+    const open = items.filter((item) => {
+      const type = requestType(item);
+      return (type === 'program' || type === 'program_change') && isOpenRequest(item);
+    });
+    await this.resolveRequests(open, { status: 'fulfilled', planId });
+  }
+
+  /** Measurement requests close when a trainer enters a measurement for that member. */
+  private async fulfillPendingMeasurementRequests(userId: string) {
+    const items = await this.store.listBy<Doc>(TENANT_COLLECTION.gymProgramRequests, 'userId', userId);
+    const open = items.filter((item) => requestType(item) === 'measurement' && isOpenRequest(item));
+    if (!open.length) return;
+    await this.resolveRequests(open, { status: 'fulfilled' });
+    await this.push.notifyMember(this.store.tenantId(), userId, {
+      type: 'request_fulfilled',
+      title: REPLY_TITLE.measurement,
+      body: 'Ölçümün kaydedildi. Sonuçları Ölçümler ekranında görebilirsin.',
+      data: { screen: 'measurements', requestType: 'measurement' },
+    });
+  }
+
+  private async resolveRequests(items: Doc[], patch: Record<string, unknown>) {
+    const ctx = this.tenant.getStore();
+    const resolvedAt = new Date().toISOString();
     await Promise.all(
-      pending.map((item) =>
-        this.store.update(
-          TENANT_COLLECTION.gymProgramRequests,
-          item.id,
-          ErrorCode.GYM_WORKOUT_NOT_FOUND,
-          'Program request not found',
-          { status: 'fulfilled', planId, resolvedAt: new Date().toISOString() },
-        ),
+      items.map((item) =>
+        this.store.update(TENANT_COLLECTION.gymProgramRequests, item.id, ErrorCode.GYM_WORKOUT_NOT_FOUND, 'Program request not found', {
+          ...patch,
+          resolvedAt,
+          resolvedBy: ctx.userId,
+        }),
       ),
     );
   }
 
-  /** Antrenör yalnız kendi üyelerinin talebini görür; yönetici ve resepsiyon hepsini. */
-  private async scopedTrainerId(): Promise<string | null> {
+  /** The trainer ids a trainer-only account is limited to; null for everyone else (they see all). */
+  private async trainerScope(): Promise<string[] | null> {
     const ctx = this.tenant.getStore();
-    if (ctx.role === 'owner') return null;
-    const members = ctx.permissions?.members ?? [];
-    const workouts = ctx.permissions?.workouts ?? [];
-    const trainerOnly = workouts.includes('create') && !members.includes('update') && !members.includes('create');
-    if (!trainerOnly) return null;
-    const staff = await this.store.list<Doc>(TENANT_COLLECTION.gymStaff);
-    const email = ctx.email.trim().toLowerCase();
-    const mine = staff.find((item) => String(item['email'] ?? '').trim().toLowerCase() === email);
-    return mine?.id ?? ctx.userId;
+    if (!isTrainerOnly(ctx)) return null;
+    return (await trainerIdentity(this.store, ctx)).ids;
   }
 
   private async ownProgramRequest(id: string) {
@@ -234,21 +295,50 @@ export class GymSportService {
       ErrorCode.GYM_WORKOUT_NOT_FOUND,
       'Program request not found',
     );
-    const trainerId = await this.scopedTrainerId();
-    if (trainerId && current['trainerId'] !== trainerId) {
+    const scope = await this.trainerScope();
+    if (scope && !visibleToTrainer(current, scope)) {
       throw new AppException(ErrorCode.GYM_WORKOUT_NOT_FOUND, 'Program request not found');
     }
     return current;
   }
 
+  /**
+   * Edits a plan. The period (`durationWeeks`) moves `endDate` with it; the member hears about
+   * a content change at most once per few minutes, never about a status change alone.
+   */
   async updateWorkout(id: string, dto: GymRecordDto) {
+    const current = await this.store.getOrThrow<Doc>(
+      TENANT_COLLECTION.gymWorkoutPlans,
+      id,
+      ErrorCode.GYM_WORKOUT_NOT_FOUND,
+      'Workout not found',
+    );
+    const now = Date.now();
+    const lastNotice = new Date(String(current['updateNotifiedAt'] ?? '')).getTime();
+    const notify =
+      current['createdByMember'] !== true &&
+      NOTIFY_ON.some((field) => dto[field] !== undefined) &&
+      (Number.isNaN(lastNotice) || now - lastNotice >= PLAN_UPDATE_NOTICE_GAP_MS);
     const updated = await this.store.update<Doc>(
       TENANT_COLLECTION.gymWorkoutPlans,
       id,
       ErrorCode.GYM_WORKOUT_NOT_FOUND,
       'Workout not found',
-      { ...dto, ...normalizePlanContent(dto) },
+      {
+        ...dto,
+        ...normalizePlanContent(dto),
+        ...planPeriodPatch(dto, current, now),
+        ...(notify ? { updateNotifiedAt: new Date(now).toISOString() } : {}),
+      },
     );
+    if (notify && current['userId']) {
+      await this.push.notifyMember(this.store.tenantId(), String(current['userId']), {
+        type: 'program_updated',
+        title: 'Programın güncellendi',
+        body: `Antrenörün "${String(updated['title'] ?? 'Program')}" programında değişiklik yaptı.`,
+        data: { planId: id },
+      });
+    }
     return withPlanContent(updated);
   }
 
@@ -296,12 +386,17 @@ export class GymSportService {
     });
   }
 
-  createMeasurement(dto: GymRecordDto) {
-    return this.store.create(TENANT_COLLECTION.gymMeasurements, {
+  async createMeasurement(dto: GymRecordDto) {
+    const userId = dto.userId || this.store.userId();
+    const created = await this.store.create(TENANT_COLLECTION.gymMeasurements, {
       ...dto,
-      userId: dto.userId || this.store.userId(),
+      userId,
       date: dto.date || new Date().toISOString(),
     });
+    if (userId !== this.store.userId()) {
+      await this.fulfillPendingMeasurementRequests(userId).catch(() => undefined);
+    }
+    return created;
   }
 
   updateMeasurement(id: string, dto: GymRecordDto) {

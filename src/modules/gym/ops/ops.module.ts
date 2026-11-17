@@ -39,11 +39,12 @@ import {
   GymWorkoutsController,
 } from './sport.controllers';
 import { GymSportService } from './sport.service';
+import { GymSignalsModule } from '../signals/signals.module';
 import { GymStockController } from './stock/stock.controller';
 import { GymStockService } from './stock/stock.service';
 
 @Module({
-  imports: [GymMembersModule, GymPackagesModule, GymAccessModule, MailModule],
+  imports: [GymMembersModule, GymPackagesModule, GymAccessModule, GymSignalsModule, MailModule],
   controllers: [
     GymClassesController,
     GymAppointmentsController,
