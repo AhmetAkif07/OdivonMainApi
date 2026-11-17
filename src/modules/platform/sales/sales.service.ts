@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { FieldValue } from 'firebase-admin/firestore';
 import { FirebaseService } from '../../../shared/firebase/firebase.service';
 import { ROOT_COLLECTION } from '../../../shared/firebase/firestore-path';
@@ -12,7 +12,23 @@ import { PRODUCT_LABELS } from '../tickets/ticket-grouping';
 import { AI_LEAD_PIPELINE_STATUSES, AI_LEAD_PRODUCT_UNKNOWN } from '../ai-research/ai-research.config';
 import { leadContact, leadProducts } from '../ai-research/lead-fields';
 import { SalesChannelsService, WhatsappTemplateRef } from './sales-channels.service';
-import { SALES_PLACEHOLDERS, SalesTemplateVars, manualLink, renderSalesEmail, renderSalesText } from './sales-templates';
+import { SalesConsentService, instrumentEmail } from './sales-consent.service';
+import {
+  SALES_PLACEHOLDERS,
+  SalesBodyFormat,
+  SalesTemplateVars,
+  manualLink,
+  renderSalesEmail,
+  renderSalesText,
+} from './sales-templates';
+import {
+  LIBRARY_PRODUCTS,
+  LibraryTemplate,
+  SALES_TEMPLATE_LIBRARY,
+  findLibraryTemplate,
+  isLibraryId,
+} from './sales-template-library';
+import { SaasPricingService, isProductModule } from '../../saas-pricing/saas-pricing.service';
 import {
   CreateSalesActivityDto,
   CreateSalesTemplateDto,
@@ -65,11 +81,12 @@ export interface SalesSendResultItem {
 }
 
 /** Şablon + istekten gelen içerik birleştirilmiş hâli. */
-interface ResolvedContent {
+export interface ResolvedContent {
   kind: SalesOfferKind;
   product: string | null;
   subject: string;
   body: string;
+  bodyFormat: SalesBodyFormat;
   ctaUrl: string | null;
   ctaLabel: string | null;
   price: SalesTemplateVars['price'];
@@ -114,6 +131,8 @@ export class PlatformSalesService {
     private readonly firebase: FirebaseService,
     private readonly channels: SalesChannelsService,
     private readonly audit: PlatformAuditService,
+    private readonly consent: SalesConsentService,
+    @Optional() private readonly pricing?: SaasPricingService,
   ) {}
 
   private templates() {
@@ -252,6 +271,9 @@ export class PlatformSalesService {
       product: dto.product || null,
       subject: dto.subject?.trim() ?? '',
       body: dto.body,
+      bodyFormat: dto.channel === 'email' ? (dto.bodyFormat ?? 'text') : 'text',
+      validDays: dto.validDays ?? null,
+      sourceLibraryId: null as string | null,
       ctaUrl: dto.ctaUrl?.trim() || null,
       ctaLabel: dto.ctaLabel?.trim() || null,
       price: dto.price ?? null,
@@ -277,9 +299,16 @@ export class PlatformSalesService {
     if (dto.product !== undefined) patch.product = dto.product || null;
     if (dto.subject !== undefined) patch.subject = dto.subject.trim();
     if (dto.body !== undefined) patch.body = dto.body;
+    if (dto.bodyFormat !== undefined) patch.bodyFormat = dto.bodyFormat;
+    if (dto.validDays !== undefined) patch.validDays = dto.validDays ?? null;
     if (dto.ctaUrl !== undefined) patch.ctaUrl = dto.ctaUrl.trim() || null;
     if (dto.ctaLabel !== undefined) patch.ctaLabel = dto.ctaLabel.trim() || null;
-    if (dto.price !== undefined) patch.price = dto.price ?? null;
+    if (dto.price !== undefined) {
+      patch.price = dto.price ?? null;
+      // Fiyat elle değiştirildiyse kopyalanan şablonun "güncel paket fiyatı" bağlantısı kalkar.
+      const prev = (snap.data() as Doc).price;
+      if (!dto.price || dto.price.amount !== prev?.amount) patch.pricePlan = null;
+    }
     if (dto.whatsappTemplate !== undefined) {
       patch.whatsappTemplate = dto.whatsappTemplate ? normalizeWaTemplate(dto.whatsappTemplate) : null;
     }
@@ -300,17 +329,83 @@ export class PlatformSalesService {
     return { ok: true };
   }
 
+  // ---------------------------------------------------------------- hazır şablon kütüphanesi
+
+  /** Ürüne göre hazır şablonlar; her biri örnek bir işletmeyle doldurulmuş önizlemeyle döner. */
+  async library(product?: string) {
+    const items = SALES_TEMPLATE_LIBRARY.filter((t) => !product || t.product === product);
+    const livePrices = new Map<string, number | undefined>();
+    for (const p of new Set(items.map((t) => t.product))) {
+      livePrices.set(p, await this.pricing?.price('starter', 'monthly', isProductModule(p) ? p : null).catch(() => undefined));
+    }
+    return {
+      products: LIBRARY_PRODUCTS.map((key) => ({ key, label: PRODUCT_LABELS[key] ?? key })),
+      items: items.map((t) => ({
+        ...t,
+        livePrice: t.pricePlan ? (livePrices.get(t.product) ?? null) : null,
+        preview: libraryPreview(t, livePrices.get(t.product)),
+      })),
+    };
+  }
+
+  /** Hazır şablonları düzenlenebilir kendi şablonlarınıza kopyalar. */
+  async importLibrary(input: { ids?: string[]; product?: string }, admin: PlatformAdminUser) {
+    const picked = input.ids?.length
+      ? input.ids.map((id) => findLibraryTemplate(id)).filter((t): t is LibraryTemplate => Boolean(t))
+      : SALES_TEMPLATE_LIBRARY.filter((t) => t.product === input.product);
+    if (!picked.length) throw new AppException(ErrorCode.VALIDATION_ERROR, 'Kopyalanacak hazır şablon seçilmedi');
+    const now = new Date().toISOString();
+    const batch = this.firebase.db.batch();
+    const created: Doc[] = [];
+    for (const t of picked) {
+      const ref = this.templates().doc();
+      const doc = {
+        ...createBaseFields(ref.id, admin.uid, now),
+        name: t.name,
+        channel: t.channel,
+        kind: t.kind,
+        product: t.product,
+        subject: t.subject,
+        body: t.body,
+        bodyFormat: t.bodyFormat,
+        validDays: t.validDays,
+        sourceLibraryId: t.id,
+        ctaUrl: t.ctaUrl,
+        ctaLabel: t.ctaLabel,
+        price: t.price,
+        pricePlan: t.pricePlan,
+        whatsappTemplate: null,
+        active: true,
+        createdByEmail: admin.email,
+      };
+      batch.set(ref, doc);
+      created.push(doc);
+    }
+    await batch.commit();
+    await this.record(admin, 'SALES_TEMPLATE_LIBRARY_IMPORTED', created[0].id, {
+      count: created.length,
+      ids: picked.map((t) => t.id),
+    });
+    return { created: created.length, items: created };
+  }
+
   // ---------------------------------------------------------------- offers
 
-  private async resolveContent(
+  async resolveContent(
     dto: Pick<
       SendSalesOffersDto,
-      'templateId' | 'kind' | 'product' | 'subject' | 'body' | 'ctaUrl' | 'ctaLabel' | 'price' | 'validUntil'
+      'templateId' | 'kind' | 'product' | 'subject' | 'body' | 'bodyFormat' | 'ctaUrl' | 'ctaLabel' | 'price' | 'validUntil'
     >,
     channel: SalesChannel,
   ): Promise<ResolvedContent> {
     let t: Doc | null = null;
-    if (dto.templateId) {
+    if (dto.templateId && isLibraryId(dto.templateId)) {
+      t = (findLibraryTemplate(dto.templateId) as Doc | undefined) ?? null;
+      if (!t) throw new AppException(ErrorCode.CRM_NOT_FOUND, 'Hazır şablon bulunamadı');
+      if (t.channel !== channel) {
+        throw new AppException(ErrorCode.VALIDATION_ERROR, 'Şablonun kanalı seçilen kanalla aynı değil');
+      }
+    } else if (dto.templateId) {
       const snap = await this.templates().doc(dto.templateId).get();
       t = snap.exists ? (snap.data() as Doc) : null;
       if (!t || t.deletedAt) throw new AppException(ErrorCode.CRM_NOT_FOUND, 'Şablon bulunamadı');
@@ -324,15 +419,26 @@ export class PlatformSalesService {
     if (channel === 'email' && !subject.trim()) {
       throw new AppException(ErrorCode.VALIDATION_ERROR, 'E-posta konusu boş olamaz');
     }
+    const product = dto.product ?? t?.product ?? null;
+    let price: SalesTemplateVars['price'] = dto.price ?? t?.price ?? null;
+    // Hazır şablonlarda fiyat, Abonelik Fiyatları ekranındaki güncel paket fiyatıdır.
+    if (!dto.price && t?.pricePlan && price) {
+      const live = await this.pricing
+        ?.price(t.pricePlan.planId, t.pricePlan.cycle, isProductModule(product) ? product : null)
+        .catch(() => undefined);
+      if (live !== undefined) price = { ...price, amount: live, period: t.pricePlan.cycle };
+    }
+    const validDays = typeof t?.validDays === 'number' ? t.validDays : null;
     return {
       kind: dto.kind ?? t?.kind ?? 'offer',
-      product: dto.product ?? t?.product ?? null,
+      product,
       subject,
       body,
+      bodyFormat: channel === 'email' ? (dto.bodyFormat ?? t?.bodyFormat ?? 'text') : 'text',
       ctaUrl: dto.ctaUrl ?? t?.ctaUrl ?? null,
       ctaLabel: dto.ctaLabel ?? t?.ctaLabel ?? null,
-      price: dto.price ?? t?.price ?? null,
-      validUntil: dto.validUntil ?? null,
+      price,
+      validUntil: dto.validUntil ?? (validDays ? new Date(Date.now() + validDays * DAY_MS).toISOString() : null),
       whatsappTemplate: channel === 'whatsapp' ? (t?.whatsappTemplate ?? null) : null,
       templateId: t?.id ?? null,
       templateName: t?.name ?? null,
@@ -350,7 +456,7 @@ export class PlatformSalesService {
     const contact = leadContact(lead);
     const to = dto.channel === 'email' ? contact.email : contact.mobile;
     if (dto.channel === 'email') {
-      const r = renderSalesEmail({ subject: content.subject, body: content.body, vars, ctaUrl: content.ctaUrl, ctaLabel: content.ctaLabel });
+      const r = renderSalesEmail({ subject: content.subject, body: content.body, bodyFormat: content.bodyFormat, vars, ctaUrl: content.ctaUrl, ctaLabel: content.ctaLabel });
       return { channel: dto.channel, to, subject: r.subject, text: r.text, html: r.html };
     }
     return { channel: dto.channel, to, subject: null, text: renderSalesText(content.body, vars), html: null };
@@ -393,6 +499,12 @@ export class PlatformSalesService {
     const batchId = dto.batchId?.trim() || null;
     const batch = this.firebase.db.batch();
     const results: SalesSendResultItem[] = [];
+    const suppressed = await this.consent.suppressed(
+      snaps.filter((s) => s.exists).map((s) => {
+        const c = leadContact(s.data() as Doc);
+        return channel === 'email' ? c.email : c.mobile;
+      }),
+    );
 
     for (const snap of snaps) {
       if (!snap.exists) {
@@ -404,9 +516,23 @@ export class PlatformSalesService {
         ...content,
         product: content.product ?? leadProducts(lead).products[0] ?? null,
       };
-      const vars = varsFor(lead, leadContent);
+      const publicToken = SalesConsentService.newToken();
+      const vars = { ...varsFor(lead, leadContent), demoUrl: SalesConsentService.links(publicToken).demo };
       const contact = leadContact(lead);
       const to = channel === 'email' ? contact.email : contact.mobile;
+      if (to && (lead.pipeline?.optedOut || suppressed.has(to))) {
+        results.push({
+          leadId: snap.id,
+          leadName: lead.name ?? null,
+          ok: false,
+          offerId: null,
+          deliveryMode: null,
+          to: maskTo(channel, to),
+          link: null,
+          error: 'Ret listesinde: bu kişiye mesaj gönderilmez',
+        });
+        continue;
+      }
       if (!to) {
         results.push({
           leadId: snap.id,
@@ -424,13 +550,20 @@ export class PlatformSalesService {
       let subject: string | null = null;
       let text: string;
       let html: string | null = null;
+      let links: string[] = [];
       if (channel === 'email') {
-        const r = renderSalesEmail({ subject: leadContent.subject, body: leadContent.body, vars, ctaUrl: leadContent.ctaUrl, ctaLabel: leadContent.ctaLabel });
+        const r = renderSalesEmail({ subject: leadContent.subject, body: leadContent.body, bodyFormat: leadContent.bodyFormat, vars, ctaUrl: leadContent.ctaUrl, ctaLabel: leadContent.ctaLabel });
         subject = r.subject;
-        text = r.text;
-        html = r.html;
+        const tracked = instrumentEmail(r.html, r.text, publicToken);
+        text = tracked.text;
+        html = tracked.html;
+        links = tracked.links;
       } else {
         text = renderSalesText(leadContent.body, vars);
+        const optOut = process.env.SALES_SMS_OPTOUT_TEXT?.trim();
+        if (channel === 'sms' && optOut && (leadContent.kind === 'ad' || leadContent.kind === 'offer') && !text.includes(optOut)) {
+          text = `${text} ${optOut}`;
+        }
       }
 
       let ok = true;
@@ -468,6 +601,12 @@ export class PlatformSalesService {
         toMasked: maskTo(channel, to),
         subject,
         body: text,
+        publicToken,
+        links,
+        openCount: 0,
+        clickCount: 0,
+        openedAt: null,
+        clickedAt: null,
         price: leadContent.price ?? null,
         validUntil: leadContent.validUntil,
         deliveryMode: mode,
@@ -593,6 +732,8 @@ export class PlatformSalesService {
         .update({
           'pipeline.status': 'won',
           'pipeline.wonOfferId': id,
+          'pipeline.wonAt': now,
+          'pipeline.nextFollowUpAt': null,
           'pipeline.updatedAt': now,
           'pipeline.updatedBy': admin.uid,
           'pipeline.updatedByEmail': admin.email,
@@ -747,7 +888,7 @@ export class PlatformSalesService {
 
 /** Listede HTML gövde taşınmaz. */
 function stripOffer(o: Doc) {
-  const { html: _html, ...rest } = o;
+  const { html: _html, publicToken: _token, ...rest } = o;
   return rest;
 }
 
@@ -767,4 +908,25 @@ function channelLabel(c: SalesChannel) {
 
 function kindLabel(k: SalesOfferKind) {
   return k === 'offer' ? 'Teklif' : k === 'ad' ? 'Reklam' : k === 'followup' ? 'Takip' : 'Bilgilendirme';
+}
+
+/** Kütüphane kartlarındaki örnek: "Örnek Spor Salonu, Muratpaşa". */
+function libraryPreview(t: LibraryTemplate, liveAmount: number | undefined) {
+  const price = t.price
+    ? { ...t.price, amount: liveAmount ?? t.price.amount, period: t.pricePlan?.cycle ?? t.price.period }
+    : { amount: liveAmount ?? 1490, currency: 'TRY', period: 'monthly' as const };
+  const vars: SalesTemplateVars = {
+    leadName: 'Örnek İşletme',
+    contactName: 'Ayşe Hanım',
+    district: 'Muratpaşa',
+    city: 'Antalya',
+    productLabel: PRODUCT_LABELS[t.product] ?? t.product,
+    price: { ...price, discountPercent: t.price?.discountPercent ?? 20 },
+    validUntil: new Date(Date.now() + (t.validDays ?? 14) * DAY_MS).toISOString(),
+  };
+  if (t.channel === 'email') {
+    const r = renderSalesEmail({ subject: t.subject, body: t.body, bodyFormat: t.bodyFormat, vars, ctaUrl: t.ctaUrl, ctaLabel: t.ctaLabel });
+    return { subject: r.subject, text: r.text, html: r.html };
+  }
+  return { subject: null, text: renderSalesText(t.body, vars), html: null };
 }

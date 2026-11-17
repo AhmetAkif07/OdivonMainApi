@@ -2,6 +2,7 @@ import { FakeFirestore } from '../../../shared/testing/fake-firestore';
 import { isTrMobile, leadEmail, leadMobile, leadProducts, normalizeTrPhone } from '../ai-research/lead-fields';
 import { formatPrice, manualLink, renderSalesText } from './sales-templates';
 import { PlatformSalesService } from './sales.service';
+import { SalesConsentService } from './sales-consent.service';
 
 const admin = { uid: 'admin1', email: 'admin@odivon.com' } as never;
 
@@ -29,6 +30,7 @@ describe('lead fields', () => {
 
   it('picks the first valid e-mail', () => {
     expect(leadEmail({ enrichment: { emails: ['bad', 'Info@Fit.com'] } })).toBe('info@fit.com');
+    expect(leadEmail({ emails: ['satis@gym.com'] })).toBe('satis@gym.com');
     expect(leadEmail({ pipeline: { contact: { email: 'a@b.co' } }, email: 'x@y.z' })).toBe('a@b.co');
   });
 });
@@ -71,7 +73,7 @@ describe('PlatformSalesService.send', () => {
       status: () => ({}),
     };
     const audit = { record: jest.fn(async () => undefined) };
-    const service = new PlatformSalesService({ db } as never, channels as never, audit as never);
+    const service = new PlatformSalesService({ db } as never, channels as never, audit as never, new SalesConsentService({ db } as never));
     return { db, channels, service };
   }
 
@@ -107,5 +109,50 @@ describe('PlatformSalesService.send', () => {
   it('refuses API mode when the provider is missing', async () => {
     const { service } = setup();
     await expect(service.send({ leadIds: ['l1'], channel: 'sms', body: 'x', mode: 'api' }, admin)).rejects.toThrow('SMS');
+  });
+});
+
+describe('sales template library', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { SALES_TEMPLATE_LIBRARY, LIBRARY_PRODUCTS } = require('./sales-template-library');
+
+  it('has e-mail, WhatsApp and SMS templates for each of the 5 main products', () => {
+    for (const p of LIBRARY_PRODUCTS) {
+      const mine = SALES_TEMPLATE_LIBRARY.filter((t: { product: string }) => t.product === p);
+      expect(mine.map((t: { channel: string }) => t.channel).sort()).toEqual(['email', 'email', 'email', 'sms', 'sms', 'whatsapp', 'whatsapp']);
+    }
+    const ids = SALES_TEMPLATE_LIBRARY.map((t: { id: string }) => t.id);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it('sends a brochure with the live product price and a default validity date', async () => {
+    const db = new FakeFirestore();
+    db.docs.set('aiLeads/v1', { id: 'v1', name: 'Pati <Klinik>', district: 'Kepez', email: 'info@pati.com' });
+    const sendEmail = jest.fn(async () => ({ ok: true }));
+    const channels = {
+      emailConfigured: () => true,
+      resolveMailbox: async () => ({ resourceId: 'mb1', address: 'satis@odivon.com' }),
+      sendEmail,
+    };
+    const pricing = { price: jest.fn(async () => 1990) };
+    const service = new PlatformSalesService({ db } as never, channels as never, { record: async () => undefined } as never, new SalesConsentService({ db } as never), pricing as never);
+    const res = await service.send({ leadIds: ['v1'], channel: 'email', templateId: 'lib:vet:email-brochure' }, admin);
+    expect(res.sent).toBe(1);
+    expect(pricing.price).toHaveBeenCalledWith('starter', 'monthly', 'vet');
+    const mail = (sendEmail.mock.calls[0] as unknown[])[1] as { subject: string; html: string; text: string };
+    expect(mail.subject).toBe('Pati <Klinik> için Odivon Vet teklifi');
+    expect(mail.html).toContain('Pati &lt;Klinik&gt;');
+    expect(mail.html).toContain('1.990 ₺ / ay');
+    expect(mail.html).not.toContain('{{');
+    expect(mail.text).toContain('Aşı ve kontrol takvimi');
+  });
+
+  it('copies library templates into editable templates', async () => {
+    const db = new FakeFirestore();
+    const service = new PlatformSalesService({ db } as never, {} as never, { record: async () => undefined } as never, new SalesConsentService({ db } as never));
+    const res = await service.importLibrary({ product: 'hair' }, admin);
+    expect(res.created).toBe(7);
+    const saved = [...db.docs.values()];
+    expect(saved.every((t) => t.product === 'hair' && String(t.sourceLibraryId).startsWith('lib:hair:'))).toBe(true);
   });
 });

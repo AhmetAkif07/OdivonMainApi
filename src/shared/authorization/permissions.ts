@@ -168,7 +168,11 @@ export const PERMISSION_RESOURCES = [
   { key: 'cargoDocsRecords', label: 'Kargo belge kayıtları', group: 'cargo-docs', modules: ['cargo-docs'] },
   { key: 'kidsRecords', label: 'Çocuk ürünü kayıtları', group: 'kids', modules: ['kids'] },
   { key: 'cyberReadyRecords', label: 'Siber hazırlık kayıtları', group: 'cyber-ready', modules: ['cyber-ready'] },
-  { key: 'dietRecords', label: 'Beslenme kayıtları', group: 'diet', modules: ['diet'] },
+  { key: 'dietClients', label: 'Danışanlar', group: 'diet', modules: ['diet'] },
+  { key: 'dietClinical', label: 'Ölçüm, plan ve klinik veriler', group: 'diet', modules: ['diet'] },
+  { key: 'dietSchedule', label: 'Görüşmeler ve randevular', group: 'diet', modules: ['diet'] },
+  { key: 'dietMessages', label: 'Mesaj, görev ve talepler', group: 'diet', modules: ['diet'] },
+  { key: 'dietReports', label: 'Raporlar ve klinik özeti', group: 'diet', modules: ['diet'] },
 ] as const satisfies readonly PermissionResourceDefinition[];
 
 export type PermissionResource = (typeof PERMISSION_RESOURCES)[number]['key'];

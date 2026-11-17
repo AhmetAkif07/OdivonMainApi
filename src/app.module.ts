@@ -31,6 +31,7 @@ import { ParkingModule } from './modules/parking/parking.module';
 import { FoodLabelModule } from './modules/food-label/food-label.module';
 import { FireSafeModule } from './modules/fire-safe/fire-safe.module';
 import { FgasModule } from './modules/fgas/fgas.module';
+import { DietModule } from './modules/diet/diet.module';
 
 @Module({
   imports: [
@@ -54,6 +55,7 @@ import { FgasModule } from './modules/fgas/fgas.module';
     FoodLabelModule,
     FireSafeModule,
     FgasModule,
+    DietModule,
     SaasPricingModule,
     PaymentMonitoringModule,
     PaymentsModule,

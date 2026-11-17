@@ -5,7 +5,7 @@
  */
 
 export type Data = Record<string, unknown>;
-type Filter = { field: string; op: '==' | 'in' | '<' | '>='; value: unknown };
+type Filter = { field: string; op: '==' | 'in' | '<' | '<=' | '>='; value: unknown };
 
 function firestoreError(code: number, message: string) {
   return Object.assign(new Error(message), { code });
@@ -158,6 +158,11 @@ export class FakeQuery {
     return new FakeQuery(this.db, this.path, this.filters, max);
   }
 
+  /** Field selection is a no-op: tests read whole documents. */
+  select(..._fields: string[]) {
+    return this;
+  }
+
   /** Ordering is a no-op: services under test sort in memory. */
   orderBy(_field: string, _dir?: 'asc' | 'desc') {
     return this;
@@ -187,5 +192,6 @@ function matches(data: Data, filter: Filter) {
   if (filter.op === '==') return value === filter.value;
   if (filter.op === 'in') return (filter.value as unknown[]).includes(value);
   if (filter.op === '>=') return value !== null && value !== undefined && String(value) >= String(filter.value);
+  if (filter.op === '<=') return value !== null && value !== undefined && String(value) <= String(filter.value);
   return value !== null && value !== undefined && String(value) < String(filter.value);
 }

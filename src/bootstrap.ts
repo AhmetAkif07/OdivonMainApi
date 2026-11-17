@@ -11,6 +11,7 @@ import { HairJobsService } from './modules/hair/jobs/hair-jobs.service';
 import { SaasBillingService } from './modules/payments/saas-billing.service';
 import { PlatformDemosService } from './modules/platform/demos/demos.service';
 import { CrmCampaignsService } from './modules/platform/crm/crm-campaigns.service';
+import { SalesSequencesService } from './modules/platform/sales/sales-sequences.service';
 import { ErrorLogService } from './shared/errors/error-log.service';
 import { setBackgroundRunner } from './shared/http/background';
 import { installFastRouteRegistration } from './shared/http/fast-route-registration';
@@ -110,5 +111,11 @@ export async function runHairJobs(): Promise<void> {
     await application.get(CrmCampaignsService).runJobs();
   } catch (error) {
     console.error('CRM campaign job failed', error);
+  }
+  // Satış: otomatik takip dizilerinin zamanı gelen adımları.
+  try {
+    await application.get(SalesSequencesService).runDue();
+  } catch (error) {
+    console.error('Sales sequence job failed', error);
   }
 }

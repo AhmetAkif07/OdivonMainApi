@@ -6,6 +6,7 @@ import { PlatformSalesService, SalesActivityFilters } from './sales.service';
 import {
   CreateSalesActivityDto,
   CreateSalesTemplateDto,
+  ImportSalesLibraryDto,
   PreviewSalesOfferDto,
   SendSalesOffersDto,
   UpdateSalesActivityDto,
@@ -54,6 +55,18 @@ export class PlatformSalesController {
   @Delete('templates/:id')
   deleteTemplate(@Param('id') id: string, @CurrentPlatformAdmin() admin: PlatformAdminUser) {
     return this.service.deleteTemplate(id, admin);
+  }
+
+  @Get('library')
+  @ApiOperation({ summary: 'Ürüne göre hazır şablonlar (broşür e-posta, WhatsApp, SMS) ve örnek önizleme' })
+  library(@Query('product') product?: string) {
+    return this.service.library(product);
+  }
+
+  @Post('library/import')
+  @ApiOperation({ summary: 'Hazır şablonları düzenlenebilir şablonlara kopyala' })
+  importLibrary(@Body() dto: ImportSalesLibraryDto, @CurrentPlatformAdmin() admin: PlatformAdminUser) {
+    return this.service.importLibrary(dto, admin);
   }
 
   @Post('preview')

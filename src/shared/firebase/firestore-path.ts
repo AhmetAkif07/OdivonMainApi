@@ -271,6 +271,16 @@ export const TENANT_COLLECTION = {
   fireSafeAuditLogs: 'fireSafeAuditLogs',
   foodLabelRecords: 'foodLabelRecords',
   foodLabelAuditLogs: 'foodLabelAuditLogs',
+  dietClients: 'dietClients',
+  dietMeasurements: 'dietMeasurements',
+  dietConsultations: 'dietConsultations',
+  dietPlans: 'dietPlans',
+  dietConversations: 'dietConversations',
+  dietMessages: 'dietMessages',
+  dietTasks: 'dietTasks',
+  dietRequests: 'dietRequests',
+  dietDevices: 'dietDevices',
+  dietNotificationPrefs: 'dietNotificationPrefs',
 } as const;
 
 export const ROOT_COLLECTION = {
@@ -297,6 +307,10 @@ export const ROOT_COLLECTION = {
   salesTemplates: 'salesTemplates',
   salesOffers: 'salesOffers',
   salesActivities: 'salesActivities',
+  // Ret/izin listesi, otomatik takip dizileri ve dizideki lead'ler.
+  salesSuppressions: 'salesSuppressions',
+  salesSequences: 'salesSequences',
+  salesEnrollments: 'salesEnrollments',
 } as const;
 
 export function tenantCollectionPath(tenantId: string, collection: string): string {

@@ -15,6 +15,7 @@ import {
   AI_RUNNER_SETTINGS_DOC,
 } from './ai-research.config';
 import { BulkUpdateAiLeadProductsDto, CreateAiResearchRunDto, UpdateAiLeadDto } from './dto';
+import { scoreLead } from '../sales/sales-scoring';
 import { leadContact, leadProducts } from './lead-fields';
 import { PRODUCT_LABELS } from '../tickets/ticket-grouping';
 
@@ -36,6 +37,7 @@ type Doc = Record<string, any>;
 function toListItem(d: Doc) {
   const products = leadProducts(d);
   const contact = leadContact(d);
+  const score = scoreLead(d);
   return {
     id: d.id,
     name: d.name,
@@ -69,6 +71,10 @@ function toListItem(d: Doc) {
       lastOfferAt: d.pipeline?.lastOfferAt ?? null,
       lastContactAt: d.pipeline?.lastContactAt ?? null,
       nextFollowUpAt: d.pipeline?.nextFollowUpAt ?? null,
+      score: score.score,
+      temperature: score.temperature,
+      nextAction: score.nextAction?.label ?? null,
+      optedOut: Boolean(d.pipeline?.optedOut),
     },
     hasStrategy: Boolean(d.strategy),
     pipeline: d.pipeline ?? { status: 'new' },

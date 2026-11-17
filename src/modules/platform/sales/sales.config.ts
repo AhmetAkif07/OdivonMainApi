@@ -23,9 +23,26 @@ export const SALES_OFFER_RESPONSE_STATUSES = ['sent', 'accepted', 'rejected', 'e
 export const SALES_PRICE_PERIODS = ['monthly', 'yearly', 'once'] as const;
 export type SalesPricePeriod = (typeof SALES_PRICE_PERIODS)[number];
 
-/** Takip aktiviteleri; `followup` = hatırlatma (dueAt zorunlu). */
-export const SALES_ACTIVITY_TYPES = ['note', 'call', 'meeting', 'demo', 'followup'] as const;
+/** Takip aktiviteleri; `followup` = hatırlatma (dueAt zorunlu), `reply` = lead'den gelen cevap (AI sınıflandırır). */
+export const SALES_ACTIVITY_TYPES = ['note', 'call', 'meeting', 'demo', 'followup', 'reply'] as const;
 export type SalesActivityType = (typeof SALES_ACTIVITY_TYPES)[number];
 
 /** Workers alt istek sınırı: bir gönderim adımında en fazla bu kadar lead. Panel adım adım çağırır. */
 export const SALES_SEND_STEP_SIZE = 20;
+
+/** Gelen cevabın AI sınıflandırması. */
+export const SALES_REPLY_INTENTS = [
+  'interested',
+  'price_question',
+  'demo_request',
+  'question',
+  'later',
+  'not_interested',
+  'unsubscribe',
+  'other',
+] as const;
+export type SalesReplyIntent = (typeof SALES_REPLY_INTENTS)[number];
+
+/** Otomatik takip dizisi: bir cron/çalıştırma adımında en fazla bu kadar lead işlenir (Workers sınırı). */
+export const SALES_SEQUENCE_RUN_LIMIT = 10;
+export const SALES_SEQUENCE_MAX_STEPS = 8;

@@ -49,6 +49,12 @@ import { PlatformAiResearchService } from './ai-research/ai-research.service';
 import { PlatformSalesController } from './sales/sales.controller';
 import { PlatformSalesService } from './sales/sales.service';
 import { SalesChannelsService } from './sales/sales-channels.service';
+import { SalesAiService } from './sales/sales-ai.service';
+import { SalesAssistantService } from './sales/sales-assistant.service';
+import { SalesConsentService } from './sales/sales-consent.service';
+import { SalesSequencesService } from './sales/sales-sequences.service';
+import { PlatformSalesAutomationController } from './sales/sales-automation.controller';
+import { PublicSalesController } from './sales/sales-public.controller';
 
 @Module({
   imports: [MailModule],
@@ -74,6 +80,8 @@ import { SalesChannelsService } from './sales/sales-channels.service';
     PlatformBackendsController,
     PlatformAiResearchController,
     PlatformSalesController,
+    PlatformSalesAutomationController,
+    PublicSalesController,
   ],
   providers: [
     PlatformBackendsService,
@@ -97,6 +105,10 @@ import { SalesChannelsService } from './sales/sales-channels.service';
     PlatformAiResearchService,
     PlatformSalesService,
     SalesChannelsService,
+    SalesAiService,
+    SalesAssistantService,
+    SalesConsentService,
+    SalesSequencesService,
     ClientVersionTracker,
     { provide: APP_INTERCEPTOR, useClass: ClientVersionTrackingInterceptor },
   ],
@@ -111,6 +123,7 @@ import { SalesChannelsService } from './sales/sales-channels.service';
     PlatformErrorLogsService,
     CrmCampaignsService,
     CrmNotificationsService,
+    SalesSequencesService,
   ],
 })
 export class PlatformModule {}
