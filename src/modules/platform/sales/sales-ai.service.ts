@@ -54,6 +54,34 @@ export interface AdCopyOutput {
   tips: string[];
 }
 
+export interface CallPrepInput {
+  leadSummary: string;
+  productLabel: string | null;
+  productFacts: string | null;
+  priceText: string | null;
+  history: string | null;
+  scoreFactors: string[];
+  instructions: string | null;
+}
+
+export interface CallPrepOutput {
+  goal: string;
+  opener: string;
+  questions: string[];
+  talkingPoints: string[];
+  objections: { objection: string; answer: string }[];
+  closing: string;
+  avoid: string[];
+  voicemail: string;
+}
+
+export interface ReportInsights {
+  headline: string;
+  wins: string[];
+  issues: string[];
+  actions: string[];
+}
+
 const SYSTEM = `Sen Odivon'un satış asistanısın. Odivon; spor salonu, veteriner, kuaför, güzellik merkezi ve diyetisyen gibi işletmelere yönetim yazılımı satar.
 Kurallar:
 - Türkçe, samimi ama profesyonel yaz; "siz" diye hitap et.
@@ -232,6 +260,76 @@ export class SalesAiService {
       'medium',
     );
   }
+}
+
+const STRING_LIST = { type: 'array', items: { type: 'string' } } as const;
+
+/** Görüşme hazırlığı ve haftalık rapor yorumu (aynı istemci ve sistem metni). */
+export async function aiCallPrep(ai: SalesAiService, input: CallPrepInput): Promise<CallPrepOutput> {
+  const prompt = [
+    `Görev: Satış temsilcisi bu işletmeyi telefonla arayacak${input.productLabel ? ` (ürün: ${input.productLabel})` : ''}. Kısa, konuşur gibi okunacak bir görüşme hazırlığı yaz.`,
+    'goal: bu aramanın tek cümlelik hedefi (çoğunlukla demo randevusu).',
+    'opener: ilk 20 saniyede söylenecek, kendini ve arama nedenini tanıtan 2-3 cümle; işletmeye özel bir ayrıntı kullan.',
+    'questions: ihtiyacı anlamak için 4-6 açık uçlu soru.',
+    'talkingPoints: bu işletmeye göre öne çıkarılacak 3-5 nokta (sadece ürün bilgilerindeki özellikler).',
+    'objections: bu işletmenin söyleyebileceği 4-6 itiraz ("pahalı", "zaten X kullanıyoruz", "vaktim yok", "Excel yetiyor" gibi) ve her birine 1-3 cümlelik cevap.',
+    'closing: görüşmeyi demo veya sonraki adıma bağlayan kapanış cümlesi.',
+    'avoid: bu aramada söylenmemesi gereken 2-3 şey.',
+    'voicemail: ulaşılamazsa bırakılacak 2 cümlelik sesli mesaj ya da WhatsApp notu.',
+    `\n## İşletme\n${input.leadSummary}`,
+    input.scoreFactors.length ? `\n## Skor etkenleri\n${input.scoreFactors.join('; ')}` : '',
+    input.productFacts ? `\n## Ürün bilgileri (sadece bunları kullan)\n${input.productFacts}` : '',
+    input.priceText ? `\n## Fiyat\n${input.priceText}` : '\n## Fiyat\nFiyat verilmedi; rakam söyleme, fiyatı demoda konuşmayı öner.',
+    input.history ? `\n## Önceki iletişim\n${input.history}` : '',
+    input.instructions ? `\n## Satış temsilcisinin notu\n${input.instructions}` : '',
+  ]
+    .filter(Boolean)
+    .join('\n');
+  return ai.json<CallPrepOutput>(
+    prompt,
+    {
+      type: 'object',
+      additionalProperties: false,
+      required: ['goal', 'opener', 'questions', 'talkingPoints', 'objections', 'closing', 'avoid', 'voicemail'],
+      properties: {
+        goal: { type: 'string' },
+        opener: { type: 'string' },
+        questions: STRING_LIST,
+        talkingPoints: STRING_LIST,
+        objections: {
+          type: 'array',
+          items: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['objection', 'answer'],
+            properties: { objection: { type: 'string' }, answer: { type: 'string' } },
+          },
+        },
+        closing: { type: 'string' },
+        avoid: STRING_LIST,
+        voicemail: { type: 'string' },
+      },
+    },
+    'medium',
+  );
+}
+
+export async function aiReportInsights(ai: SalesAiService, statsText: string): Promise<ReportInsights> {
+  const prompt = [
+    'Görev: Aşağıdaki haftalık satış verisini satış yöneticisi için yorumla. Sadece verideki rakamları kullan, rakam uydurma.',
+    'headline: haftanın tek cümlelik özeti.',
+    'wins: iyi giden 2-4 şey (kanal, şablon, ürün; oranlarla).',
+    'issues: dikkat isteyen 2-4 şey (düşük açılma/cevap, başarısız gönderim, bekleyen takipler).',
+    'actions: gelecek hafta için 3-5 somut öneri (hangi şablonu/kanalı artır, hangisini değiştir, kimleri ara).',
+    'Veri azsa bunu söyle ve kesin yargıdan kaçın.',
+    `\n## Veri\n${statsText}`,
+  ].join('\n');
+  return ai.json<ReportInsights>(prompt, {
+    type: 'object',
+    additionalProperties: false,
+    required: ['headline', 'wins', 'issues', 'actions'],
+    properties: { headline: { type: 'string' }, wins: STRING_LIST, issues: STRING_LIST, actions: STRING_LIST },
+  });
 }
 
 function channelName(c: SalesChannel) {

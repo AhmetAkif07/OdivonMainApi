@@ -12,7 +12,7 @@ import { PRODUCT_LABELS } from '../tickets/ticket-grouping';
 import { AI_LEAD_PRODUCT_UNKNOWN } from '../ai-research/ai-research.config';
 import { leadContact, leadProducts } from '../ai-research/lead-fields';
 import { SaasPricingService, isProductModule } from '../../saas-pricing/saas-pricing.service';
-import { SalesAiService, classifyReplyHeuristic } from './sales-ai.service';
+import { SalesAiService, aiCallPrep, classifyReplyHeuristic } from './sales-ai.service';
 import { SalesConsentService } from './sales-consent.service';
 import { productFacts } from './sales-template-library';
 import { formatPrice, htmlToText } from './sales-templates';
@@ -210,6 +210,46 @@ export class SalesAssistantService {
       after: { channel: dto.channel, kind, product, model: this.ai.model() },
     });
     return { ...out, channel: dto.channel, kind, product, productLabel: productLabel(product), price, model: this.ai.model() };
+  }
+
+  /** Arama öncesi hazırlık: açılış, sorular, itirazlar ve cevapları. Kaydedilmez, her açılışta yeniden üretilir. */
+  async callPrep(dto: { leadId: string; product?: string; instructions?: string }, admin: PlatformAdminUser) {
+    const d = await this.lead(dto.leadId);
+    const product = dto.product || leadProducts(d).products[0] || null;
+    const amount = await this.livePrice(product);
+    const price = amount ? { amount, currency: 'TRY', period: 'monthly' as const } : null;
+    const s = scoreLead(d);
+    const out = await aiCallPrep(this.ai, {
+      leadSummary: leadSummary(d),
+      productLabel: productLabel(product),
+      productFacts: productFacts(product),
+      priceText: price ? formatPrice(price) : null,
+      history: await this.historyText(d.id),
+      scoreFactors: s.factors,
+      instructions: dto.instructions?.trim() || null,
+    });
+    await this.audit.record({
+      adminUid: admin.uid,
+      adminEmail: admin.email,
+      action: 'SALES_AI_CALL_PREP',
+      targetType: 'sales',
+      targetId: d.id,
+      after: { product, model: this.ai.model() },
+    });
+    const c = leadContact(d);
+    return {
+      ...out,
+      leadId: d.id,
+      leadName: d.name ?? null,
+      contactName: c.contactName ?? null,
+      phone: c.mobile ?? d.phone ?? null,
+      product,
+      productLabel: productLabel(product),
+      price,
+      score: s.score,
+      temperature: s.temperature,
+      model: this.ai.model(),
+    };
   }
 
   private async historyText(leadId: string): Promise<string | null> {

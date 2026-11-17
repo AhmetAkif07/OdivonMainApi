@@ -52,6 +52,7 @@ import { SalesChannelsService } from './sales/sales-channels.service';
 import { SalesAiService } from './sales/sales-ai.service';
 import { SalesAssistantService } from './sales/sales-assistant.service';
 import { SalesConsentService } from './sales/sales-consent.service';
+import { SalesReportService } from './sales/sales-report.service';
 import { SalesSequencesService } from './sales/sales-sequences.service';
 import { PlatformSalesAutomationController } from './sales/sales-automation.controller';
 import { PublicSalesController } from './sales/sales-public.controller';
@@ -109,6 +110,7 @@ import { PublicSalesController } from './sales/sales-public.controller';
     SalesAssistantService,
     SalesConsentService,
     SalesSequencesService,
+    SalesReportService,
     ClientVersionTracker,
     { provide: APP_INTERCEPTOR, useClass: ClientVersionTrackingInterceptor },
   ],
@@ -124,6 +126,7 @@ import { PublicSalesController } from './sales/sales-public.controller';
     CrmCampaignsService,
     CrmNotificationsService,
     SalesSequencesService,
+    SalesReportService,
   ],
 })
 export class PlatformModule {}

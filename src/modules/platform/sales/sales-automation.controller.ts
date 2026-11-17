@@ -4,14 +4,17 @@ import { CurrentPlatformAdmin, RequirePlatformAdmin } from '../platform-admin.de
 import { PlatformAdminUser } from '../platform-admin.guard';
 import { SalesAssistantService } from './sales-assistant.service';
 import { SalesConsentService } from './sales-consent.service';
+import { SalesReportService } from './sales-report.service';
 import { SalesSequencesService } from './sales-sequences.service';
 import {
   CreateSalesSequenceDto,
   CreateSalesSuppressionDto,
   EnrollSalesSequenceDto,
+  GenerateSalesReportDto,
   LogSalesReplyDto,
   SalesAdCopyDto,
   SalesAiComposeDto,
+  SalesCallPrepDto,
   UpdateSalesSequenceDto,
 } from './dto';
 
@@ -23,6 +26,7 @@ export class PlatformSalesAutomationController {
     private readonly assistant: SalesAssistantService,
     private readonly consent: SalesConsentService,
     private readonly sequences: SalesSequencesService,
+    private readonly reports: SalesReportService,
   ) {}
 
   // ---------------------------------------------------------------- AI asistan
@@ -57,6 +61,12 @@ export class PlatformSalesAutomationController {
     return this.assistant.logReply(dto, admin);
   }
 
+  @Post('assistant/call-prep')
+  @ApiOperation({ summary: 'Arama öncesi AI hazırlığı: açılış, sorular, itirazlar ve cevapları' })
+  callPrep(@Body() dto: SalesCallPrepDto, @CurrentPlatformAdmin() admin: PlatformAdminUser) {
+    return this.assistant.callPrep(dto, admin);
+  }
+
   @Post('assistant/ad-copy')
   @ApiOperation({ summary: 'AI reklam metni ve kitle önerisi (Meta / Google), lead verisinden' })
   adCopy(@Body() dto: SalesAdCopyDto, @CurrentPlatformAdmin() admin: PlatformAdminUser) {
@@ -67,6 +77,26 @@ export class PlatformSalesAutomationController {
   @ApiOperation({ summary: '30 günlük yeni abone ve aylık gelir tahmini' })
   forecast(@Query('product') product?: string) {
     return this.assistant.forecast({ product });
+  }
+
+  // ---------------------------------------------------------------- haftalık rapor
+
+  @Get('reports')
+  @ApiOperation({ summary: 'Son 12 haftalık satış raporu (özet)' })
+  listReports() {
+    return this.reports.list();
+  }
+
+  @Get('reports/:id')
+  @ApiOperation({ summary: 'Haftalık rapor ayrıntısı' })
+  getReport(@Param('id') id: string) {
+    return this.reports.get(id);
+  }
+
+  @Post('reports/generate')
+  @ApiOperation({ summary: 'Raporu şimdi üret (geçen hafta ya da bu hafta şimdiye kadar)' })
+  generateReport(@Body() dto: GenerateSalesReportDto, @CurrentPlatformAdmin() admin: PlatformAdminUser) {
+    return this.reports.generate({ week: dto.week ?? 'last' }, admin);
   }
 
   // ---------------------------------------------------------------- ret listesi

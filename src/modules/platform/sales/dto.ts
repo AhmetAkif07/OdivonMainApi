@@ -460,3 +460,25 @@ export class EnrollSalesSequenceDto {
   @ArrayMaxSize(200)
   leadIds!: string[];
 }
+
+export class SalesCallPrepDto {
+  @IsString()
+  @MaxLength(128)
+  leadId!: string;
+
+  @IsOptional()
+  @IsIn(AI_LEAD_PRODUCTS)
+  product?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  instructions?: string;
+}
+
+export class GenerateSalesReportDto {
+  /** last = geçen hafta, current = bu hafta şimdiye kadar. */
+  @IsOptional()
+  @IsIn(['last', 'current'])
+  week?: 'last' | 'current';
+}

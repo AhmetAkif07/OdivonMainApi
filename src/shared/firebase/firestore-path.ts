@@ -311,6 +311,8 @@ export const ROOT_COLLECTION = {
   salesSuppressions: 'salesSuppressions',
   salesSequences: 'salesSequences',
   salesEnrollments: 'salesEnrollments',
+  // Haftalık satış raporları (kimlik: haftanın pazartesi günü).
+  salesReports: 'salesReports',
 } as const;
 
 export function tenantCollectionPath(tenantId: string, collection: string): string {

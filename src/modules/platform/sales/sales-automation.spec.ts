@@ -2,6 +2,7 @@ import { FakeFirestore } from '../../../shared/testing/fake-firestore';
 import { SalesAiService, classifyReplyHeuristic } from './sales-ai.service';
 import { SalesAssistantService } from './sales-assistant.service';
 import { SalesConsentService, instrumentEmail } from './sales-consent.service';
+import { SalesReportService, istanbulWeekStart, weekId } from './sales-report.service';
 import { SalesSequencesService } from './sales-sequences.service';
 import { nextBusinessSlot, scoreLead } from './sales-scoring';
 import { PlatformSalesService } from './sales.service';
@@ -214,5 +215,83 @@ describe('follow-up sequences', () => {
     await sequences.enroll(seq.id, ['a'], admin);
     const stopped = await assistant.logReply({ leadId: 'a', channel: 'email', text: 'İlgileniyorum, detay alabilir miyim?' }, admin);
     expect(stopped.stoppedSequences).toBe(1);
+  });
+});
+
+describe('call prep and weekly report', () => {
+  const prep = {
+    goal: 'Demo randevusu',
+    opener: 'Merhaba',
+    questions: ['Üyeleri nasıl takip ediyorsunuz?'],
+    talkingPoints: ['Online üyelik'],
+    objections: [{ objection: 'Pahalı', answer: 'Deneme süresi var' }],
+    closing: 'Salı 11 uygun mu?',
+    avoid: ['Rakibi kötüleme'],
+    voicemail: 'Size ulaşamadık',
+  };
+
+  it('prepares a call with lead context, price and objections', async () => {
+    const json = jest.fn().mockResolvedValue(prep);
+    const ai = { configured: () => true, model: () => 'm', json } as unknown as SalesAiService;
+    const { db, assistant } = setup({ ai });
+    db.docs.set('aiLeads/a', { id: 'a', name: 'Fit A', phone: '0532 111 22 33', enrichment: { competitors: ['RakipSoft'] }, pipeline: { status: 'replied', products: ['gym'] } });
+    const r = await assistant.callPrep({ leadId: 'a' }, admin);
+    expect(r).toMatchObject({ goal: 'Demo randevusu', objections: [{ objection: 'Pahalı' }], product: 'gym', price: { amount: 1990 }, phone: '+905321112233' });
+    const prompt = json.mock.calls[0][0] as string;
+    expect(prompt).toContain('RakipSoft');
+    expect(prompt).toContain('1.990 ₺ / ay');
+    expect(audit.record).toHaveBeenCalledWith(expect.objectContaining({ action: 'SALES_AI_CALL_PREP' }));
+  });
+
+  it('computes Istanbul weeks', () => {
+    // Salı 01:30 TR = Pazartesi 22:30 UTC → hafta 16 Kasım Pazartesi başlar.
+    const now = new Date('2026-11-16T22:30:00Z');
+    expect(weekId(istanbulWeekStart(now))).toBe('2026-11-16');
+    expect(istanbulWeekStart(now).toISOString()).toBe('2026-11-15T21:00:00.000Z');
+    expect(weekId(istanbulWeekStart(now, 1))).toBe('2026-11-09');
+  });
+
+  it('builds the weekly report with template attribution and runs once on Monday morning', async () => {
+    const json = jest.fn().mockResolvedValue({ headline: 'İyi hafta', wins: ['WhatsApp'], issues: [], actions: ['Daha çok ara'] });
+    const ai = { configured: () => true, model: () => 'm', json } as unknown as SalesAiService;
+    const { db, assistant, channels } = setup({ ai });
+    const reports = new SalesReportService({ db } as never, ai, assistant, channels as never);
+    // Geçen hafta: 9-15 Kasım (TR). "now" = 16 Kasım Pazartesi 09:00 TR.
+    const now = new Date('2026-11-16T06:00:00Z');
+    const offer = (id: string, o: Record<string, unknown>) => db.docs.set(`salesOffers/${id}`, { id, status: 'sent', deliveryMode: 'api', ...o });
+    offer('o1', { leadId: 'a', channel: 'email', templateId: 't1', templateName: 'Broşür', product: 'gym', createdAt: '2026-11-11T08:00:00Z', openCount: 2, clickCount: 1, demoRequestedAt: '2026-11-12T08:00:00Z' });
+    offer('o2', { leadId: 'b', channel: 'whatsapp', templateId: 't2', templateName: 'WA teklif', product: 'gym', createdAt: '2026-11-11T09:00:00Z' });
+    offer('o3', { leadId: 'c', channel: 'email', templateId: 't1', templateName: 'Broşür', product: 'vet', createdAt: '2026-11-12T09:00:00Z', status: 'failed' });
+    offer('o0', { leadId: 'b', channel: 'sms', templateId: 't3', templateName: 'Eski', product: 'gym', createdAt: '2026-11-05T09:00:00Z' });
+    db.docs.set('salesActivities/r1', { leadId: 'b', type: 'reply', intent: 'price_question', createdAt: '2026-11-13T09:00:00Z' });
+    db.docs.set('salesActivities/c1', { leadId: 'a', type: 'call', createdAt: '2026-11-13T10:00:00Z' });
+    db.docs.set('salesActivities/f1', { leadId: 'a', type: 'followup', done: false, dueAt: '2026-11-14T10:00:00Z', createdAt: '2026-11-13T10:00:00Z' });
+    db.docs.set('aiLeads/b', { id: 'b', lastSeenAt: '1', pipeline: { status: 'won', products: ['gym'], wonAt: '2026-11-14T09:00:00Z' } });
+
+    const r = await reports.generate({ week: 'last', now }, { uid: 'u', email: 'admin@odivon.com' });
+    expect(r.id).toBe('2026-11-09');
+    expect(r.partial).toBe(false);
+    expect(r.totals).toMatchObject({ sent: 2, failed: 1, emailSent: 1, opened: 1, clicked: 1, replies: 1, positive: 1, demos: 1, won: 1, wonMrr: 1990, calls: 1, openRate: 100 });
+    expect(r.prevTotals).toMatchObject({ sent: 1 });
+    expect(r.overdueFollowups).toBe(1);
+    const wa = r.byTemplate.find((b: Record<string, unknown>) => b.key === 't2');
+    expect(wa).toMatchObject({ sent: 1, replies: 1, won: 1 });
+    expect(r.insights).toMatchObject({ headline: 'İyi hafta' });
+    expect(json.mock.calls[0][0]).toContain('WA teklif');
+
+    process.env.SALES_REPORT_EMAIL = 'info@odivon.com';
+    try {
+      // Pazartesi 07:00 TR: henüz değil. Salı: değil.
+      expect(await reports.runWeekly(new Date('2026-11-16T04:00:00Z'))).toEqual({ generated: null, emailed: false });
+      expect(await reports.runWeekly(new Date('2026-11-17T06:00:00Z'))).toEqual({ generated: null, emailed: false });
+      // Rapor zaten tam: tekrar üretilmez.
+      expect(await reports.runWeekly(now)).toEqual({ generated: null, emailed: false });
+      db.docs.delete('salesReports/2026-11-09');
+      expect(await reports.runWeekly(now)).toEqual({ generated: '2026-11-09', emailed: true });
+      expect(channels.sendEmail).toHaveBeenCalledWith('mb1', expect.objectContaining({ to: 'info@odivon.com', subject: expect.stringContaining('2026-11-09') }));
+    } finally {
+      delete process.env.SALES_REPORT_EMAIL;
+    }
+    expect((await reports.list())[0]).toMatchObject({ id: '2026-11-09', headline: 'İyi hafta' });
   });
 });

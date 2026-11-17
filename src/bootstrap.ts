@@ -11,6 +11,7 @@ import { HairJobsService } from './modules/hair/jobs/hair-jobs.service';
 import { SaasBillingService } from './modules/payments/saas-billing.service';
 import { PlatformDemosService } from './modules/platform/demos/demos.service';
 import { CrmCampaignsService } from './modules/platform/crm/crm-campaigns.service';
+import { SalesReportService } from './modules/platform/sales/sales-report.service';
 import { SalesSequencesService } from './modules/platform/sales/sales-sequences.service';
 import { ErrorLogService } from './shared/errors/error-log.service';
 import { setBackgroundRunner } from './shared/http/background';
@@ -117,5 +118,11 @@ export async function runHairJobs(): Promise<void> {
     await application.get(SalesSequencesService).runDue();
   } catch (error) {
     console.error('Sales sequence job failed', error);
+  }
+  // Satış: pazartesi sabahı geçen haftanın raporu (SALES_REPORT_EMAIL varsa e-postayla).
+  try {
+    await application.get(SalesReportService).runWeekly();
+  } catch (error) {
+    console.error('Sales weekly report job failed', error);
   }
 }
