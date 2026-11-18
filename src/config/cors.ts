@@ -25,6 +25,14 @@ export const DEFAULT_CORS_ORIGINS: readonly string[] = [
   'https://odivonvetclient.dogangns-98.workers.dev',
   'https://odivon-management.dogangns-98.workers.dev',
   'https://odivon-rentacar.dogangns-98.workers.dev',
+  'https://machinece.odivon.com',
+  'https://odivon-machine-ce.pages.dev',
+  'https://firesafe.odivon.com',
+  'https://foodlabel.odivon.com',
+  'https://fgas.odivon.com',
+  'https://park.odivon.com',
+  'https://diet.odivon.com',
+  'https://kids.odivon.com',
 ];
 
 /** Local dev servers (`ng serve` on :4200 and friends) on any port. */

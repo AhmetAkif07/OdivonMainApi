@@ -24,6 +24,7 @@ import { verificationUrl } from '../../shared/mail/verification-url';
 import { fgasEntitlements } from '../../shared/product-platform/fgas-entitlements';
 import { FIRE_SAFE_PLAN_LIMITS } from '../fire-safe/fire-safe.constants';
 import { FOOD_LABEL_PLAN_LIMITS } from '../food-label/food-label.constants';
+import { MACHINE_CE_PLAN_LIMITS } from '../machine-ce/machine-ce.constants';
 
 const SAAS_TRIAL_DAYS = 14;
 
@@ -65,7 +66,8 @@ export class IdentityService {
           module === 'gym' ||
           module === 'fgas' ||
           module === 'fire-safe' ||
-          module === 'food-label',
+          module === 'food-label' ||
+          module === 'machine-ce',
       );
       const createdTenant = await this.tenants.create({
         name: dto.tenantName,
@@ -433,6 +435,25 @@ export class IdentityService {
           ? candidate
           : 'enterprise';
       const maxUsers = FOOD_LABEL_PLAN_LIMITS[planId].users;
+      if (maxUsers !== null) {
+        const activeUsers = (await this.users.listByCurrentTenant()).filter(
+          (user) => user.status === 'active',
+        ).length;
+        if (activeUsers >= maxUsers)
+          throw new AppException(
+            ErrorCode.SUBSCRIPTION_LIMIT,
+            `${planId} planının kullanıcı limiti doldu. Planınızı yükseltin.`,
+          );
+      }
+    }
+    if (store.modules?.includes('machine-ce')) {
+      const tenant = await this.tenants.getById(store.tenantId);
+      const candidate = tenant.membershipStatus === 'trial' ? 'pro' : tenant.planId;
+      const planId =
+        candidate === 'starter' || candidate === 'pro' || candidate === 'enterprise'
+          ? candidate
+          : 'enterprise';
+      const maxUsers = MACHINE_CE_PLAN_LIMITS[planId].users;
       if (maxUsers !== null) {
         const activeUsers = (await this.users.listByCurrentTenant()).filter(
           (user) => user.status === 'active',
