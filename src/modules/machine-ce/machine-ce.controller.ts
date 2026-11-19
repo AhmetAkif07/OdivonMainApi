@@ -21,10 +21,14 @@ import { SubscriptionGuard } from '../../shared/authorization/subscription.guard
 import { TenantGuard } from '../../shared/tenancy/tenant.guard';
 import { MACHINE_CE_ROLE_TEMPLATES } from './machine-ce.constants';
 import {
+  AiAnalyzeMachineDto,
+  AiCopilotAskDto,
+  BulkCreateMachineCeRecordsDto,
   CompleteMachineCeOnboardingDto,
   CreateMachineCeRecordDto,
   MachineCeListQueryDto,
   UpdateMachineCeRecordDto,
+  UploadMachineCeAttachmentDto,
 } from './machine-ce.dto';
 import { MachineCeService } from './machine-ce.service';
 
@@ -80,6 +84,24 @@ export class MachineCeController {
     return this.service.complianceReport();
   }
 
+  @Post('ai/analyze-machine')
+  @RequirePermission('machineCeRecords', 'view')
+  analyzeMachine(@Body() dto: AiAnalyzeMachineDto) {
+    return this.service.analyzeMachine(dto);
+  }
+
+  @Post('ai/audit-portfolio')
+  @RequirePermission('machineCeRecords', 'view')
+  auditPortfolio() {
+    return this.service.auditPortfolio();
+  }
+
+  @Post('ai/ask')
+  @RequirePermission('machineCeRecords', 'view')
+  askCopilot(@Body() dto: AiCopilotAskDto) {
+    return this.service.askCopilot(dto);
+  }
+
   @Get('records')
   @RequirePermission('machineCeRecords', 'view')
   @ApiOperation({ summary: 'List tenant Machine CE compliance records' })
@@ -87,10 +109,34 @@ export class MachineCeController {
     return this.service.list(query);
   }
 
+  @Post('records/bulk')
+  @RequirePermission('machineCeRecords', 'create')
+  bulkCreate(@Body() dto: BulkCreateMachineCeRecordsDto) {
+    return this.service.bulkCreate(dto);
+  }
+
   @Get('records/:id/audit')
   @RequirePermission('machineCeRecords', 'view')
   audit(@Param('id') id: string) {
     return this.service.audit(id);
+  }
+
+  @Post('records/:id/attachments')
+  @RequirePermission('machineCeRecords', 'update')
+  uploadAttachment(@Param('id') id: string, @Body() dto: UploadMachineCeAttachmentDto) {
+    return this.service.uploadAttachment(id, dto);
+  }
+
+  @Get('records/:id/attachments/:attachmentId')
+  @RequirePermission('machineCeRecords', 'view')
+  getAttachment(@Param('id') id: string, @Param('attachmentId') attachmentId: string) {
+    return this.service.getAttachment(id, attachmentId);
+  }
+
+  @Delete('records/:id/attachments/:attachmentId')
+  @RequirePermission('machineCeRecords', 'update')
+  deleteAttachment(@Param('id') id: string, @Param('attachmentId') attachmentId: string) {
+    return this.service.deleteAttachment(id, attachmentId);
   }
 
   @Get('records/:id')

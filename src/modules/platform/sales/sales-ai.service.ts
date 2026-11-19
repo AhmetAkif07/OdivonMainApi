@@ -3,12 +3,20 @@ import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common'
 import { SALES_REPLY_INTENTS, SalesChannel, SalesReplyIntent } from './sales.config';
 
 /**
- * Satış asistanının Claude çağrıları: kişiye özel mesaj yazımı, gelen cevabın sınıflandırılması ve
- * reklam metni üretimi. Anahtar `ANTHROPIC_API_KEY` (Beauty AI asistanıyla aynı), model
- * `SALES_AI_MODEL` ile değiştirilebilir. Çıktılar JSON şemasıyla (structured outputs) alınır.
+ * Satış asistanının AI çağrıları: kişiye özel mesaj, gelen cevabın sınıflandırılması, görüşme
+ * hazırlığı, haftalık rapor yorumu ve reklam metni. Çıktılar JSON şemasıyla alınır.
+ *
+ * Sağlayıcı:
+ * - `GEMINI_API_KEY` tanımlıysa Google Gemini (ücretsiz katman kullanılabilir), model `SALES_GEMINI_MODEL`.
+ * - yoksa `ANTHROPIC_API_KEY` ile Claude, model `SALES_AI_MODEL`.
+ * `SALES_AI_PROVIDER=gemini|anthropic` ikisi de tanımlıyken seçimi zorlar.
  */
 
 const DEFAULT_MODEL = 'claude-opus-5-5';
+const DEFAULT_GEMINI_MODEL = 'gemini-3.8-flash';
+const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
+
+export type SalesAiProvider = 'gemini' | 'anthropic';
 
 export interface ComposeInput {
   channel: SalesChannel;
@@ -101,12 +109,21 @@ export class SalesAiService {
   private readonly logger = new Logger(SalesAiService.name);
   private client: Anthropic | null = null;
 
+  provider(): SalesAiProvider | null {
+    const gemini = Boolean(process.env.GEMINI_API_KEY);
+    const anthropic = Boolean(process.env.ANTHROPIC_API_KEY);
+    const forced = process.env.SALES_AI_PROVIDER;
+    if (forced === 'anthropic' && anthropic) return 'anthropic';
+    if (forced === 'gemini' && gemini) return 'gemini';
+    return gemini ? 'gemini' : anthropic ? 'anthropic' : null;
+  }
+
   configured(): boolean {
-    return Boolean(process.env.ANTHROPIC_API_KEY);
+    return this.provider() !== null;
   }
 
   model(): string {
-    return process.env.SALES_AI_MODEL || DEFAULT_MODEL;
+    return this.provider() === 'gemini' ? process.env.SALES_GEMINI_MODEL || DEFAULT_GEMINI_MODEL : process.env.SALES_AI_MODEL || DEFAULT_MODEL;
   }
 
   private anthropic(): Anthropic {
@@ -118,6 +135,9 @@ export class SalesAiService {
 
   /** JSON şemalı tek çağrı. Testlerde bu metot taklit edilir. */
   async json<T>(prompt: string, schema: Record<string, unknown>, effort: 'low' | 'medium' = 'low'): Promise<T> {
+    const provider = this.provider();
+    if (!provider) throw new ServiceUnavailableException('AI satış asistanı yapılandırılmadı (GEMINI_API_KEY).');
+    if (provider === 'gemini') return this.parse<T>(await this.gemini(prompt, schema));
     // Güvenlik sınıflandırıcısı reddederse istek aynı çağrıda uygun modelde yeniden çalışır.
     const res = await this.anthropic().beta.messages.create({
       betas: ['server-side-fallback-2026-07-01'],
@@ -133,12 +153,75 @@ export class SalesAiService {
     }
     const text = res.content.find((b) => b.type === 'text');
     if (!text || text.type !== 'text') throw new ServiceUnavailableException('AI boş yanıt döndü');
+    return this.parse<T>(text.text);
+  }
+
+  private parse<T>(raw: string): T {
+    // Gemini bazen JSON'u ```json bloğuna sarar.
+    const text = raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
     try {
-      return JSON.parse(text.text) as T;
+      return JSON.parse(text) as T;
     } catch (error) {
       this.logger.warn(`AI JSON parse failed: ${(error as Error).message}`);
       throw new ServiceUnavailableException('AI yanıtı okunamadı, tekrar deneyin');
     }
+  }
+
+  /**
+   * Gemini generateContent (REST, Workers'da SDK gerekmez). Önce JSON şemasıyla istenir; şema
+   * reddedilirse (400) şema metne eklenip yalnızca JSON çıktısı istenir.
+   */
+  private async gemini(prompt: string, schema: Record<string, unknown>): Promise<string> {
+    const key = process.env.GEMINI_API_KEY!;
+    const url = `${GEMINI_BASE}/${encodeURIComponent(this.model())}:generateContent`;
+    const call = async (withSchema: boolean) => {
+      const body = {
+        systemInstruction: { parts: [{ text: SYSTEM }] },
+        contents: [
+          {
+            role: 'user',
+            parts: [{ text: withSchema ? prompt : `${prompt}\n\nYanıtı yalnızca şu JSON şemasına uyan tek bir JSON nesnesi olarak ver:\n${JSON.stringify(schema)}` }],
+          },
+        ],
+        generationConfig: {
+          responseMimeType: 'application/json',
+          ...(withSchema ? { responseJsonSchema: schema } : {}),
+          maxOutputTokens: 8192,
+          temperature: 0.7,
+        },
+      };
+      return fetch(url, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-goog-api-key': key },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(60_000),
+      });
+    };
+    let res = await call(true);
+    if (res.status === 400) {
+      this.logger.warn(`Gemini rejected the JSON schema: ${(await res.text()).slice(0, 300)}`);
+      res = await call(false);
+    }
+    if (res.status === 429) throw new ServiceUnavailableException('Gemini ücretsiz kullanım sınırı doldu; biraz sonra tekrar deneyin.');
+    if (!res.ok) {
+      const detail = (await res.text()).slice(0, 300);
+      this.logger.warn(`Gemini error ${res.status}: ${detail}`);
+      throw new ServiceUnavailableException(res.status === 403 || res.status === 401 ? 'Gemini anahtarı geçersiz (GEMINI_API_KEY).' : `Gemini hatası (${res.status}), tekrar deneyin.`);
+    }
+    const data = (await res.json()) as {
+      candidates?: { content?: { parts?: { text?: string; thought?: boolean }[] }; finishReason?: string }[];
+      promptFeedback?: { blockReason?: string };
+    };
+    if (data.promptFeedback?.blockReason) throw new ServiceUnavailableException('AI bu isteği yanıtlamadı; metni elle yazın.');
+    const cand = data.candidates?.[0];
+    const text = (cand?.content?.parts ?? [])
+      .filter((p) => !p.thought && typeof p.text === 'string')
+      .map((p) => p.text)
+      .join('');
+    if (!text) {
+      throw new ServiceUnavailableException(cand?.finishReason === 'SAFETY' ? 'AI bu isteği yanıtlamadı; metni elle yazın.' : 'AI boş yanıt döndü');
+    }
+    return text;
   }
 
   async compose(input: ComposeInput): Promise<ComposeOutput> {

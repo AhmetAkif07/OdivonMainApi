@@ -32,7 +32,7 @@ export class PlatformSalesAutomationController {
   // ---------------------------------------------------------------- AI asistan
 
   @Get('assistant/status')
-  @ApiOperation({ summary: 'AI satış asistanı yapılandırıldı mı (ANTHROPIC_API_KEY), model' })
+  @ApiOperation({ summary: 'AI satış asistanı yapılandırıldı mı (GEMINI_API_KEY ya da ANTHROPIC_API_KEY), sağlayıcı, model' })
   status() {
     return this.assistant.status();
   }

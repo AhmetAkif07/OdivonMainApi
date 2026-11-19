@@ -1,6 +1,8 @@
 import { PartialType } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
+  ArrayMinSize,
   IsArray,
   IsBoolean,
   IsEmail,
@@ -11,6 +13,7 @@ import {
   Length,
   Max,
   Min,
+  ValidateNested,
 } from 'class-validator';
 import { MACHINE_CE_RECORD_KINDS } from './machine-ce.constants';
 import { MachineCeRecordKind, MachineCeRecordStatus } from './machine-ce.types';
@@ -88,4 +91,34 @@ export class CompleteMachineCeOnboardingDto {
   @IsEmail() regulatoryContactEmail!: string;
   @IsOptional() @IsString() @Length(0, 40) regulatoryContactPhone?: string;
   @IsArray() @IsString({ each: true }) targetMarkets!: string[];
+}
+
+export class UploadMachineCeAttachmentDto {
+  @IsString() @Length(1, 200) name!: string;
+  @IsString() @Length(1, 80) category!: string;
+  @IsString() @Length(3, 120) mimeType!: string;
+  @Type(() => Number) @IsInt() @Min(1) @Max(900_000) size!: number;
+  @IsString() @Length(10, 1_300_000) dataUrl!: string;
+  @IsOptional() @IsString() @Length(1, 80) refCode?: string;
+}
+
+export class BulkCreateMachineCeRecordsDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(100)
+  @ValidateNested({ each: true })
+  @Type(() => CreateMachineCeRecordDto)
+  items!: CreateMachineCeRecordDto[];
+}
+
+export class AiAnalyzeMachineDto {
+  @IsString() @Length(2, 200) name!: string;
+  @IsOptional() @IsString() @Length(0, 140) machineType?: string;
+  @IsOptional() @IsString() @Length(0, 140) location?: string;
+  @IsOptional() @IsString() @Length(0, 1000) hazardHint?: string;
+}
+
+export class AiCopilotAskDto {
+  @IsString() @Length(3, 1500) question!: string;
+  @IsOptional() @IsString() @Length(0, 160) contextMachineName?: string;
 }

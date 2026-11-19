@@ -295,3 +295,53 @@ describe('call prep and weekly report', () => {
     expect((await reports.list())[0]).toMatchObject({ id: '2026-11-09', headline: 'İyi hafta' });
   });
 });
+
+describe('AI provider', () => {
+  const env = { ...process.env };
+  afterEach(() => {
+    process.env = { ...env };
+    jest.restoreAllMocks();
+  });
+
+  it('prefers Gemini when GEMINI_API_KEY is set and parses its JSON answer', async () => {
+    process.env.GEMINI_API_KEY = 'g-key';
+    process.env.ANTHROPIC_API_KEY = 'a-key';
+    delete process.env.SALES_AI_PROVIDER;
+    const ai = new SalesAiService();
+    expect(ai.provider()).toBe('gemini');
+    expect(ai.model()).toBe('gemini-3.8-flash');
+    const fetchMock = jest.spyOn(global, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: '```json\n{"subject":"S","body":"B","notes":"N"}\n```' }] } }] }), { status: 200 }),
+    );
+    const out = await ai.compose({ channel: 'email', kind: 'offer', leadSummary: 'Ad: Fit', productFacts: null, priceText: null, history: null, baseTemplate: null, instructions: null });
+    expect(out).toEqual({ subject: 'S', body: 'B', notes: 'N' });
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toContain('/models/gemini-3.8-flash:generateContent');
+    expect((init.headers as Record<string, string>)['x-goog-api-key']).toBe('g-key');
+    expect(JSON.parse(init.body as string).generationConfig).toMatchObject({ responseMimeType: 'application/json', responseJsonSchema: { type: 'object' } });
+
+    process.env.SALES_AI_PROVIDER = 'anthropic';
+    expect(ai.provider()).toBe('anthropic');
+  });
+
+  it('retries without the schema on 400 and reports the free-tier limit on 429', async () => {
+    process.env.GEMINI_API_KEY = 'g-key';
+    const ai = new SalesAiService();
+    const fetchMock = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValueOnce(new Response('bad schema', { status: 400 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: '{"a":1}' }] } }] }), { status: 200 }))
+      .mockResolvedValueOnce(new Response('quota', { status: 429 }));
+    await expect(ai.json('x', { type: 'object' })).resolves.toEqual({ a: 1 });
+    const second = JSON.parse((fetchMock.mock.calls[1][1] as RequestInit).body as string);
+    expect(second.generationConfig.responseJsonSchema).toBeUndefined();
+    expect(second.contents[0].parts[0].text).toContain('JSON şemasına');
+    await expect(ai.json('x', { type: 'object' })).rejects.toThrow('ücretsiz kullanım sınırı');
+  });
+
+  it('is not configured without any key', () => {
+    delete process.env.GEMINI_API_KEY;
+    delete process.env.ANTHROPIC_API_KEY;
+    expect(new SalesAiService().configured()).toBe(false);
+  });
+});

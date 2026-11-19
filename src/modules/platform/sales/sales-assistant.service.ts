@@ -110,7 +110,7 @@ export class SalesAssistantService {
   }
 
   status() {
-    return { aiConfigured: this.ai.configured(), model: this.ai.configured() ? this.ai.model() : null };
+    return { aiConfigured: this.ai.configured(), provider: this.ai.provider(), model: this.ai.configured() ? this.ai.model() : null };
   }
 
   // ---------------------------------------------------------------- bugün / skor

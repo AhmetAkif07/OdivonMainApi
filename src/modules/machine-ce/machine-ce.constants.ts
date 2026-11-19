@@ -4,6 +4,7 @@ export const MACHINE_CE_COLLECTIONS = {
   records: 'machineCeRecords',
   snapshots: 'machineCeSnapshots',
   audit: 'machineCeAuditLogs',
+  attachments: 'machineCeAttachments',
 } as const;
 
 const viewer: PermissionMap = { machineCeRecords: ['view', 'export'] };

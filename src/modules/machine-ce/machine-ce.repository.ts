@@ -10,12 +10,14 @@ import {
   MACHINE_CE_PLAN_LIMITS,
 } from './machine-ce.constants';
 import {
+  BulkCreateMachineCeRecordsDto,
   CompleteMachineCeOnboardingDto,
   CreateMachineCeRecordDto,
   MachineCeListQueryDto,
   UpdateMachineCeRecordDto,
+  UploadMachineCeAttachmentDto,
 } from './machine-ce.dto';
-import { MachineCeRecord } from './machine-ce.types';
+import { MachineCeAttachment, MachineCeAttachmentMeta, MachineCeRecord } from './machine-ce.types';
 
 @Injectable()
 export class MachineCeRepository {
@@ -93,6 +95,7 @@ export class MachineCeRepository {
       approvedAt: dto.approvedAt?.trim() ?? null,
       notes: dto.notes?.trim() ?? null,
       documentRefs: dto.documentRefs?.map((item) => item.trim()).filter(Boolean) ?? [],
+      attachments: [],
       status: dto.status ?? 'draft',
       version: 1,
       createdAt: now,
@@ -106,6 +109,109 @@ export class MachineCeRepository {
     await ref.set(record);
     await this.writeEvidence(record, MACHINE_CE_AUDIT_EVENTS.created);
     return record;
+  }
+
+  async bulkCreate(dto: BulkCreateMachineCeRecordsDto) {
+    const items: MachineCeRecord[] = [];
+    for (const row of dto.items) {
+      const created = await this.create(row);
+      items.push(created);
+    }
+    return { created: items.length, items };
+  }
+
+  async uploadAttachment(
+    recordId: string,
+    dto: UploadMachineCeAttachmentDto,
+  ): Promise<MachineCeRecord> {
+    const current = await this.get(recordId);
+    if (current.archivedAt)
+      throw new AppException(
+        ErrorCode.COMPLIANCE_RECORD_CONFLICT,
+        'Arşivlenmiş Makine CE kaydına belge yüklenemez.',
+      );
+    const now = new Date().toISOString();
+    const attachRef = this.collection(MACHINE_CE_COLLECTIONS.attachments).doc();
+    const refCode =
+      dto.refCode?.trim() ||
+      `DOC-${now.slice(0, 10).replace(/-/g, '')}-${attachRef.id.slice(0, 6).toUpperCase()}`;
+    const meta: MachineCeAttachmentMeta = {
+      id: attachRef.id,
+      name: dto.name.trim(),
+      category: dto.category.trim(),
+      mimeType: dto.mimeType.trim(),
+      size: dto.size,
+      refCode,
+      uploadedAt: now,
+      uploadedBy: this.tenant.getUserId(),
+    };
+    const attachmentDoc: MachineCeAttachment = {
+      ...meta,
+      recordId,
+      tenantId: this.tenant.getTenantId(),
+      dataUrl: dto.dataUrl,
+    };
+    await attachRef.set(attachmentDoc);
+
+    const existingRefs = current.documentRefs ?? [];
+    const nextRefs = existingRefs.includes(refCode) ? existingRefs : [...existingRefs, refCode];
+    const updated: MachineCeRecord = {
+      ...current,
+      documentRefs: nextRefs,
+      attachments: [...(current.attachments ?? []), meta],
+      version: current.version + 1,
+      updatedAt: now,
+      updatedBy: this.tenant.getUserId(),
+    };
+    await this.collection(MACHINE_CE_COLLECTIONS.records).doc(recordId).set(updated);
+    await this.writeEvidence(updated, MACHINE_CE_AUDIT_EVENTS.updated);
+    return updated;
+  }
+
+  async getAttachment(recordId: string, attachmentId: string): Promise<MachineCeAttachment> {
+    await this.get(recordId);
+    const snapshot = await this.collection(MACHINE_CE_COLLECTIONS.attachments)
+      .doc(attachmentId)
+      .get();
+    if (!snapshot.exists)
+      throw new AppException(
+        ErrorCode.COMPLIANCE_RECORD_NOT_FOUND,
+        'Teknik dosya eki bulunamadı.',
+      );
+    const data = snapshot.data() as MachineCeAttachment;
+    if (data.recordId !== recordId)
+      throw new AppException(
+        ErrorCode.COMPLIANCE_RECORD_NOT_FOUND,
+        'Teknik dosya eki bu kayda ait değil.',
+      );
+    return { ...data, id: snapshot.id };
+  }
+
+  async deleteAttachment(recordId: string, attachmentId: string): Promise<MachineCeRecord> {
+    const current = await this.get(recordId);
+    if (current.archivedAt)
+      throw new AppException(
+        ErrorCode.COMPLIANCE_RECORD_CONFLICT,
+        'Arşivlenmiş Makine CE kaydından belge silinemez.',
+      );
+    const removed = (current.attachments ?? []).find((item) => item.id === attachmentId);
+    await this.collection(MACHINE_CE_COLLECTIONS.attachments).doc(attachmentId).delete();
+    const now = new Date().toISOString();
+    const nextAttachments = (current.attachments ?? []).filter((item) => item.id !== attachmentId);
+    const nextRefs = removed
+      ? (current.documentRefs ?? []).filter((ref) => ref !== removed.refCode)
+      : current.documentRefs ?? [];
+    const updated: MachineCeRecord = {
+      ...current,
+      documentRefs: nextRefs,
+      attachments: nextAttachments,
+      version: current.version + 1,
+      updatedAt: now,
+      updatedBy: this.tenant.getUserId(),
+    };
+    await this.collection(MACHINE_CE_COLLECTIONS.records).doc(recordId).set(updated);
+    await this.writeEvidence(updated, MACHINE_CE_AUDIT_EVENTS.updated);
+    return updated;
   }
 
   async update(id: string, dto: UpdateMachineCeRecordDto): Promise<MachineCeRecord> {

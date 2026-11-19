@@ -8,6 +8,23 @@ export type MachineCeRecordStatus =
   | 'approved'
   | 'rejected';
 
+export interface MachineCeAttachmentMeta {
+  id: string;
+  name: string;
+  category: string;
+  mimeType: string;
+  size: number;
+  refCode: string;
+  uploadedAt: string;
+  uploadedBy: string;
+}
+
+export interface MachineCeAttachment extends MachineCeAttachmentMeta {
+  recordId: string;
+  tenantId: string;
+  dataUrl: string;
+}
+
 export interface MachineCeRecord {
   id: string;
   tenantId: string;
@@ -32,6 +49,7 @@ export interface MachineCeRecord {
   approvedAt: string | null;
   notes: string | null;
   documentRefs: string[];
+  attachments?: MachineCeAttachmentMeta[];
   status: MachineCeRecordStatus;
   version: number;
   createdAt: string;
