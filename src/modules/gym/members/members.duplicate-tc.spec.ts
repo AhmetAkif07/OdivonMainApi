@@ -39,8 +39,20 @@ describe('MembersRepository - Duplicate TC Enforcement', () => {
     // Constructor signature: (firebase, tenantContext, users)
     repository = new MembersRepository(mockFirebase as never, mockTenantContext as never, mockUsers as never);
 
-    // Mock collection to return mockMembers for listUndeleted
+    // Mock collection to support indexed where('nationalId', '==', ...).limit(...).get()
     jest.spyOn<any, any>(repository, 'collection').mockReturnValue({
+      where: jest.fn().mockImplementation((field: string, _op: string, value: unknown) => ({
+        limit: jest.fn().mockReturnValue({
+          get: jest.fn().mockImplementation(async () => ({
+            docs: mockMembers
+              .filter((m) => (m as unknown as Record<string, unknown>)[field] === value)
+              .map((m) => ({
+                id: m.uid,
+                data: () => m,
+              })),
+          })),
+        }),
+      })),
       get: jest.fn().mockResolvedValue({
         docs: mockMembers.map((m) => ({
           id: m.uid,

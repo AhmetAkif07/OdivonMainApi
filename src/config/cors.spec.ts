@@ -21,4 +21,10 @@ describe('CORS origins', () => {
   it('lets requests without an Origin header through', () => {
     expect(isCorsOriginAllowed(undefined, allowed)).toBe(true);
   });
+
+  it('blocks localhost origins in production mode', () => {
+    expect(isCorsOriginAllowed('http://localhost:4200', allowed, false)).toBe(false);
+    expect(isCorsOriginAllowed('http://127.0.0.1:8080', allowed, false)).toBe(false);
+    expect(isCorsOriginAllowed('https://gym.odivon.com', allowed, false)).toBe(true);
+  });
 });

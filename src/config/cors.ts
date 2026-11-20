@@ -46,7 +46,11 @@ export function allowedCorsOrigins(configured: string | undefined): Set<string> 
   return new Set([...DEFAULT_CORS_ORIGINS, ...extra]);
 }
 
-export function isCorsOriginAllowed(origin: string | undefined, allowed: Set<string>): boolean {
+export function isCorsOriginAllowed(
+  origin: string | undefined,
+  allowed: Set<string>,
+  allowLocal = process.env.NODE_ENV !== 'production',
+): boolean {
   if (!origin) return true;
-  return LOCAL_ORIGIN.test(origin) || allowed.has(origin);
+  return (allowLocal && LOCAL_ORIGIN.test(origin)) || allowed.has(origin);
 }

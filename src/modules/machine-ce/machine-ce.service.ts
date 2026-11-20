@@ -1,5 +1,8 @@
 import { Injectable } from '@nestjs/common';
+import { MachineCeAiService } from './machine-ce-ai.service';
 import {
+  AiAnalyzeMachineDto,
+  AiCopilotAskDto,
   BulkCreateMachineCeRecordsDto,
   CompleteMachineCeOnboardingDto,
   CreateMachineCeRecordDto,
@@ -11,7 +14,10 @@ import { MachineCeRepository } from './machine-ce.repository';
 
 @Injectable()
 export class MachineCeService {
-  constructor(private readonly records: MachineCeRepository) {}
+  constructor(
+    private readonly records: MachineCeRepository,
+    private readonly ai: MachineCeAiService,
+  ) {}
 
   list(query: MachineCeListQueryDto) {
     return this.records.list(query);
@@ -60,5 +66,15 @@ export class MachineCeService {
   }
   completeOnboarding(dto: CompleteMachineCeOnboardingDto) {
     return this.records.completeOnboarding(dto);
+  }
+  analyzeMachine(dto: AiAnalyzeMachineDto) {
+    return this.ai.analyzeMachine(dto);
+  }
+  async auditPortfolio() {
+    const list = await this.records.list({ archived: false, limit: 100 });
+    return this.ai.auditPortfolio(list.items);
+  }
+  askCopilot(dto: AiCopilotAskDto) {
+    return this.ai.askCopilot(dto);
   }
 }

@@ -25,14 +25,24 @@ export class MembersRepository {
     return gymCollection(this.firebase, this.tenantContext, TENANT_COLLECTION.gymMembers);
   }
 
+  private async findActiveByNationalId(nationalId: string, excludeUid?: string): Promise<GymMember | null> {
+    const snapshot = await this.collection().where('nationalId', '==', nationalId).limit(5).get();
+    for (const doc of snapshot.docs) {
+      const member = doc.data() as GymMember;
+      if (isDeleted(member)) continue;
+      if (excludeUid && (member.uid === excludeUid || doc.id === excludeUid)) continue;
+      return member;
+    }
+    return null;
+  }
+
   async create(dto: CreateMemberDto): Promise<GymMember> {
     const trimmedId = dto.nationalId?.trim();
     if (!trimmedId || !/^[1-9]\d{10}$/.test(trimmedId)) {
       throw new AppException(ErrorCode.VALIDATION_ERROR, "Geçerli bir 11 haneli T.C. Kimlik Numarası zorunludur.");
     }
 
-    const existingMembers = await listUndeleted<GymMember>(this.collection());
-    const duplicate = existingMembers.find((m) => m.nationalId && m.nationalId.trim() === trimmedId);
+    const duplicate = await this.findActiveByNationalId(trimmedId);
     if (duplicate) {
       throw new AppException(
         ErrorCode.VALIDATION_ERROR,
@@ -125,10 +135,7 @@ export class MembersRepository {
       if (!/^[1-9]\d{10}$/.test(trimmed)) {
         throw new AppException(ErrorCode.VALIDATION_ERROR, "Geçerli bir 11 haneli T.C. Kimlik Numarası giriniz.");
       }
-      const existingMembers = await listUndeleted<GymMember>(this.collection());
-      const duplicate = existingMembers.find(
-        (m) => m.uid !== id && (m as any).id !== id && m.nationalId && m.nationalId.trim() === trimmed,
-      );
+      const duplicate = await this.findActiveByNationalId(trimmed, id);
       if (duplicate) {
         throw new AppException(
           ErrorCode.VALIDATION_ERROR,

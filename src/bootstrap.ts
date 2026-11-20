@@ -56,7 +56,8 @@ export async function bootstrap(
     }),
   );
 
-  if (options.swaggerUi !== false) {
+  const enableSwagger = options.swaggerUi ?? process.env.NODE_ENV !== 'production';
+  if (enableSwagger) {
     const { DocumentBuilder, SwaggerModule } = await import('@nestjs/swagger');
     const swagger = new DocumentBuilder()
       .setTitle('Odivon Main API')
