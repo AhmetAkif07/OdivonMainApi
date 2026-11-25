@@ -47,4 +47,24 @@ describe('TenantGuard', () => {
     expect(store.permissions).toEqual({});
     expect(getAll).not.toHaveBeenCalled();
   });
+
+  it('treats a diet portal account as a member bound to its client', async () => {
+    const { guard, context, request, getAll } = setup(
+      {
+        tenantId: 't1',
+        role: 'owner',
+        accountType: 'diet_member',
+        dietClientId: 'client-1',
+        modules: ['diet'],
+        email: 'a@b.com',
+        status: 'active',
+        roleIds: ['diet-dietitian'],
+      },
+      { dietClients: ['view'] },
+    );
+    await guard.canActivate(context);
+    const store = request.currentUser as TenantStore;
+    expect(store).toMatchObject({ role: 'user', accountType: 'diet_member', dietClientId: 'client-1', permissions: {}, allBranches: false });
+    expect(getAll).not.toHaveBeenCalled();
+  });
 });

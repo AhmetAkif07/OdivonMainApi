@@ -263,7 +263,7 @@ export class DietService {
   }
 
   /** Keeps the client's current weight / body values equal to the latest measurement. */
-  private async syncLatestMeasurement(client: DietClient) {
+  async syncLatestMeasurement(client: DietClient) {
     const items = await this.repo.where<DietMeasurement>(C.measurements, 'clientId', client.id);
     const latest = items.sort((a, b) => b.date.localeCompare(a.date))[0];
     const next: DietClient = latest
@@ -447,7 +447,7 @@ export class DietService {
     return saved;
   }
 
-  private async conversation(clientId: string): Promise<DietConversation> {
+  async conversation(clientId: string): Promise<DietConversation> {
     const existing = await this.repo.find<DietConversation>(C.conversations, clientId);
     if (existing) return existing;
     return this.repo.create<DietConversation>(
@@ -466,7 +466,8 @@ export class DietService {
     );
   }
 
-  private async postMessage(
+  /** Appends a message and updates the conversation summary (also used by the member portal). */
+  async postMessage(
     clientId: string,
     author: DietMessage['author'],
     authorName: string,
@@ -496,10 +497,13 @@ export class DietService {
         lastMessageAt: at,
         lastMessagePreview: body ? body.slice(0, 140) : '📎 Ek dosya',
         lastAuthor: author,
-        // Staff (and system notices raised by staff) count as unread for the member only.
-        unreadForMember: conversation.unreadForMember + 1,
+        // Staff (and system notices raised by staff) count as unread for the member; a member's
+        // message counts as unread for staff. The sender has read everything up to now.
+        unreadForMember: author === 'member' ? 0 : conversation.unreadForMember + 1,
+        memberReadAt: author === 'member' ? at : conversation.memberReadAt,
         staffReadAt: author === 'dietitian' ? at : conversation.staffReadAt,
-        unreadForStaff: author === 'dietitian' ? 0 : conversation.unreadForStaff,
+        unreadForStaff:
+          author === 'dietitian' ? 0 : author === 'member' ? conversation.unreadForStaff + 1 : conversation.unreadForStaff,
       },
       { audit: false },
     );

@@ -25,7 +25,8 @@ interface UserProfileDoc {
   email: string;
   status: string;
   roleIds?: string[];
-  accountType?: 'gym_member' | 'staff';
+  accountType?: 'gym_member' | 'diet_member' | 'staff';
+  dietClientId?: string | null;
   displayName?: string | null;
   phone?: string | null;
   emailVerified?: boolean;
@@ -79,9 +80,10 @@ export class TenantGuard implements CanActivate {
         .catch(() => undefined);
     }
 
-    // A gym member account is always a plain user without staff permissions, even if its profile
-    // was edited to carry another role or roleIds: members only reach their own /gym/mobile routes.
-    const isMember = profile.accountType === 'gym_member';
+    // A member account (gym member, diet portal client) is always a plain user without staff
+    // permissions, even if its profile was edited to carry another role or roleIds: members only
+    // reach their own /gym/mobile or /diet/portal routes.
+    const isMember = profile.accountType === 'gym_member' || profile.accountType === 'diet_member';
     const role: UserRole = isMember ? 'user' : profile.role;
     const store: TenantStore = {
       tenantId: profile.tenantId,
@@ -90,12 +92,13 @@ export class TenantGuard implements CanActivate {
       modules: profile.modules ?? [],
       email: profile.email ?? decoded.email ?? '',
       accountType: profile.accountType,
+      dietClientId: profile.accountType === 'diet_member' ? (profile.dietClientId ?? null) : null,
       roleIds: profile.roleIds ?? [],
       displayName: profile.displayName ?? null,
       phone: profile.phone ?? decoded.phone_number ?? null,
       emailVerified: profile.emailVerified,
       branchIds: profile.branchIds ?? [],
-      allBranches: profile.role === 'owner' || profile.allBranches === true,
+      allBranches: !isMember && (profile.role === 'owner' || profile.allBranches === true),
       permissions:
         role === 'owner'
           ? fullPermissionMap(profile.modules ?? [])

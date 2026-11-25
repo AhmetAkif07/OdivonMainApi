@@ -379,3 +379,51 @@ export function buildStaffInviteEmail(input: StaffInviteInput): { brand: string;
 </html>`;
   return { brand, subject, html };
 }
+
+export interface DietPortalInviteInput {
+  to: string;
+  displayName?: string | null;
+  tenantName: string;
+  /** Name of the dietitian who follows the client, shown in the greeting. */
+  dietitianName?: string | null;
+  /** Firebase password reset link; following it sets the first password. */
+  setPasswordLink: string;
+  loginUrl: string | null;
+}
+
+/** Invitation for an OdivonDiet client to the member portal (plan, measurements, messages). */
+export function buildDietPortalInviteEmail(input: DietPortalInviteInput): { brand: string; subject: string; html: string } {
+  const brand = 'OdivonDiet';
+  const rawTenantName = input.tenantName.trim() || brand;
+  const tenantName = escapeHtml(rawTenantName);
+  const name = escapeHtml(input.displayName?.trim() || 'Merhaba');
+  const dietitian = input.dietitianName?.trim() ? escapeHtml(input.dietitianName.trim()) : tenantName;
+  const email = escapeHtml(input.to);
+  const link = escapeHtml(input.setPasswordLink);
+  const loginUrl = safeHttpUrl(input.loginUrl);
+  const subject = `${rawTenantName} sizi OdivonDiet danışan portalına davet etti`;
+  const loginLine = loginUrl
+    ? `<p style="margin: 16px 0 0; color: #475467; font-size: 13px; line-height: 1.6;">Şifrenizi belirledikten sonra <a href="${escapeHtml(loginUrl)}" style="color: #6d4dff;">${escapeHtml(loginUrl)}</a> adresinden veya OdivonDiet mobil uygulamasından giriş yapabilirsiniz.</p>`
+    : '';
+  const html = `
+<!DOCTYPE html>
+<html lang="tr">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${escapeHtml(subject)}</title></head>
+<body style="margin: 0; padding: 0; background: #f4f3ff; font-family: Arial, Helvetica, sans-serif; color: #101828;">
+  <div style="padding: 32px 16px;">
+    <div style="max-width: 520px; margin: 0 auto; background: #ffffff; border: 1px solid #e4e7ec; border-radius: 24px; padding: 32px;">
+      <div style="font-size: 12px; color: #6d4dff; font-weight: 800; letter-spacing: .08em;">ODIVONDIET · DANIŞAN PORTALI</div>
+      <h1 style="font-size: 22px; margin: 16px 0 12px;">${name}, portalınız hazır!</h1>
+      <p style="margin: 0; color: #344054; font-size: 14px; line-height: 1.6;"><strong>${dietitian}</strong> sizin için bir danışan hesabı açtı. Beslenme planınızı, ölçümlerinizi ve görevlerinizi buradan takip edebilir, diyetisyeninize doğrudan mesaj yazabilirsiniz.</p>
+      <p style="margin: 12px 0 0; color: #475467; font-size: 13px;">Giriş e-postanız: <strong style="color: #101828;">${email}</strong></p>
+      <div style="text-align: center; margin: 28px 0 8px;">
+        <a href="${link}" target="_blank" style="display: inline-block; background: linear-gradient(135deg, #7c5cff 0%, #917aff 100%); color: #ffffff; font-size: 14px; font-weight: 800; text-decoration: none; padding: 14px 36px; border-radius: 12px;">Şifremi belirle</a>
+      </div>
+      ${loginLine}
+      <p style="margin: 16px 0 0; color: #98a2b3; font-size: 12px; line-height: 1.6;">Bağlantı bir süre sonra geçersiz olur. Süresi dolarsa giriş ekranındaki "Şifremi unuttum" ile yeni bağlantı isteyebilir ya da diyetisyeninizden daveti yeniden göndermesini isteyebilirsiniz. Bu daveti beklemiyorsanız e-postayı yok sayabilirsiniz.</p>
+    </div>
+  </div>
+</body>
+</html>`;
+  return { brand, subject, html };
+}

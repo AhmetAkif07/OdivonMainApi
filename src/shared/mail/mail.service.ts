@@ -4,8 +4,10 @@ import type { Transporter } from 'nodemailer';
 import * as tls from 'tls';
 import { runInBackground } from '../http/background';
 import {
+  buildDietPortalInviteEmail,
   buildModuleWelcomeEmail,
   buildStaffInviteEmail,
+  DietPortalInviteInput,
   ModuleWelcomeInput,
   StaffInviteInput,
   WelcomeModule,
@@ -64,6 +66,7 @@ export interface SendDailyCloseEmailInput {
 
 export type SendModuleWelcomeInput = Omit<ModuleWelcomeInput, 'loginUrl'>;
 export type SendStaffInviteInput = Omit<StaffInviteInput, 'loginUrl'>;
+export type SendDietPortalInviteInput = Omit<DietPortalInviteInput, 'loginUrl'>;
 
 @Injectable()
 export class MailService {
@@ -374,6 +377,29 @@ export class MailService {
       return true;
     } catch (error: any) {
       this.logger.error(`Personel davet maili gönderim hatası [${input.module}] (${input.to}): ${error?.message || error}`);
+      return false;
+    }
+  }
+
+  /**
+   * OdivonDiet client portal invitation with a set-password link. Awaited by the caller so the panel
+   * can say whether the mail went out; resolves false (never throws) when sending is not possible.
+   */
+  async sendDietPortalInvite(input: SendDietPortalInviteInput): Promise<boolean> {
+    if (!this.transporter && !this.hostingerApiConfigured()) {
+      await this.initTransporter();
+      if (!this.transporter) {
+        this.logger.warn(`Danışan portal daveti gönderilemedi (${input.to}): e-posta sağlayıcısı yapılandırılmamış.`);
+        return false;
+      }
+    }
+    try {
+      const { brand, subject, html } = buildDietPortalInviteEmail({ ...input, loginUrl: dietPortalLoginUrl() });
+      const info = await this.sendMessage({ from: { name: brand, address: fromAddress() }, to: input.to, subject, html });
+      this.logger.log(`Danışan portal daveti gönderildi: ${input.to} (MessageId: ${info.messageId})`);
+      return true;
+    } catch (error: any) {
+      this.logger.error(`Danışan portal daveti gönderim hatası (${input.to}): ${error?.message || error}`);
       return false;
     }
   }
@@ -1177,6 +1203,12 @@ function moduleLoginUrl(module: WelcomeModule): string | null {
   const appUrl = process.env[`APP_URL_${module.toUpperCase()}`]?.trim();
   const path = module === 'vet' ? '/login' : '/auth/login';
   return appUrl ? `${appUrl.replace(/\/+$/, '')}${path}` : null;
+}
+
+/** Member portal sign-in page of the OdivonDiet web app (`APP_URL_DIET` overrides the live address). */
+function dietPortalLoginUrl(): string {
+  const appUrl = process.env.APP_URL_DIET?.trim() || 'https://odivon-diet.dogangns-98.workers.dev';
+  return `${appUrl.replace(/\/+$/, '')}/portal/login`;
 }
 
 /** Sender address of `SMTP_FROM` (`"Name" <address>` or a bare address); the display name is per module. */

@@ -11,7 +11,9 @@ export interface TenantStore {
   role: UserRole;
   modules: ProductModule[];
   email: string;
-  accountType?: 'gym_member' | 'staff';
+  accountType?: 'gym_member' | 'diet_member' | 'staff';
+  /** Set for OdivonDiet portal members: the client record they may read. */
+  dietClientId?: string | null;
   roleIds?: string[];
   displayName?: string | null;
   phone?: string | null;

@@ -204,6 +204,39 @@ export class ListDietRequestsQueryDto {
   @IsOptional() @IsString() @MaxLength(128) clientId?: string;
 }
 
+// ---------- Member portal ----------
+
+export class CreateDietPortalRequestDto {
+  @IsIn(DIET_REQUEST_TYPES) type!: (typeof DIET_REQUEST_TYPES)[number];
+  @IsString() @Length(1, 160) subject!: string;
+  @IsOptional() @IsString() @MaxLength(4000) detail?: string;
+  @IsOptional() @IsDateString() preferredDate?: string;
+  @IsOptional() @Matches(TIME) preferredTime?: string;
+  @IsOptional() @IsIn(DIET_CHANNELS) preferredChannel?: (typeof DIET_CHANNELS)[number];
+  @IsOptional() @IsArray() @ArrayMaxSize(10) @ValidateNested({ each: true }) @Type(() => DietAttachmentDto) attachments?: DietAttachmentDto[];
+}
+
+export class CompleteDietPortalTaskDto {
+  @IsOptional() @IsString() @MaxLength(2000) note?: string;
+  @IsOptional() @IsArray() @ArrayMaxSize(10) @ValidateNested({ each: true }) @Type(() => DietAttachmentDto) attachments?: DietAttachmentDto[];
+}
+
+// ---------- Staff ----------
+
+const STAFF_ROLES = ['diet-dietitian', 'diet-assistant', 'diet-reception'] as const;
+
+export class InviteDietStaffDto {
+  @IsEmail() @MaxLength(200) email!: string;
+  @IsString() @Length(2, 120) displayName!: string;
+  @IsIn(STAFF_ROLES) role!: (typeof STAFF_ROLES)[number];
+}
+
+export class UpdateDietStaffDto {
+  @IsOptional() @IsIn(STAFF_ROLES) role?: (typeof STAFF_ROLES)[number];
+  @IsOptional() @IsString() @Length(2, 120) displayName?: string;
+  @IsOptional() @IsIn(['active', 'inactive']) status?: 'active' | 'inactive';
+}
+
 // ---------- Devices & notifications ----------
 
 export class RegisterDietDeviceDto {

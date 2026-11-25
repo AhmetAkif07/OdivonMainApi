@@ -9,6 +9,9 @@ import { PermissionGuard } from '../../shared/authorization/permission.guard';
 import { RequirePermission } from '../../shared/authorization/require-permission.decorator';
 import { SubscriptionGuard } from '../../shared/authorization/subscription.guard';
 import { TenantGuard } from '../../shared/tenancy/tenant.guard';
+import { DietStaffGuard } from './diet-access.guards';
+import { DietPortalService } from './diet-portal.service';
+import { DietStaffService } from './diet-staff.service';
 import { DIET_ROLE_TEMPLATES } from './diet.constants';
 import {
   CreateDietClientDto,
@@ -17,6 +20,7 @@ import {
   CreateDietPlanDto,
   CreateDietRequestDto,
   CreateDietTaskDto,
+  InviteDietStaffDto,
   ListDietClientsQueryDto,
   ListDietConsultationsQueryDto,
   ListDietMessagesQueryDto,
@@ -31,6 +35,7 @@ import {
   UpdateDietNotificationPrefsDto,
   UpdateDietPlanDto,
   UpdateDietRequestDto,
+  UpdateDietStaffDto,
   UpdateDietTaskDto,
 } from './diet.dto';
 import { DietService } from './diet.service';
@@ -49,11 +54,16 @@ import { DietService } from './diet.service';
   EmailVerifiedGuard,
   SubscriptionGuard,
   ModuleGuard,
+  DietStaffGuard,
   PermissionGuard,
 )
 @Controller('diet')
 export class DietController {
-  constructor(private readonly service: DietService) {}
+  constructor(
+    private readonly service: DietService,
+    private readonly portal: DietPortalService,
+    private readonly staff: DietStaffService,
+  ) {}
 
   @Get('roles/templates')
   @ApiOperation({ summary: 'Diyetisyen, asistan ve ön büro rol şablonları' })
@@ -75,6 +85,31 @@ export class DietController {
   @ApiOperation({ summary: 'Klinik yöneticisi özeti: diyetisyen bazında yük, büyüme' })
   adminSummary() {
     return this.service.adminSummary();
+  }
+
+  // ---------- team (clinic manager) ----------
+
+  @Get('staff') @RequirePermission('users', 'view')
+  @ApiOperation({ summary: 'Klinik ekibi: yönetici ve personel' })
+  listStaff() {
+    return this.staff.list();
+  }
+
+  @Post('staff') @RequirePermission('users', 'create')
+  @ApiOperation({ summary: 'Personel daveti: hesap açar, şifre belirleme bağlantısını e-postayla yollar' })
+  inviteStaff(@Body() dto: InviteDietStaffDto) {
+    return this.staff.invite(dto);
+  }
+
+  @Post('staff/:uid/invite') @HttpCode(200) @RequirePermission('users', 'create')
+  resendStaffInvite(@Param('uid') uid: string) {
+    return this.staff.resendInvite(uid);
+  }
+
+  @Patch('staff/:uid') @RequirePermission('users', 'update')
+  @ApiOperation({ summary: 'Personelin rolünü değiştir veya hesabını pasifleştir' })
+  updateStaff(@Param('uid') uid: string, @Body() dto: UpdateDietStaffDto) {
+    return this.staff.update(uid, dto);
   }
 
   // ---------- clients ----------
@@ -109,6 +144,20 @@ export class DietController {
   @Delete('clients/:id') @RequirePermission('dietClients', 'delete')
   deleteClient(@Param('id') id: string) {
     return this.service.deleteClient(id);
+  }
+
+  // ---------- client portal access ----------
+
+  @Post('clients/:id/portal/invite') @HttpCode(200) @RequirePermission('dietClients', 'update')
+  @ApiOperation({ summary: 'Danışana portal daveti: hesap açar, şifre belirleme bağlantısını e-postayla yollar' })
+  invitePortal(@Param('id') id: string) {
+    return this.portal.invite(id);
+  }
+
+  @Post('clients/:id/portal/disable') @HttpCode(200) @RequirePermission('dietClients', 'update')
+  @ApiOperation({ summary: 'Danışanın portal erişimini kapatır' })
+  disablePortal(@Param('id') id: string) {
+    return this.portal.disable(id);
   }
 
   // ---------- measurements ----------

@@ -4,7 +4,7 @@ export type UserStatus = 'active' | 'inactive';
 
 export type MembershipStatus = 'trial' | 'active' | 'expired' | 'cancelled';
 
-export type AccountType = 'gym_member' | 'staff';
+export type AccountType = 'gym_member' | 'diet_member' | 'staff';
 
 export interface UserProfile {
   uid: string;
@@ -22,6 +22,8 @@ export interface UserProfile {
   emailVerifiedBy?: 'link' | 'platform' | null;
   displayName?: string | null;
   roleIds?: string[];
+  /** OdivonDiet portal account: the diet client this member is. */
+  dietClientId?: string | null;
   branchIds?: string[];
   allBranches?: boolean;
   status: UserStatus;

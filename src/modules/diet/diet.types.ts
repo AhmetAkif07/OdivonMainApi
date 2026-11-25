@@ -76,6 +76,21 @@ export interface DietClient extends BaseDocument {
   bodyFatPct: number | null;
   waterTargetL: number | null;
   clinicalNotes: string;
+  /** Member portal account (set when the dietitian invites the client). */
+  portal?: DietClientPortal | null;
+}
+
+export const DIET_PORTAL_STATUSES = ['invited', 'active', 'disabled'] as const;
+export type DietPortalStatus = (typeof DIET_PORTAL_STATUSES)[number];
+
+export interface DietClientPortal {
+  status: DietPortalStatus;
+  /** Firebase Auth uid of the member account. */
+  uid: string;
+  email: string;
+  invitedAt: string;
+  activatedAt: string | null;
+  disabledAt: string | null;
 }
 
 export interface DietMeasurement extends BaseDocument {
