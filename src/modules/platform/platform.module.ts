@@ -56,6 +56,8 @@ import { SalesReportService } from './sales/sales-report.service';
 import { SalesSequencesService } from './sales/sales-sequences.service';
 import { PlatformSalesAutomationController } from './sales/sales-automation.controller';
 import { PublicSalesController } from './sales/sales-public.controller';
+import { PlatformContractsService } from './contracts/contracts.service';
+import { PlatformContractsController, PublicContractsController } from './contracts/contracts.controller';
 
 @Module({
   imports: [MailModule],
@@ -83,6 +85,8 @@ import { PublicSalesController } from './sales/sales-public.controller';
     PlatformSalesController,
     PlatformSalesAutomationController,
     PublicSalesController,
+    PlatformContractsController,
+    PublicContractsController,
   ],
   providers: [
     PlatformBackendsService,
@@ -111,6 +115,7 @@ import { PublicSalesController } from './sales/sales-public.controller';
     SalesConsentService,
     SalesSequencesService,
     SalesReportService,
+    PlatformContractsService,
     ClientVersionTracker,
     { provide: APP_INTERCEPTOR, useClass: ClientVersionTrackingInterceptor },
   ],

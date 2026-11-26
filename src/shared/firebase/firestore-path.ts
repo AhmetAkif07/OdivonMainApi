@@ -293,6 +293,7 @@ export const ROOT_COLLECTION = {
   platformAuditLogs: 'platformAuditLogs',
   platformSettings: 'platformSettings',
   platformReleases: 'platformReleases',
+  platformContracts: 'platformContracts',
   platformBackends: 'platformBackends',
   rentPublicTenants: 'rentPublicTenants',
   rentPublicOtps: 'rentPublicOtps',
