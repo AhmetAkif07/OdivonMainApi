@@ -17,6 +17,12 @@ export class PlatformBackendsController {
     return this.backends.overview();
   }
 
+  @Get('memberships')
+  @ApiOperation({ summary: 'Tüm SaaS ürünlerinin müşteri üyelikleri (deneme / aktif / süresi dolan)' })
+  memberships() {
+    return this.backends.memberships();
+  }
+
   @Get(':id/tenants')
   @ApiOperation({ summary: 'Harici API\'deki kiracılar (ör. ERP)' })
   tenants(@Param('id') id: string) {

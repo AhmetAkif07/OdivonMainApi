@@ -33,7 +33,16 @@ export default {
       );
     }
     const handler = await start();
-    return handler.fetch(request, env, ctx);
+    // Trafik Analizi: one Analytics Engine data point per request (binding TRAFFIC, fire-and-forget).
+    const startedAt = Date.now();
+    let response;
+    try {
+      response = await handler.fetch(request, env, ctx);
+    } catch (error) {
+      bootstrapModule.recordTrafficFailure(env.TRAFFIC, request, startedAt);
+      throw error;
+    }
+    return bootstrapModule.recordTraffic(env.TRAFFIC, request, response, startedAt);
   },
 
   // Crons (wrangler.jsonc triggers): the hourly one runs hair reminders / package expiry; the daily

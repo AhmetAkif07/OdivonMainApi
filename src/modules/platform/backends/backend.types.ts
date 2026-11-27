@@ -81,6 +81,34 @@ export interface RemoteTenant {
   createdAt: string | null;
   statusChangedAt: string | null;
   statusReason: string | null;
+  /** Demo / test müşterisi mi? (isteğe bağlı) */
+  isDemo?: boolean;
+  /** Üyelik bilgisi (isteğe bağlı). Eklenirse müşteri /saas > Üyelikler listesinde görünür. */
+  subscription?: RemoteSubscription | null;
+}
+
+/**
+ * Harici API'nin her kiracı kaydına eklediği abonelik bilgisi. Tüm alanlar isteğe bağlı;
+ * MainApi değerleri doğrular ve tarih geçmişse "aktif"i "süresi doldu" sayar.
+ */
+export interface RemoteSubscription {
+  /** Plan kodu (ör. "pro"). */
+  plan?: string | null;
+  /** Gösterilecek plan adı (ör. "Pro Paket"). */
+  planName?: string | null;
+  /** trial | active | past_due | expired | cancelled | none */
+  status?: string | null;
+  /** monthly | yearly */
+  billingCycle?: string | null;
+  /** ISO 8601 tarihleri */
+  startedAt?: string | null;
+  trialEndsAt?: string | null;
+  currentPeriodEnd?: string | null;
+  /** Dönem tutarı (KDV dahil, ör. 1490). */
+  amount?: number | null;
+  /** ISO 4217, varsayılan TRY. */
+  currency?: string | null;
+  autoRenew?: boolean | null;
 }
 
 export interface RemoteTenantList {

@@ -16,6 +16,16 @@ import {
   WebCheck,
 } from './backend.types';
 import { RemoteTenantStatusDto, UpsertBackendDto } from './dto';
+import {
+  MembershipBackendSummary,
+  MembershipOverview,
+  MembershipRow,
+  countStatuses,
+  mainTenantToRow,
+  remoteTenantToRow,
+  summarize,
+} from './memberships';
+import { TenantDocument } from '../../tenant/entities/tenant.entity';
 
 const TIMEOUT_MS = 6000;
 /** Bu süreden yavaş yanıt veren API "yavaş" (degraded) sayılır. */
@@ -246,6 +256,73 @@ export class PlatformBackendsService {
   async remoteTenants(id: string): Promise<RemoteTenantList & { backend: PlatformBackend }> {
     const backend = await this.get(id);
     return { ...(await this.fetchRemoteTenants(backend)), backend };
+  }
+
+  /**
+   * Tüm altyapıların müşterilerinin üyelik (abonelik) durumu tek listede. Ana platform
+   * `tenants` koleksiyonundan, harici API'ler kiracı listelerindeki `subscription` alanından
+   * okunur. Bir altyapı yanıt vermezse diğerleri yine döner, hatası `backends[]` içinde görünür.
+   */
+  async memberships(now = new Date()): Promise<MembershipOverview> {
+    const registry = (await this.listRegistry()).filter((b) => b.enabled);
+    const results = await Promise.all(
+      registry.map(async (b): Promise<{ rows: MembershipRow[]; summary: MembershipBackendSummary }> => {
+        const base = { id: b.id, name: b.name, tenantSource: b.tenantSource };
+        try {
+          let rows: MembershipRow[] = [];
+          let hasSubscriptionData = false;
+          if (b.tenantSource === 'main') {
+            const snap = await this.firebase.db.collection(ROOT_COLLECTION.tenants).get();
+            rows = snap.docs
+              .map((d) => ({ ...(d.data() as TenantDocument), id: d.id }))
+              .filter((t) => !t.deletedAt)
+              .map((t) => mainTenantToRow(b, t, now));
+            hasSubscriptionData = true;
+          } else if (b.tenantSource === 'remote') {
+            const list = await this.fetchRemoteTenants(b);
+            const items = list.items.filter((t) => t && typeof t === 'object' && t.id);
+            hasSubscriptionData = items.some((t) => (t as { subscription?: unknown }).subscription != null);
+            rows = items.map((t) => remoteTenantToRow(b, t, now));
+          } else {
+            return {
+              rows,
+              summary: {
+                ...base,
+                ok: false,
+                error: 'Bu ürünün müşteri listesi verecek bir API adresi yok',
+                hasSubscriptionData: false,
+                total: 0,
+                counts: countStatuses([]),
+              },
+            };
+          }
+          return {
+            rows,
+            summary: { ...base, ok: true, error: null, hasSubscriptionData, total: rows.length, counts: countStatuses(rows) },
+          };
+        } catch (e) {
+          return {
+            rows: [],
+            summary: {
+              ...base,
+              ok: false,
+              error: e instanceof AppException ? e.message : errText(e),
+              hasSubscriptionData: false,
+              total: 0,
+              counts: countStatuses([]),
+            },
+          };
+        }
+      }),
+    );
+    const items = results.flatMap((r) => r.rows);
+    items.sort((a, b) => (a.daysLeft ?? Number.MAX_SAFE_INTEGER) - (b.daysLeft ?? Number.MAX_SAFE_INTEGER));
+    return {
+      items,
+      summary: summarize(items),
+      backends: results.map((r) => r.summary),
+      generatedAt: now.toISOString(),
+    };
   }
 
   async setRemoteTenantStatus(id: string, tenantId: string, dto: RemoteTenantStatusDto, admin: PlatformAdminUser) {

@@ -74,8 +74,20 @@
     // SaaS subscriptions are paid with PayTR. PAYTR_MERCHANT_ID / _KEY / _SALT are secrets.
     // Switch PAYTR_MODE to "live" after a successful sandbox payment.
     "SAAS_PAYMENT_PROVIDER": "paytr",
-    "PAYTR_MODE": "sandbox"
+    "PAYTR_MODE": "sandbox",
+    // Trafik Analizi (panel /traffic): Analytics Engine dataset + Worker GraphQL metrics.
+    // The read token is the CF_ANALYTICS_TOKEN secret ("Account Analytics: Read").
+    "CF_ACCOUNT_ID": "3c85686b125d141ad80870db15cabded",
+    "TRAFFIC_DATASET": "odivon_api_traffic",
+    "CF_WORKER_SCRIPT": "odivon-main-api"
   },
+  // One data point per API request, written by worker/index.mjs (see src/shared/http/traffic-metrics.ts).
+  "analytics_engine_datasets": [
+    {
+      "binding": "TRAFFIC",
+      "dataset": "odivon_api_traffic"
+    }
+  ],
   "previews": {
     "vars": {
       "NODE_ENV": "test",

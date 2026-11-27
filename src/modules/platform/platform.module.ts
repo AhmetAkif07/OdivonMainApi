@@ -12,6 +12,9 @@ import { PlatformReleasesService } from './releases/releases.service';
 import { PlatformReleasesController } from './releases/releases.controller';
 import { ClientVersionTracker } from './releases/client-version-tracker.service';
 import { ClientVersionTrackingInterceptor } from './releases/client-version-tracking.interceptor';
+import { PlatformTrafficController } from './traffic/traffic.controller';
+import { PlatformTrafficService } from './traffic/traffic.service';
+import { TrafficTagInterceptor } from './traffic/traffic-tag.interceptor';
 import { PlatformAdminGuard } from './platform-admin.guard';
 import { PlatformAuditService } from './audit/platform-audit.service';
 import { PlatformAuditController } from './audit/platform-audit.controller';
@@ -87,6 +90,7 @@ import { PlatformContractsController, PublicContractsController } from './contra
     PublicSalesController,
     PlatformContractsController,
     PublicContractsController,
+    PlatformTrafficController,
   ],
   providers: [
     PlatformBackendsService,
@@ -118,6 +122,8 @@ import { PlatformContractsController, PublicContractsController } from './contra
     PlatformContractsService,
     ClientVersionTracker,
     { provide: APP_INTERCEPTOR, useClass: ClientVersionTrackingInterceptor },
+    PlatformTrafficService,
+    { provide: APP_INTERCEPTOR, useClass: TrafficTagInterceptor },
   ],
   exports: [
     PlatformTicketsService,

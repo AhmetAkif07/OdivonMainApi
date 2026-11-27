@@ -17,6 +17,9 @@ import { ErrorLogService } from './shared/errors/error-log.service';
 import { setBackgroundRunner } from './shared/http/background';
 import { installFastRouteRegistration } from './shared/http/fast-route-registration';
 
+/** Used by worker/index.mjs for the panel's Trafik Analizi (Workers Analytics Engine). */
+export { recordTraffic, recordTrafficFailure } from './shared/http/traffic-metrics';
+
 let application: INestApplication | null = null;
 
 
